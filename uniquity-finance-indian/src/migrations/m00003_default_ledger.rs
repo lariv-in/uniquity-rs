@@ -20,8 +20,6 @@ enum Journals {
 enum JournalType {
     #[sea_orm(iden = "journal_type")]
     Enum,
-    #[sea_orm(iden = "Debit")]
-    Debit,
 }
 
 #[derive(DeriveIden)]

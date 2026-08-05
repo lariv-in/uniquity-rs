@@ -1,6 +1,6 @@
 use lariv_rs::html_form::{
     html_form,
-    widgets::{Checkbox, Datetime, ForeignKey, ManyToMany, Number, Select, Text, Textarea},
+    widgets::{Checkbox, Datetime, Number, Select, Text, Textarea},
 };
 
 use crate::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};

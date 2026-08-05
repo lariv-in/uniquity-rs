@@ -31,8 +31,6 @@ enum Taxes {
 enum TaxKind {
     #[sea_orm(iden = "tax_kind")]
     Enum,
-    #[sea_orm(iden = "levied")]
-    Levied,
 }
 
 #[derive(DeriveIden)]

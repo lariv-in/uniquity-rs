@@ -1,3 +1,4 @@
+use sea_orm::Statement;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -315,9 +316,50 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
     SimpleExpr::SubQuery(None, Box::new(sel.into_sub_query_statement()))
 }
 
+const NORMALIZE_BALANCE_TYPE: &str = r#"
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'balance_type') THEN
+    CREATE TYPE balance_type AS ENUM ('Credit', 'Debit');
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_type t ON a.atttypid = t.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = current_schema()
+      AND c.relname = 'accounts'
+      AND a.attname = 'balance_type'
+      AND NOT a.attisdropped
+      AND t.typname = 'BalanceType'
+  ) THEN
+    ALTER TABLE accounts ALTER COLUMN balance_type TYPE TEXT USING balance_type::TEXT;
+    DROP TYPE IF EXISTS "BalanceType";
+    ALTER TABLE accounts
+      ALTER COLUMN balance_type TYPE balance_type USING balance_type::balance_type;
+  END IF;
+END;
+$$;
+"#;
+
+async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute(Statement::from_string(
+            manager.get_connection().get_database_backend(),
+            sql.to_string(),
+        ))
+        .await
+        .map(|_| ())
+}
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        execute(manager, NORMALIZE_BALANCE_TYPE).await?;
+
         let backend = manager.get_connection().get_database_backend();
         let conn = manager.get_connection();
 

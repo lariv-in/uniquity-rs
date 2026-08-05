@@ -1,6 +1,6 @@
 use lariv_rs::html_form::{
     html_form,
-    widgets::{ForeignKey, ManyToMany, Number, Select, Text, Textarea},
+    widgets::{Number, Select, Text, Textarea},
 };
 
 use uniquity_finance_accounts::routes::AccountSelectRouteTag;

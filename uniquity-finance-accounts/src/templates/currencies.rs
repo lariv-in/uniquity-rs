@@ -4,7 +4,7 @@ use maud::{Markup, html};
 use lariv_rs::{
     components::{
         ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
+        ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
         button_delete, button_link, button_submit, container_column, container_row,
         data_table_list, detail, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, label_inline, row_attr_navigate_route, row_attr_select, table_button_filter,
