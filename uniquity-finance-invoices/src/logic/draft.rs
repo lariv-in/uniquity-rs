@@ -15,6 +15,9 @@ use uniquity_finance_products::{
 };
 use uniquity_finance_taxes::scope::load_taxes_by_ids;
 
+use crate::logic::payment_term::{
+    insert_payment_term, CreatePaymentTermDueDate, CreatePaymentTermInput,
+};
 use crate::entities::{
     draft_invoice, draft_invoice_line,
     payment_term::Entity as PaymentTermEntity,
@@ -140,6 +143,38 @@ pub fn optional_display(opt: &Option<String>) -> String {
         .to_string()
 }
 
+pub enum PaymentTermSelection {
+    Existing(i64),
+    DueDate(DateTime<Utc>),
+}
+
+async fn resolve_payment_term<C: ConnectionTrait>(
+    conn: &C,
+    selection: PaymentTermSelection,
+) -> Result<(i64, String), String> {
+    match selection {
+        PaymentTermSelection::Existing(id) => {
+            if id == 0 {
+                return Err("payment term is required".to_string());
+            }
+            let pt = PaymentTermEntity::find_by_id(id)
+                .one(conn)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "payment term not found".to_string())?;
+            Ok((pt.id, pt.term_type))
+        }
+        PaymentTermSelection::DueDate(datetime) => {
+            let pt = insert_payment_term(
+                conn,
+                CreatePaymentTermInput::DueDate(CreatePaymentTermDueDate { datetime }),
+            )
+            .await?;
+            Ok((pt.id, pt.term_type))
+        }
+    }
+}
+
 pub struct CreateDraftInput {
     pub number: Option<String>,
     pub reference: Option<String>,
@@ -147,7 +182,7 @@ pub struct CreateDraftInput {
     pub bank_account: Option<String>,
     pub datetime: DateTime<Utc>,
     pub customer_id: i64,
-    pub payment_term_id: i64,
+    pub payment_term: PaymentTermSelection,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
 }
@@ -162,16 +197,10 @@ pub async fn create_draft_invoice(
     if input.customer_id == 0 {
         return Err("customer is required".to_string());
     }
-    if input.payment_term_id == 0 {
-        return Err("payment term is required".to_string());
-    }
-    let pt = PaymentTermEntity::find_by_id(input.payment_term_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "payment term not found".to_string())?;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let (payment_term_id, payment_term_type) =
+        resolve_payment_term(&txn, input.payment_term).await?;
     let now = Utc::now();
     let number = input
         .number
@@ -184,8 +213,8 @@ pub async fn create_draft_invoice(
         bank_account: Set(input.bank_account),
         datetime: Set(input.datetime),
         customer_id: Set(input.customer_id),
-        payment_term_type: Set(pt.term_type.clone()),
-        payment_term_id: Set(input.payment_term_id),
+        payment_term_type: Set(payment_term_type),
+        payment_term_id: Set(payment_term_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -216,7 +245,7 @@ pub struct UpdateDraftInput {
     pub bank_account: Option<String>,
     pub datetime: DateTime<Utc>,
     pub customer_id: i64,
-    pub payment_term_id: i64,
+    pub payment_term: PaymentTermSelection,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
 }
@@ -230,13 +259,10 @@ pub async fn update_draft_invoice(
     if input.lines.is_empty() {
         return Err("add at least one invoice line".to_string());
     }
-    let pt = PaymentTermEntity::find_by_id(input.payment_term_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "payment term not found".to_string())?;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let (payment_term_id, payment_term_type) =
+        resolve_payment_term(&txn, input.payment_term).await?;
     let now = Utc::now();
     let number = input
         .number
@@ -255,8 +281,8 @@ pub async fn update_draft_invoice(
     am.bank_account = Set(input.bank_account);
     am.datetime = Set(input.datetime);
     am.customer_id = Set(input.customer_id);
-    am.payment_term_type = Set(pt.term_type.clone());
-    am.payment_term_id = Set(input.payment_term_id);
+    am.payment_term_type = Set(payment_term_type);
+    am.payment_term_id = Set(payment_term_id);
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
 

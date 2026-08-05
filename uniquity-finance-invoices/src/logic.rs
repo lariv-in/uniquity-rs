@@ -13,7 +13,7 @@ pub mod tax_calculations;
 pub use draft::{
     create_draft_invoice, optional_display, optional_trimmed_text, parse_header_tax_ids,
     parse_invoice_datetime, parse_lines_json, soft_delete_draft, update_draft_invoice,
-    CreateDraftInput, UpdateDraftInput,
+    CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
 };
 pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};
 pub use payment::{
@@ -26,7 +26,8 @@ pub use payment_batch::{
     CreatePaymentBatchResult,
 };
 pub use payment_term::{
-    create_payment_term, parse_due_datetime, payment_term_form_values, payment_term_summary,
-    payment_term_type_label, update_payment_term, CreatePaymentTermDueDate, CreatePaymentTermInput,
-    CreatePaymentTermRelative, PaymentTermFormValues,
+    create_payment_term, format_due_date_local_input, insert_payment_term, parse_due_date,
+    parse_due_datetime, payment_term_form_values, payment_term_summary, payment_term_type_label,
+    update_payment_term, CreatePaymentTermDueDate, CreatePaymentTermInput, CreatePaymentTermRelative,
+    PaymentTermFormValues,
 };

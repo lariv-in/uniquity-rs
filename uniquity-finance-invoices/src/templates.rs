@@ -551,6 +551,7 @@ pub struct DraftInvoiceFormPage {
 
 impl DraftInvoiceFormPage {
     fn body(&self) -> Markup {
+        let x_data = DraftInvoiceForm::alpine_x_data(&self.form.payment_term_mode);
         html! {
             (field_title(FieldTitle { value: &self.title, classes: "" }))
             @if let Some(e) = &self.error {
@@ -558,13 +559,16 @@ impl DraftInvoiceFormPage {
             }
             form method="post" action=(self.action_href) {
                 (DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
+                    .x_data(&x_data)
                     .value(DraftInvoiceFormField::Number, &self.form.number)
                     .value(DraftInvoiceFormField::Reference, &self.form.reference)
                     .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
                     .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
                     .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
                     .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
+                    .value(DraftInvoiceFormField::PaymentTermMode, &self.form.payment_term_mode)
                     .value(DraftInvoiceFormField::PaymentTermId, &self.form.payment_term_id.to_string())
+                    .value(DraftInvoiceFormField::PaymentDueDate, &self.form.payment_due_date)
                     .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
                     .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
                     .display(DraftInvoiceFormField::PaymentTermId, &self.payment_term_display)

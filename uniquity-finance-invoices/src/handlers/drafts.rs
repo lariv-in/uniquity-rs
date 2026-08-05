@@ -22,11 +22,11 @@ use crate::{
         draft_invoice::{self, Entity as DraftInvoiceEntity},
         payment_term::Entity as PaymentTermEntity,
     },
-    forms::DraftInvoiceForm,
+    forms::{DraftInvoiceForm, PAYMENT_TERM_MODE_DATE, PAYMENT_TERM_MODE_TERM},
     logic::{
-        create_draft_invoice, optional_display, optional_trimmed_text, parse_invoice_datetime,
-        parse_lines_json, soft_delete_draft, update_draft_invoice, CreateDraftInput,
-        UpdateDraftInput,
+        create_draft_invoice, optional_display, optional_trimmed_text, parse_due_date,
+        parse_invoice_datetime, parse_lines_json, soft_delete_draft, update_draft_invoice,
+        CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
     },
     logic::invoice_line_editor::{
         default_lines_json, draft_invoice_line_display_rows, draft_lines_form_json,
@@ -55,9 +55,18 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
     if form.customer_id <= 0 {
         return Err("select a customer".to_string());
     }
-    if form.payment_term_id <= 0 {
-        return Err("select a payment term".to_string());
-    }
+    let payment_term = match form.payment_term_mode.as_str() {
+        PAYMENT_TERM_MODE_DATE => {
+            let datetime = parse_due_date(&form.payment_due_date, tz)?;
+            PaymentTermSelection::DueDate(datetime)
+        }
+        _ => {
+            if form.payment_term_id <= 0 {
+                return Err("select a payment term".to_string());
+            }
+            PaymentTermSelection::Existing(form.payment_term_id)
+        }
+    };
     let lines = parse_lines_json(&form.invoice_lines_json)?;
     Ok(CreateDraftInput {
         number: Some(form.number.clone()),
@@ -66,7 +75,7 @@ fn form_to_input(form: &DraftInvoiceForm, tz: &str) -> Result<CreateDraftInput, 
         bank_account: optional_trimmed_text(&form.bank_account),
         datetime: parse_invoice_datetime(&form.datetime, tz),
         customer_id: form.customer_id,
-        payment_term_id: form.payment_term_id,
+        payment_term,
         header_tax_ids: form.taxes.clone(),
         lines,
     })
@@ -142,7 +151,9 @@ pub async fn create_get(
         bank_account: String::new(),
         datetime: ctx.format_datetime_local_input(Utc::now()),
         customer_id: 0,
+        payment_term_mode: PAYMENT_TERM_MODE_TERM.to_string(),
         payment_term_id: 0,
+        payment_due_date: String::new(),
         taxes: vec![],
         invoice_lines_json: default_lines_json(),
     };
@@ -291,7 +302,9 @@ pub async fn edit_get(
                 bank_account: d.bank_account.unwrap_or_default(),
                 datetime: ctx.format_datetime_local_input(d.datetime),
                 customer_id: d.customer_id,
+                payment_term_mode: PAYMENT_TERM_MODE_TERM.to_string(),
                 payment_term_id: d.payment_term_id,
+                payment_due_date: String::new(),
                 taxes: tax_ids,
                 invoice_lines_json: lines_json,
             },
@@ -307,7 +320,9 @@ pub async fn edit_get(
                 bank_account: String::new(),
                 datetime: String::new(),
                 customer_id: 0,
+                payment_term_mode: PAYMENT_TERM_MODE_TERM.to_string(),
                 payment_term_id: 0,
+                payment_due_date: String::new(),
                 taxes: vec![],
                 invoice_lines_json: default_lines_json(),
             },
@@ -348,7 +363,7 @@ pub async fn edit_post(
                 bank_account: input.bank_account,
                 datetime: input.datetime,
                 customer_id: input.customer_id,
-                payment_term_id: input.payment_term_id,
+                payment_term: input.payment_term,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
             };

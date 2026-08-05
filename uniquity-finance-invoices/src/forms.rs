@@ -1,9 +1,10 @@
 use lariv_rs::html_form::{
-    FieldRender, FormCtx, FormWidget,
+    FieldRender, FieldSpec, FormCtx, FormFieldKey, FormWidget, HtmlForm, field_required,
     html_form,
-    widgets::{Datetime, Duration, Select, Text, Textarea},
+    widgets::{Date, Datetime, Duration, Select, Text, Textarea},
 };
-use maud::Markup;
+use lariv_rs::components::{container_error, label_newline};
+use maud::{Markup, PreEscaped, html};
 
 use uniquity_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
 use uniquity_finance_customer::routes::CustomerFkSelectRouteTag;
@@ -25,6 +26,33 @@ impl FormWidget for InvoiceLinesDraft {
         })
     }
 }
+
+fn render_embedded_field(spec: &FieldSpec, ctx: &FormCtx<'_>) -> Markup {
+    let required = field_required(spec, ctx);
+    let field = FieldRender {
+        name: spec.name,
+        label: spec.label,
+        value: ctx.value_of(spec.name),
+        required,
+        spec,
+    };
+    let markup = (spec.render)(ctx, &field);
+    let wrapped = container_error(ctx.error_of(spec), markup);
+    match spec.show {
+        Some(expr) => html! {
+            div class="w-full" x-show=(expr) {
+                (wrapped)
+            }
+        },
+        None => wrapped,
+    }
+}
+
+/// Payment due block: toggle plus conditional term FK / due date under a newline label.
+pub struct InvoicePaymentDueSection;
+
+pub const PAYMENT_TERM_MODE_TERM: &str = "term";
+pub const PAYMENT_TERM_MODE_DATE: &str = "date";
 
 #[html_form]
 pub struct DraftInvoiceForm {
@@ -54,16 +82,28 @@ pub struct DraftInvoiceForm {
     )]
     pub customer_id: i64,
 
+    #[form(label = "Payment due", widget = InvoicePaymentDueSection)]
+    pub payment_term_mode: String,
+
     #[form(
-        label = "Payment term",
-        required,
+        label = "",
         widget = ForeignKey,
         route = PaymentTermFkSelectRouteTag,
         swap_key = "fk-invoice-payment-term",
         display = "payment_term",
-        placeholder = "Select payment term…"
+        placeholder = "Select payment term…",
+        show = "paymentTermMode === 'term'",
+        when = "payment_due_embedded"
     )]
     pub payment_term_id: i64,
+
+    #[form(
+        label = "",
+        widget = Date,
+        show = "paymentTermMode === 'date'",
+        when = "payment_due_embedded"
+    )]
+    pub payment_due_date: String,
 
     #[form(
         label = "Taxes",
@@ -76,6 +116,47 @@ pub struct DraftInvoiceForm {
 
     #[form(label = "Lines", required, widget = InvoiceLinesDraft, display = "invoice_lines_preview")]
     pub invoice_lines_json: String,
+}
+
+impl DraftInvoiceForm {
+    /// Alpine `x-data` for payment term mode toggle and conditional fields.
+    pub fn alpine_x_data(payment_term_mode: &str) -> String {
+        format!(
+            "{{ paymentTermMode: {} }}",
+            serde_json::to_string(payment_term_mode).unwrap_or_else(|_| "\"term\"".to_string())
+        )
+    }
+}
+
+impl FormWidget for InvoicePaymentDueSection {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let specs = DraftInvoiceForm::field_specs();
+        let embedded_names = [
+            DraftInvoiceFormField::PaymentTermId.html_name(),
+            DraftInvoiceFormField::PaymentDueDate.html_name(),
+        ];
+        let embedded: Vec<&FieldSpec> = specs
+            .iter()
+            .filter(|s| embedded_names.contains(&s.name))
+            .collect();
+        let mut children = Markup::default();
+        for spec in embedded {
+            children = html! { (children) (render_embedded_field(spec, ctx)) };
+        }
+        label_newline(
+            field.label,
+            html! {
+                (PreEscaped(
+                    r#"<div class="join w-full max-w-md shadow-sm">
+<button type="button" class="join-item btn btn-sm flex-1" x-bind:class="paymentTermMode === 'term' ? 'btn-primary' : 'btn-ghost'" @click="paymentTermMode = 'term'">Existing term</button>
+<button type="button" class="join-item btn btn-sm flex-1" x-bind:class="paymentTermMode === 'date' ? 'btn-primary' : 'btn-ghost'" @click="paymentTermMode = 'date'">Due date</button>
+</div>"#
+                ))
+                input type="hidden" name=(field.name) x-bind:value="paymentTermMode";
+                (children)
+            },
+        )
+    }
 }
 
 #[html_form]
