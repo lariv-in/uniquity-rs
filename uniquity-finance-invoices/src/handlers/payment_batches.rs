@@ -34,7 +34,7 @@ use crate::{
         create_payment_batch, parse_batch_allocations_json, parse_invoice_datetime,
         posted_invoice_open_balance, CreatePaymentBatchInput,
     },
-    routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
+    routes::{PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
     templates::{

@@ -1,7 +1,7 @@
 use lariv_rs::html_form::{
     FieldRender, FormCtx, FormWidget,
     html_form,
-    widgets::{Datetime, Duration, ForeignKey, ManyToMany, Select, Text, Textarea},
+    widgets::{Datetime, Duration, Select, Text, Textarea},
 };
 use maud::Markup;
 
