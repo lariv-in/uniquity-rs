@@ -1,0 +1,12 @@
+lariv_rs::swap_key!(InvoiceHubTableKey, "invoice-hub-table");
+lariv_rs::swap_key!(DraftInvoiceTableKey, "draft-invoice-table");
+lariv_rs::swap_key!(PostedInvoiceTableKey, "posted-invoice-table");
+lariv_rs::swap_key!(PaymentTableKey, "finance-payment-table");
+lariv_rs::swap_key!(PaymentBatchTableKey, "finance-payment-batch-table");
+lariv_rs::swap_key!(PaymentTermTableKey, "finance-payment-term-table");
+lariv_rs::swap_key!(PaymentTermSelectTableKey, "finance-payment-term-select-table");
+lariv_rs::swap_key!(PaymentTermSelectModalKey, "finance-payment-term-select-modal");
+lariv_rs::swap_key!(PostedInvoiceSelectTableKey, "posted-invoice-select-table");
+lariv_rs::swap_key!(PostedInvoiceSelectModalKey, "posted-invoice-select-modal");
+lariv_rs::swap_key!(InvoicePdfPreviewModalKey, "invoice-pdf-preview-modal");
+lariv_rs::swap_key!(CancelledInvoiceTableKey, "cancelled-invoice-table");

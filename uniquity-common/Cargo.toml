@@ -1,0 +1,17 @@
+[package]
+name = "uniquity-common"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lariv-rs = { workspace = true }
+rust_decimal = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+typst = { workspace = true }
+typst-pdf = { workspace = true }
+typst-kit = { workspace = true }
+typst-syntax = { workspace = true }
+comemo = { workspace = true }

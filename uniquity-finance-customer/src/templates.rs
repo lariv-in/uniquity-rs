@@ -1,0 +1,451 @@
+use frunk::Generic;
+use maud::{Markup, html};
+
+use lariv_rs::{
+    components::{
+        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        button_clear, button_delete, button_link, button_submit, container_column,
+        container_row, data_table_list, detail, field_text, field_title,
+        form, form_hx_get_route, form_hx_post_main, label_inline, pagination_pages,
+        row_attr_navigate_route, row_attr_select,
+        table_button_filter, table_pagination,
+    },
+    html_form::{FormCtx, HtmlForm},
+    http::ProvideRequestCaps,
+    picker::RenderPickerSelect,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+};
+
+use uniquity_finance_accounts::accounting_detail_menu::{
+    DetailMenuNavItem, detail_sidebar_menu,
+};
+use uniquity_finance_accounts::templates::{
+    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
+    layout_with_sidebar,
+};
+
+use super::forms::{
+    CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField,
+};
+use super::keys::{CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey};
+use super::routes::{
+    CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, CustomerDefaultRouteTag,
+    CustomerDeletePostRouteTag, CustomerDetailRouteTag,
+    CustomerEditGetRouteTag, CustomerEditPostRouteTag, CustomerFkSelectRouteTag,
+};
+
+fn customer_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
+    let menu_title = format!("Customer: {name}");
+    let detail_url = CustomerDetailRouteTag::new(id).url();
+    let mut nav = vec![DetailMenuNavItem {
+        title: "Customer Detail",
+        url: detail_url,
+        active: active == "detail",
+    }];
+    if can_edit {
+        nav.push(DetailMenuNavItem {
+            title: "Edit Customer",
+            url: CustomerEditGetRouteTag::new(id).url(),
+            active: active == "edit",
+        });
+    }
+    detail_sidebar_menu(
+        menu_title,
+        "Back to Customers",
+        CustomerDefaultRouteTag.url(),
+        &nav,
+        None,
+        html! {},
+    )
+}
+
+lariv_rs::define_register_items! {
+    plugin: UniquityFinanceCustomerTag;
+    capability: TemplateCapability;
+    trait: TemplateRegistrar;
+    method: register_templates;
+    wrapper: TemplateOf;
+    bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
+    items: [
+        CustomerListIdx: CustomerListPageTag => CustomerListPage,
+        CustomerDetailIdx: CustomerDetailPageTag => CustomerDetailPage,
+        CustomerFormIdx: CustomerFormPageTag => CustomerFormPage,
+        CustomerSelectIdx: CustomerSelectPageTag => CustomerSelectPage,
+    ]
+}
+
+lariv_rs::define_register_items! {
+    plugin: UniquityFinanceCustomerTag;
+    capability: SlotCapability;
+    trait: SlotRegistrar;
+    method: register_slots;
+    bounds: [];
+    items: [];
+    hook: SlotsHook;
+}
+
+fn customer_filter_form(name: &str, email: &str) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<CustomerTableKey, CustomerDefaultRouteTag>(
+            CustomerDefaultRouteTag,
+        ),
+        inputs: CustomerFilterForm::render_inputs(
+            &FormCtx::form::<CustomerFilterForm>()
+                .value(CustomerFilterFormField::Name, name)
+                .value(CustomerFilterFormField::Email, email),
+        ),
+        actions: html! {
+            (container_row("flex gap-2", html! {
+                (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+            }))
+        },
+        ..Default::default()
+    })
+}
+
+fn customer_select_filter_form(name: &str, email: &str, target_input: &str) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<CustomerSelectTableKey, CustomerFkSelectRouteTag>(
+            CustomerFkSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        inputs: html! {
+            (CustomerFilterForm::render_inputs(
+                &FormCtx::form::<CustomerFilterForm>()
+                    .value(CustomerFilterFormField::Name, name)
+                    .value(CustomerFilterFormField::Email, email),
+            ))
+            input type="hidden" name="target_input" value=(target_input) {}
+        },
+        actions: html! {
+            (container_row("flex gap-2", html! {
+                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+            }))
+        },
+        ..Default::default()
+    })
+}
+
+fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, true);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination(TablePagination {
+        pages: &pages,
+        hx_target: K::SELECTOR,
+    })
+}
+
+#[derive(Clone)]
+pub struct CustomerRow {
+    pub id: i64,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub gstin: String,
+}
+
+#[derive(Generic)]
+pub struct CustomerListPage {
+    pub customers: ObjectList<CustomerRow>,
+    pub filter_name: String,
+    pub filter_email: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl CustomerListPage {
+    pub fn render_table(&self) -> Markup {
+        let headers = [
+            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Email", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Phone", sort_url: None, push_url: true },
+            TableColumnHeader { label: "GSTIN", sort_url: None, push_url: true },
+        ];
+        let rows: Vec<TableRow> = self
+            .customers
+            .items
+            .iter()
+            .map(|c| TableRow {
+                attrs: row_attr_navigate_route(CustomerDetailRouteTag::new(c.id)),
+                cells: vec![
+                    field_text(FieldText { value: &c.name, classes: "" }),
+                    field_text(FieldText { value: &c.email, classes: "" }),
+                    field_text(FieldText { value: &c.phone, classes: "" }),
+                    field_text(FieldText { value: &c.gstin, classes: "" }),
+                ],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: customer_filter_form(&self.filter_name, &self.filter_email),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (button_link(ButtonLink {
+                    href: &CustomerCreateGetRouteTag.url(),
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
+        let pagination = render_pagination::<CustomerTableKey>(
+            &self.path_and_query,
+            self.customers.number,
+            self.customers.num_pages,
+        );
+        data_table_list::<CustomerTableKey>(
+            "Customers",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        self.render_table()
+    }
+}
+
+impl RenderAppPane for CustomerListPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        layout_with_sidebar(self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_content(self.body())
+    }
+}
+
+impl RenderTemplate for CustomerListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold("Finance Customers — Uniquity", chrome, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CustomerDetailPage {
+    pub id: i64,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub gstin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
+    pub website: String,
+    pub can_edit: bool,
+}
+
+impl CustomerDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (label_inline("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
+                    (label_inline("Address line 2", field_text(FieldText { value: &self.address_line_2, classes: "" })))
+                    (label_inline("City", field_text(FieldText { value: &self.city, classes: "" })))
+                    (label_inline("Pincode", field_text(FieldText { value: &self.pincode, classes: "" })))
+                    (label_inline("State", field_text(FieldText { value: &self.state, classes: "" })))
+                    (label_inline("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
+                    (label_inline("PAN", field_text(FieldText { value: &self.pan, classes: "" })))
+                    (label_inline("Phone", field_text(FieldText { value: &self.phone, classes: "" })))
+                    (label_inline("Email", field_text(FieldText { value: &self.email, classes: "" })))
+                    (label_inline("Website", field_text(FieldText { value: &self.website, classes: "" })))
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        customer_detail_menu(self.id, &self.name, "detail", self.can_edit)
+    }
+}
+
+impl RenderAppPane for CustomerDetailPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        layout_with_entity_sidebar(self.menu(), self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_content(self.body())
+    }
+}
+
+impl RenderTemplate for CustomerDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold_with_sidebar("Customer — Uniquity", chrome, self.menu(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CustomerFormPage {
+    pub id: i64,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub gstin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
+    pub website: String,
+    pub is_edit: bool,
+}
+
+impl CustomerFormPage {
+    fn body(&self) -> Markup {
+        let title = if self.is_edit {
+            "Edit Customer"
+        } else {
+            "Create Customer"
+        };
+        html! {
+            (container_column("@container", html! {
+                (field_title(FieldTitle { value: title, classes: "" }))
+                (form(FormOpts {
+                    attrs: if self.is_edit {
+                        form_hx_post_main(CustomerEditPostRouteTag::new(self.id))
+                    } else {
+                        form_hx_post_main(CustomerCreatePostRouteTag)
+                    },
+                    inputs: CustomerForm::render_inputs(
+                        &FormCtx::form::<CustomerForm>()
+                            .value(CustomerFormField::Name, &self.name)
+                            .value(CustomerFormField::AddressLine1, &self.address_line_1)
+                            .value(CustomerFormField::AddressLine2, &self.address_line_2)
+                            .value(CustomerFormField::City, &self.city)
+                            .value(CustomerFormField::Pincode, &self.pincode)
+                            .value(CustomerFormField::State, &self.state)
+                            .value(CustomerFormField::Gstin, &self.gstin)
+                            .value(CustomerFormField::Pan, &self.pan)
+                            .value(CustomerFormField::Phone, &self.phone)
+                            .value(CustomerFormField::Email, &self.email)
+                            .value(CustomerFormField::Website, &self.website),
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Customer",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                            @if self.is_edit {
+                                (button_delete(
+                                    CustomerDeletePostRouteTag::new(self.id),
+                                    "Delete Customer",
+                                    "Permanently delete this customer?",
+                                ))
+                            }
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            }))
+        }
+    }
+
+    fn sidebar(&self) -> Markup {
+        if self.is_edit {
+            customer_detail_menu(self.id, &self.name, "edit", true)
+        } else {
+            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
+        }
+    }
+}
+
+impl RenderAppPane for CustomerFormPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        layout_with_entity_sidebar(self.sidebar(), self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_content(self.body())
+    }
+}
+
+impl RenderTemplate for CustomerFormPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold_with_sidebar("Customer Form — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CustomerSelectPage {
+    pub customers: ObjectList<CustomerRow>,
+    pub filter_name: String,
+    pub filter_email: String,
+    pub target_input: String,
+    pub path_and_query: String,
+}
+
+impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for CustomerSelectPage {
+    fn render_table(&self) -> Markup {
+        let headers = [
+            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Email", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Phone", sort_url: None, push_url: false },
+        ];
+        let rows: Vec<TableRow> = self
+            .customers
+            .items
+            .iter()
+            .map(|c| TableRow {
+                attrs: row_attr_select(&self.target_input, &c.id.to_string(), &c.name),
+                cells: vec![
+                    field_text(FieldText { value: &c.name, classes: "" }),
+                    field_text(FieldText { value: &c.email, classes: "" }),
+                    field_text(FieldText { value: &c.phone, classes: "" }),
+                ],
+            })
+            .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: customer_select_filter_form(
+                    &self.filter_name,
+                    &self.filter_email,
+                    &self.target_input,
+                ),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<CustomerSelectTableKey>(
+            &self.path_and_query,
+            self.customers.number,
+            self.customers.num_pages,
+        );
+        data_table_list::<CustomerSelectTableKey>(
+            "Select Customer",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+        )
+    }
+}
+
+impl RenderTemplate for CustomerSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}

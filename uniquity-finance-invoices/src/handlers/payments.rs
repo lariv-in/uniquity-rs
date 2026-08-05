@@ -1,0 +1,353 @@
+use std::collections::HashMap;
+
+use axum::{
+    extract::{Path, Query},
+    http::Uri,
+    response::{IntoResponse, Redirect, Response},
+};
+use chrono::Utc;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+
+use lariv_rs::{
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
+    http::Cap,
+    picker::respond_picker_select,
+    plugins::users::middleware::RequireAuth,
+    template::RenderAppPane,
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+};
+
+use uniquity_common::require_superuser;
+use uniquity_finance_accounts::scope::load_account_parent_label;
+use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
+
+use crate::{
+    entities::{
+        payment::{self, Entity as PaymentEntity},
+        posted_invoice::{self, Entity as PostedInvoiceEntity},
+    },
+    forms::PaymentForm,
+    keys::{PaymentTableKey, PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey},
+    logic::{
+        create_payment, invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
+        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
+        CreatePaymentInput,
+    },
+    routes::{PaymentBatchDetailRouteTag, PostedInvoiceDetailRouteTag},
+    scope::sql_posted_not_cancelled,
+    state::InvoicesState,
+    templates::{
+        PaymentDetailPage, PaymentFormPage, PaymentListPage, PaymentRow, PostedInvoiceSelectPage,
+        PostedInvoiceSelectRow,
+    },
+};
+
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct ListQuery {
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct PaymentCreateQuery {
+    #[serde(default, rename = "PostedInvoiceID")]
+    pub posted_invoice_id: Option<i64>,
+}
+
+fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
+}
+
+fn posted_invoice_display_label(id: i64, number: &str) -> String {
+    if number.trim().is_empty() {
+        format!("#{id}")
+    } else {
+        format!("{number} (#{id})")
+    }
+}
+
+async fn load_payment_form_context(
+    db: &sea_orm::DatabaseConnection,
+    posted_invoice_id: i64,
+    account_id: &str,
+    tax_ids: &[i64],
+) -> (String, String, Vec<ManyToManyItem>) {
+    let posted_invoice_display = if posted_invoice_id > 0 {
+        PostedInvoiceEntity::find_by_id(posted_invoice_id)
+            .filter(posted_invoice::Column::DeletedAt.is_null())
+            .one(db)
+            .await
+            .ok()
+            .flatten()
+            .map(|inv| posted_invoice_display_label(inv.id, &inv.number))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let account_display = if let Ok(id) = account_id.trim().parse::<i64>() {
+        load_account_parent_label(db, Some(id)).await
+    } else {
+        String::new()
+    };
+
+    let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
+    let tax_items = taxes
+        .iter()
+        .map(|t| ManyToManyItem {
+            key: t.id.to_string(),
+            value: tax_label(t),
+        })
+        .collect();
+
+    (posted_invoice_display, account_display, tax_items)
+}
+
+async fn load_posted_invoice_link(
+    db: &sea_orm::DatabaseConnection,
+    posted_invoice_id: i64,
+) -> (String, Option<String>) {
+    if posted_invoice_id <= 0 {
+        return (String::new(), None);
+    }
+    if let Ok(Some(inv)) = PostedInvoiceEntity::find_by_id(posted_invoice_id)
+        .filter(posted_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+    {
+        (
+            posted_invoice_display_label(inv.id, &inv.number),
+            Some(PostedInvoiceDetailRouteTag::new(inv.id).url()),
+        )
+    } else {
+        (format!("#{posted_invoice_id}"), None)
+    }
+}
+
+pub async fn list(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<ListQuery>,
+) -> maud::Markup {
+    let page_num = q.page.unwrap_or(1).max(1);
+    let query = PaymentEntity::find()
+        .filter(payment::Column::DeletedAt.is_null())
+        .order_by_desc(payment::Column::Datetime);
+    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let invoice_ids: Vec<i64> = models.iter().map(|p| p.posted_invoice_id).collect();
+    let invoice_labels = if invoice_ids.is_empty() {
+        HashMap::new()
+    } else {
+        PostedInvoiceEntity::find()
+            .filter(posted_invoice::Column::Id.is_in(invoice_ids))
+            .all(&state.db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|inv| {
+                let label = posted_invoice_display_label(inv.id, &inv.number);
+                (inv.id, label)
+            })
+            .collect()
+    };
+    let rows: Vec<PaymentRow> = models
+        .into_iter()
+        .map(|p| PaymentRow {
+            id: p.id,
+            invoice_label: invoice_labels
+                .get(&p.posted_invoice_id)
+                .cloned()
+                .unwrap_or_else(|| "—".into()),
+            amount: uniquity_common::decimal::decimal_display(p.amount),
+            datetime: ctx.format_datetime_short(p.datetime),
+        })
+        .collect();
+    let payments = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let page = PaymentListPage {
+        payments,
+        path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
+    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
+    if htmx.targets::<PaymentTableKey>() {
+        return page.render_table();
+    }
+    if htmx.wants_main_content() {
+        return page.render_main().into();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane().into();
+    }
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
+}
+
+pub async fn create_get(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<PaymentCreateQuery>,
+) -> Response {
+    let posted_invoice_id = q.posted_invoice_id.filter(|id| *id > 0).unwrap_or(0);
+    let amount = if posted_invoice_id > 0 {
+        let open = posted_invoice_open_balance(&state.db, posted_invoice_id)
+            .await
+            .unwrap_or(rust_decimal::Decimal::ZERO);
+        if open > rust_decimal::Decimal::ZERO {
+            uniquity_common::decimal::decimal_display(open)
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    let (posted_invoice_display, account_display, tax_items) =
+        load_payment_form_context(&state.db, posted_invoice_id, "", &[]).await;
+    let page = PaymentFormPage {
+        form: PaymentForm {
+            posted_invoice_id,
+            amount,
+            account_id: String::new(),
+            datetime: ctx.format_datetime_local_input(Utc::now()),
+            taxes: vec![],
+        },
+        posted_invoice_display,
+        account_display,
+        tax_items,
+        can_edit: require_superuser(&ctx),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn create_post(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    HtmlFormBody(form): HtmlFormBody<PaymentForm>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to("/finance-invoices/payments/").into_response();
+    }
+    let posted_invoice_id = form.posted_invoice_id;
+    let amount = match parse_payment_amount(&form.amount) {
+        Ok(a) => a,
+        Err(_) => return Redirect::to("/finance-invoices/payments/create/").into_response(),
+    };
+    let account_id = form
+        .account_id
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|id| *id > 0);
+    let input = CreatePaymentInput {
+        posted_invoice_id,
+        amount,
+        account_id,
+        datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
+        withholding_tax_ids: form.taxes,
+    };
+    match create_payment(&state.db, input).await {
+        Ok(p) => Redirect::to(&format!("/finance-invoices/payments/{}/", p.id)).into_response(),
+        Err(_) => Redirect::to("/finance-invoices/payments/create/").into_response(),
+    }
+}
+
+pub async fn detail(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let pay = PaymentEntity::find_by_id(id).one(&state.db).await.ok().flatten();
+    let page = if let Some(p) = pay {
+        let (posted_invoice_label, posted_invoice_href) =
+            load_posted_invoice_link(&state.db, p.posted_invoice_id).await;
+        let tax_ids = load_payment_tax_ids(&state.db, p.id)
+            .await
+            .unwrap_or_default();
+        let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
+        PaymentDetailPage {
+            id: p.id,
+            posted_invoice_label,
+            posted_invoice_href,
+            amount: uniquity_common::decimal::decimal_display(p.amount),
+            tax_labels,
+            datetime: ctx.format_datetime_short(p.datetime),
+            journal_entry_id: p.journal_entry_id,
+            payment_batch_id: p.payment_batch_id,
+            payment_batch_href: p.payment_batch_id.map(|bid| {
+                PaymentBatchDetailRouteTag::new(bid).url()
+            }),
+            can_edit: require_superuser(&ctx),
+        }
+    } else {
+        PaymentDetailPage {
+            id,
+            posted_invoice_label: String::new(),
+            posted_invoice_href: None,
+            amount: String::new(),
+            tax_labels: String::new(),
+            datetime: String::new(),
+            journal_entry_id: 0,
+            payment_batch_id: None,
+            payment_batch_href: None,
+            can_edit: false,
+        }
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn posted_fk_select(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<ListQuery>,
+) -> maud::Markup {
+    let page_num = q.page.unwrap_or(1).max(1);
+    let query = PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::DeletedAt.is_null())
+        .filter(crate::scope::sql_posted_not_fully_paid())
+        .filter(sql_posted_not_cancelled())
+        .order_by_desc(posted_invoice::Column::Datetime);
+    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let rows: Vec<PostedInvoiceSelectRow> = models
+        .into_iter()
+        .map(|p| PostedInvoiceSelectRow {
+            id: p.id,
+            number: p.number.clone(),
+            datetime: ctx.format_datetime_short(p.datetime),
+        })
+        .collect();
+    let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    let page = PostedInvoiceSelectPage {
+        invoices,
+        target_input: q
+            .target_input
+            .unwrap_or_else(|| "PostedInvoiceID".into()),
+        path_and_query: path_and_query(&uri),
+    };
+    respond_picker_select::<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey, _>(
+        &htmx, &page,
+    )
+}

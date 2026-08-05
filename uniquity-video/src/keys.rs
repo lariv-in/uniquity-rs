@@ -1,0 +1,10 @@
+lariv_rs::swap_key!(RawFootageTableKey, "raw-footage-table");
+lariv_rs::swap_key!(RawFootageSelectTableKey, "raw-footage-select-table");
+lariv_rs::swap_key!(RawFootageDeleteModalKey, "raw-delete-modal");
+lariv_rs::swap_key!(VideoEmployeeSelectTableKey, "video-employee-select-table");
+lariv_rs::swap_key!(EditedVideoTableKey, "edited-video-table");
+lariv_rs::swap_key!(EditedVideoSelectTableKey, "edited-video-select-table");
+lariv_rs::swap_key!(EditedVideoDeleteModalKey, "edited-delete-modal");
+lariv_rs::swap_key!(PublishedVideoTableKey, "published-video-table");
+lariv_rs::swap_key!(PublishedVideoSelectTableKey, "published-video-select-table");
+lariv_rs::swap_key!(PublishedVideoDeleteModalKey, "published-delete-modal");

@@ -1,0 +1,308 @@
+use axum::{
+    Form,
+    extract::{Path, Query},
+    http::Uri,
+    response::{IntoResponse, Redirect, Response},
+};
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use serde::Deserialize;
+
+use lariv_rs::{
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    http::Cap,
+    picker::respond_picker_select,
+    plugins::users::{middleware::RequireAuth, state::AuthContext},
+    template::RenderAppPane,
+    web::{Htmx, QueryPage, query_bool, html_built_page_or_app_layout, html_built_page_with_slots},
+};
+
+use uniquity_common::require_superuser;
+
+use crate::{
+    entities::journal::{self, Entity as JournalEntity},
+    forms::JournalForm,
+    journal_type::JournalType,
+    keys::{JournalSelectModalKey, JournalSelectTableKey, JournalTableKey},
+    routes::{JournalDetailRouteTag, JournalEditGetRouteTag, JournalListRouteTag},
+    scope::{
+        apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
+        load_journal_entries_for_journal, scope_superuser,
+    },
+    source_doc_label::source_doc_type_label,
+    state::AccountsState,
+    templates::{
+        JournalDetailPage, JournalEntryRow, JournalFormPage,
+        JournalListPage, JournalRow, JournalSelectPage,
+    },
+};
+
+use super::util::{checkbox_on, parse_i64, path_and_query};
+
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
+
+#[derive(Debug, Deserialize, Default)]
+pub struct JournalListQuery {
+    #[serde(default, rename = "Name", alias = "name")]
+    pub name: Option<String>,
+    #[serde(default, rename = "IsActive", alias = "is_active", deserialize_with = "query_bool")]
+    pub is_active: Option<bool>,
+    #[serde(default, rename = "CurrencyID", alias = "currency_id")]
+    pub currency_id: Option<String>,
+    #[serde(default, rename = "Type", alias = "journal_type")]
+    pub journal_type: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct JournalSelectQuery {
+    #[serde(flatten)]
+    pub filter: JournalListQuery,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+async fn load_journal_rows(
+    db: &sea_orm::DatabaseConnection,
+    q: &JournalListQuery,
+    auth: &AuthContext,
+) -> ObjectList<JournalRow> {
+    let mut query = JournalEntity::find();
+    query = apply_journal_filters(
+        query,
+        q.name.as_deref(),
+        q.is_active,
+        q.currency_id.as_deref(),
+        q.journal_type.as_deref(),
+    );
+    query = scope_superuser(query, auth);
+    let page = q.page.get();
+    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let mut rows = Vec::with_capacity(models.len());
+    for j in models {
+        let currency_label = load_currency_by_id(db, j.currency_id)
+            .await
+            .map(|c| currency_summary(&c))
+            .unwrap_or_else(|| "—".into());
+        rows.push(JournalRow {
+            id: j.id,
+            name: j.name,
+            is_active: j.is_active,
+            currency_label,
+            journal_type: j.journal_type.to_string(),
+        });
+    }
+    ObjectList::from_page(rows, page, PAGE_SIZE, total)
+}
+
+pub async fn list(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<JournalListQuery>,
+) -> maud::Markup {
+    let journals = load_journal_rows(&state.db, &q, &ctx).await;
+    let page = JournalListPage {
+        journals,
+        filter_name: q.name.clone().unwrap_or_default(),
+        filter_is_active: q.is_active.unwrap_or(false),
+        filter_currency_id: q.currency_id.clone().unwrap_or_default(),
+        filter_journal_type: q.journal_type.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
+    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
+    if htmx.targets::<JournalTableKey>() {
+        return page.render_table();
+    }
+    if htmx.wants_main_content() {
+        return page.render_main().into();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane().into();
+    }
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
+}
+
+pub async fn detail(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let currency_label = load_currency_by_id(&state.db, j.currency_id)
+        .await
+        .map(|c| currency_summary(&c))
+        .unwrap_or_else(|| "—".into());
+    let entries_raw = load_journal_entries_for_journal(&state.db, j.id).await;
+    let journal_name = j.name.clone();
+    let mut entry_rows = Vec::with_capacity(entries_raw.len());
+    for e in entries_raw {
+        let source_doc_label = crate::scope::load_source_doc_by_id(&state.db, e.source_doc_id)
+            .await
+            .map(|d| source_doc_type_label(&d.source_doc_type))
+            .unwrap_or_else(|| "—".into());
+        entry_rows.push(JournalEntryRow {
+            id: e.id,
+            datetime: ctx.format_datetime_seconds(e.datetime),
+            source_doc_label: source_doc_label.clone(),
+            journal_name: journal_name.clone(),
+            label: format!("#{} · {}", e.id, source_doc_label),
+        });
+    }
+    let entry_count = entry_rows.len() as u64;
+    let entries = ObjectList::from_page(entry_rows, 1, PAGE_SIZE, entry_count);
+    let page = JournalDetailPage {
+        id: j.id,
+        name: j.name,
+        is_active: j.is_active,
+        currency_id: j.currency_id,
+        currency_label,
+        journal_type: j.journal_type.to_string(),
+        entries,
+        can_edit: require_superuser(&ctx),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn create_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    }
+    let page = JournalFormPage::new(false);
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn create_post(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(ctx): RequireAuth,
+    Form(form): Form<JournalForm>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    }
+    let now = Utc::now();
+    let jtype = JournalType::parse(&form.journal_type).unwrap_or_default();
+    let model = journal::ActiveModel {
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        name: Set(form.name),
+        is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_empty()),
+        currency_id: Set(parse_i64(&form.currency_id).unwrap_or(0)),
+        journal_type: Set(jtype),
+        ..Default::default()
+    };
+    match model.insert(&state.db).await {
+        Ok(saved) => Redirect::to(&JournalDetailRouteTag::new(saved.id).url()).into_response(),
+        Err(_) => Redirect::to("/finance/journals/create").into_response(),
+    }
+}
+
+pub async fn edit_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    }
+    let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let currency_display = load_currency_by_id(&state.db, j.currency_id)
+        .await
+        .map(|c| currency_summary(&c))
+        .unwrap_or_default();
+    let page = JournalFormPage::from_model(&j, currency_display, true);
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn edit_post(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+    Form(form): Form<JournalForm>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    }
+    let Some(existing) = find_journal_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let now = Utc::now();
+    let jtype = JournalType::parse(&form.journal_type).unwrap_or(existing.journal_type);
+    let model = journal::ActiveModel {
+        id: Set(existing.id),
+        updated_at: Set(Some(now)),
+        name: Set(form.name),
+        is_active: Set(checkbox_on(&form.is_active)),
+        currency_id: Set(parse_i64(&form.currency_id).unwrap_or(existing.currency_id)),
+        journal_type: Set(jtype),
+        ..Default::default()
+    };
+    if model.update(&state.db).await.is_ok() {
+        Redirect::to(&JournalDetailRouteTag::new(id).url()).into_response()
+    } else {
+        Redirect::to(&JournalEditGetRouteTag::new(id).url()).into_response()
+    }
+}
+
+pub async fn delete_post(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    }
+    let Some(existing) = find_journal_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let now = Utc::now();
+    let model = journal::ActiveModel {
+        id: Set(existing.id),
+        deleted_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    };
+    let _ = model.update(&state.db).await;
+    Redirect::to(&JournalListRouteTag.url()).into_response()
+}
+
+pub async fn select(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<JournalSelectQuery>,
+) -> maud::Markup {
+    let journals = load_journal_rows(&state.db, &q.filter, &ctx).await;
+    let page = JournalSelectPage {
+        journals,
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_is_active: q.filter.is_active.unwrap_or(false),
+        filter_currency_id: q.filter.currency_id.clone().unwrap_or_default(),
+        filter_journal_type: q.filter.journal_type.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),
+    };
+    respond_picker_select::<JournalSelectTableKey, JournalSelectModalKey, _>(&htmx, &page)
+}

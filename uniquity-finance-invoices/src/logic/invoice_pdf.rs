@@ -1,0 +1,1051 @@
+//! Invoice PDF: Minijinja template → Typst → PDF (via typst crate).
+
+use std::collections::HashSet;
+use std::path::Path;
+
+use chrono::{DateTime, Datelike, TimeZone, Utc};
+use hex::ToHex;
+use minijinja::Environment;
+use num2words::{Lang, Num2Words};
+use rust_decimal::Decimal;
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Statement,
+};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use uniquity_common::typst;
+use uniquity_finance_accounts::{
+    DEFAULT_INVOICE_PDF_TEMPLATE, write_bundled_pdf_assets,
+};
+use uniquity_finance_accounts::logic::journal::load_accounting_preferences;
+use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
+use uniquity_finance_products::entities::product::{self, Entity as ProductEntity};
+use uniquity_finance_taxes::entities::tax::{self, TaxKind};
+use uniquity_finance_taxes::scope::load_taxes_by_ids;
+
+use crate::entities::{
+    cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice, partially_paid_invoice,
+    payment, posted_invoice, posted_invoice_line,
+};
+use crate::entities::{
+    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
+    PartiallyPaidInvoiceEntity, PaymentEntity, PaymentTermEntity, PostedInvoiceEntity,
+    PostedInvoiceLineEntity,
+};
+use crate::logic::payment_term::{payment_term_summary, payment_term_type_label};
+use crate::logic::tax_assoc::{
+    load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
+    load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
+};
+use crate::logic::tax_calculations::{
+    invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
+    InvoiceLinesTotals,
+};
+
+#[derive(Debug, thiserror::Error)]
+pub enum InvoicePdfError {
+    #[error("{0}")]
+    Message(String),
+    #[error("not found")]
+    NotFound,
+}
+
+impl InvoicePdfError {
+    fn msg(s: impl Into<String>) -> Self {
+        Self::Message(s.into())
+    }
+}
+
+pub struct InvoicePdfResult {
+    pub bytes: Vec<u8>,
+    pub filename_base: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfRoot {
+    #[serde(rename = "ID")]
+    id: i64,
+    number: Option<String>,
+    reference: Option<String>,
+    payment_reference: Option<String>,
+    bank_account: Option<String>,
+    datetime: DateTime<Utc>,
+    datetime_display: String,
+    datetime_year: i32,
+    datetime_month: u32,
+    datetime_day: u32,
+    delivery_date: Option<String>,
+    customer_id: i64,
+    customer: PdfCustomer,
+    payment_term_type: String,
+    payment_term_id: i64,
+    payment_term: PdfPaymentTerm,
+    taxes: Vec<PdfTax>,
+    lines: Vec<PdfLine>,
+    payments: Vec<PdfPayment>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfCustomer {
+    #[serde(rename = "ID")]
+    id: i64,
+    name: String,
+    address: Option<String>,
+    #[serde(rename = "GSTIN")]
+    gstin: Option<String>,
+    #[serde(rename = "PAN")]
+    pan: Option<String>,
+    phone: Option<String>,
+    email: Option<String>,
+    website: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfPaymentTerm {
+    #[serde(rename = "ID")]
+    id: i64,
+    #[serde(rename = "Type")]
+    term_type: String,
+    summary: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfTax {
+    #[serde(rename = "ID")]
+    id: i64,
+    name: String,
+    percentage: String,
+    #[serde(rename = "TaxType")]
+    tax_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfProduct {
+    #[serde(rename = "ID")]
+    id: i64,
+    name: String,
+    #[serde(rename = "HSNCode")]
+    hsn_code: i64,
+    reference: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfLine {
+    #[serde(rename = "ID")]
+    id: i64,
+    product_id: i64,
+    product: PdfProduct,
+    rate: String,
+    quantity: String,
+    taxes: Vec<PdfTax>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct PdfPayment {
+    #[serde(rename = "ID")]
+    id: i64,
+    amount: String,
+    datetime: DateTime<Utc>,
+    datetime_display: String,
+}
+
+fn invoice_date_display(dt: DateTime<Utc>, tz: &str) -> String {
+    dt.with_timezone(&lariv_rs::datetime::parse_timezone(tz))
+        .format("%d/%m/%Y")
+        .to_string()
+}
+
+fn invoice_date_parts(dt: DateTime<Utc>, tz: &str) -> (String, i32, u32, u32) {
+    let local = dt.with_timezone(&lariv_rs::datetime::parse_timezone(tz));
+    (
+        local.format("%d/%m/%Y").to_string(),
+        local.year(),
+        local.month(),
+        local.day(),
+    )
+}
+
+fn dec_str(d: Decimal) -> String {
+    d.normalize().to_string()
+}
+
+fn tax_to_pdf(t: &tax::Model) -> PdfTax {
+    PdfTax {
+        id: t.id,
+        name: t.name.clone(),
+        percentage: dec_str(t.percentage),
+        tax_type: t.tax_type.as_str().to_string(),
+    }
+}
+
+async fn load_customer(db: &DatabaseConnection, id: i64) -> Result<PdfCustomer, InvoicePdfError> {
+    let c = CustomerEntity::find_by_id(id)
+        .filter(customer::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let address = c.formatted_address_for_typst();
+    Ok(PdfCustomer {
+        id: c.id,
+        name: c.name,
+        address,
+        gstin: c.gstin,
+        pan: c.pan,
+        phone: c.phone,
+        email: c.email,
+        website: c.website,
+    })
+}
+
+async fn load_payment_term_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+    term_type: &str,
+    tz: &str,
+) -> Result<PdfPaymentTerm, InvoicePdfError> {
+    let pt = PaymentTermEntity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    Ok(PdfPaymentTerm {
+        id: pt.id,
+        term_type: payment_term_type_label(term_type).to_string(),
+        summary: payment_term_summary(db, &pt, tz).await,
+    })
+}
+
+async fn load_product_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Result<PdfProduct, InvoicePdfError> {
+    let p = ProductEntity::find_by_id(id)
+        .filter(product::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    Ok(PdfProduct {
+        id: p.id,
+        name: p.name,
+        hsn_code: p.hsn_code,
+        reference: p.reference,
+    })
+}
+
+async fn load_payments_for_posted(
+    db: &DatabaseConnection,
+    posted_id: i64,
+    tz: &str,
+) -> Result<Vec<PdfPayment>, InvoicePdfError> {
+    let rows = PaymentEntity::find()
+        .filter(payment::Column::PostedInvoiceId.eq(posted_id))
+        .filter(payment::Column::DeletedAt.is_null())
+        .order_by_asc(payment::Column::Datetime)
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|p| {
+            let datetime_display = invoice_date_display(p.datetime, tz);
+            PdfPayment {
+                id: p.id,
+                amount: dec_str(p.amount),
+                datetime: p.datetime,
+                datetime_display,
+            }
+        })
+        .collect())
+}
+
+struct LineRow {
+    id: i64,
+    product_id: i64,
+    rate: Decimal,
+    quantity: Decimal,
+}
+
+#[derive(Clone, Copy)]
+enum LineTaxSource {
+    Draft,
+    Posted,
+    Cancelled,
+}
+
+async fn line_tax_ids(
+    db: &DatabaseConnection,
+    source: LineTaxSource,
+    line_id: i64,
+) -> Result<Vec<i64>, InvoicePdfError> {
+    let ids = match source {
+        LineTaxSource::Draft => load_draft_line_tax_ids(db, line_id).await,
+        LineTaxSource::Posted => load_posted_line_tax_ids(db, line_id).await,
+        LineTaxSource::Cancelled => load_cancelled_line_tax_ids(db, line_id).await,
+    }
+    .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    Ok(ids)
+}
+
+async fn load_draft_lines(db: &DatabaseConnection, draft_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+    let rows = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+        .filter(draft_invoice_line::Column::DeletedAt.is_null())
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|l| LineRow {
+            id: l.id,
+            product_id: l.product_id,
+            rate: l.rate,
+            quantity: l.quantity,
+        })
+        .collect())
+}
+
+async fn load_posted_lines(db: &DatabaseConnection, posted_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+    let rows = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .filter(posted_invoice_line::Column::DeletedAt.is_null())
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|l| LineRow {
+            id: l.id,
+            product_id: l.product_id,
+            rate: l.rate,
+            quantity: l.quantity,
+        })
+        .collect())
+}
+
+async fn load_cancelled_lines(db: &DatabaseConnection, cancelled_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
+             WHERE cancelled_invoice_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
+            [cancelled_id.into()],
+        ))
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let mut out = Vec::new();
+    for r in rows {
+        let id: i64 = r.try_get("", "id").map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let product_id: i64 = r
+            .try_get("", "product_id")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let rate: Decimal = r
+            .try_get("", "rate")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        let quantity: Decimal = r
+            .try_get("", "quantity")
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+        out.push(LineRow {
+            id,
+            product_id,
+            rate,
+            quantity,
+        });
+    }
+    Ok(out)
+}
+
+async fn build_pdf_lines(
+    db: &DatabaseConnection,
+    rows: &[LineRow],
+    tax_source: LineTaxSource,
+) -> Result<Vec<PdfLine>, InvoicePdfError> {
+    let mut lines = Vec::with_capacity(rows.len());
+    for row in rows {
+        let tax_ids = line_tax_ids(db, tax_source, row.id).await?;
+        let taxes = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+            .into_iter()
+            .map(|t| tax_to_pdf(&t))
+            .collect();
+        let product = load_product_pdf(db, row.product_id).await?;
+        lines.push(PdfLine {
+            id: row.id,
+            product_id: row.product_id,
+            product,
+            rate: dec_str(row.rate),
+            quantity: dec_str(row.quantity),
+            taxes,
+        });
+    }
+    Ok(lines)
+}
+
+async fn build_pdf_root(
+    db: &DatabaseConnection,
+    id: i64,
+    number: Option<String>,
+    reference: Option<String>,
+    payment_reference: Option<String>,
+    bank_account: Option<String>,
+    datetime: DateTime<Utc>,
+    customer_id: i64,
+    payment_term_type: String,
+    payment_term_id: i64,
+    header_tax_ids: Vec<i64>,
+    line_rows: Vec<LineRow>,
+    tax_source: LineTaxSource,
+    payments: Vec<PdfPayment>,
+    tz: &str,
+) -> Result<PdfRoot, InvoicePdfError> {
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .into_iter()
+        .map(|t| tax_to_pdf(&t))
+        .collect();
+    let lines = build_pdf_lines(db, &line_rows, tax_source).await?;
+    let (datetime_display, datetime_year, datetime_month, datetime_day) = invoice_date_parts(datetime, tz);
+    Ok(PdfRoot {
+        id,
+        number,
+        reference,
+        payment_reference,
+        bank_account,
+        datetime,
+        datetime_display,
+        datetime_year,
+        datetime_month,
+        datetime_day,
+        delivery_date: None,
+        customer_id,
+        customer: load_customer(db, customer_id).await?,
+        payment_term_type: payment_term_type.clone(),
+        payment_term_id,
+        payment_term: load_payment_term_pdf(db, payment_term_id, &payment_term_type, tz).await?,
+        taxes: header_taxes,
+        lines,
+        payments,
+    })
+}
+
+pub async fn render_draft_invoice_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let draft = DraftInvoiceEntity::find_by_id(id)
+        .filter(draft_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let header_tax_ids = load_draft_invoice_tax_ids(db, draft.id)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let line_rows = load_draft_lines(db, draft.id).await?;
+    let root = build_pdf_root(
+        db,
+        draft.id,
+        draft.number.clone(),
+        draft.reference.clone(),
+        draft.payment_reference.clone(),
+        draft.bank_account.clone(),
+        draft.datetime,
+        draft.customer_id,
+        draft.payment_term_type.clone(),
+        draft.payment_term_id,
+        header_tax_ids,
+        line_rows,
+        LineTaxSource::Draft,
+        vec![],
+        tz,
+    )
+    .await?;
+    let base = pdf_filename_base(draft.number.as_deref(), &format!("draft-invoice-{}", draft.id));
+    render_pdf_from_prefs(db, &root, &base).await
+}
+
+pub async fn render_posted_invoice_pdf(
+    db: &DatabaseConnection,
+    posted: posted_invoice::Model,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let header_tax_ids = load_posted_invoice_tax_ids(db, posted.id)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let line_rows = load_posted_lines(db, posted.id).await?;
+    let payments = load_payments_for_posted(db, posted.id, tz).await?;
+    let root = build_pdf_root(
+        db,
+        posted.id,
+        Some(posted.number.clone()),
+        posted.reference.clone(),
+        posted.payment_reference.clone(),
+        posted.bank_account.clone(),
+        posted.datetime,
+        posted.customer_id,
+        posted.payment_term_type.clone(),
+        posted.payment_term_id,
+        header_tax_ids,
+        line_rows,
+        LineTaxSource::Posted,
+        payments,
+        tz,
+    )
+    .await?;
+    let base = pdf_filename_base(Some(&posted.number), &format!("invoice-{}", posted.id));
+    render_pdf_from_prefs(db, &root, &base).await
+}
+
+pub async fn render_cancelled_invoice_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let inv = CancelledInvoiceEntity::find_by_id(id)
+        .filter(cancelled_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let header_tax_ids = load_cancelled_invoice_tax_ids(db, inv.id)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let line_rows = load_cancelled_lines(db, inv.id).await?;
+    let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz).await?;
+    let root = build_pdf_root(
+        db,
+        inv.id,
+        Some(inv.number.clone()),
+        inv.reference.clone(),
+        inv.payment_reference.clone(),
+        inv.bank_account.clone(),
+        inv.datetime,
+        inv.customer_id,
+        inv.payment_term_type.clone(),
+        inv.payment_term_id,
+        header_tax_ids,
+        line_rows,
+        LineTaxSource::Cancelled,
+        payments,
+        tz,
+    )
+    .await?;
+    let base = pdf_filename_base(
+        Some(&inv.number),
+        &format!("cancelled-invoice-{}", inv.id),
+    );
+    render_pdf_from_prefs(db, &root, &base).await
+}
+
+pub async fn render_paid_invoice_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let paid = PaidInvoiceEntity::find_by_id(id)
+        .filter(paid_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let posted = PostedInvoiceEntity::find_by_id(paid.posted_invoice_id)
+        .filter(posted_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    render_posted_invoice_pdf(db, posted, tz).await
+}
+
+pub async fn render_partially_paid_invoice_pdf(
+    db: &DatabaseConnection,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let partial = PartiallyPaidInvoiceEntity::find_by_id(id)
+        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let posted = PostedInvoiceEntity::find_by_id(partial.posted_invoice_id)
+        .filter(posted_invoice::Column::DeletedAt.is_null())
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    render_posted_invoice_pdf(db, posted, tz).await
+}
+
+/// Sample invoice data for PDF template preview (matches the built-in example layout).
+fn sample_invoice_pdf_root(tz: &str) -> PdfRoot {
+    let dt = Utc.with_ymd_and_hms(2026, 2, 8, 0, 0, 0).unwrap();
+    let (datetime_display, datetime_year, datetime_month, datetime_day) =
+        invoice_date_parts(dt, tz);
+    PdfRoot {
+        id: 1,
+        number: Some("INV/2025-26/0042".into()),
+        reference: Some("PO-1001".into()),
+        payment_reference: Some("Payment ref: SAMPLE-001".into()),
+        bank_account: Some("1234567890 - Sample Bank".into()),
+        datetime: dt,
+        datetime_display,
+        datetime_year,
+        datetime_month,
+        datetime_day,
+        delivery_date: None,
+        customer_id: 1,
+        customer: PdfCustomer {
+            id: 1,
+            name: "Acme Industries Pvt. Ltd.".into(),
+            address: Some(
+                "123 Example Street, \\ \
+                 Business Park, \\ \
+                 Mumbai 400001 \\ \
+                 Maharashtra \\ \
+                 India"
+                    .into(),
+            ),
+            gstin: Some("27AAAAA0000A1Z5".into()),
+            pan: Some("AAAAA0000A".into()),
+            phone: Some("+91 98765 43210".into()),
+            email: Some("billing@example.com".into()),
+            website: None,
+        },
+        payment_term_type: String::new(),
+        payment_term_id: 1,
+        payment_term: PdfPaymentTerm {
+            id: 1,
+            term_type: String::new(),
+            summary: "Net 30 days".into(),
+        },
+        taxes: vec![
+            PdfTax {
+                id: 1,
+                name: "SGST 9%".into(),
+                percentage: "9".into(),
+                tax_type: "levied".into(),
+            },
+            PdfTax {
+                id: 2,
+                name: "CGST 9%".into(),
+                percentage: "9".into(),
+                tax_type: "levied".into(),
+            },
+        ],
+        lines: vec![PdfLine {
+            id: 1,
+            product_id: 1,
+            product: PdfProduct {
+                id: 1,
+                name: "Consulting services — monthly retainer".into(),
+                hsn_code: 9983,
+                reference: "Project: Alpha".into(),
+            },
+            rate: "27000".into(),
+            quantity: "2".into(),
+            taxes: vec![],
+        }],
+        payments: vec![],
+    }
+}
+
+/// Render a sample invoice PDF using an optional template override (blank → built-in example).
+pub async fn render_invoice_pdf_preview(
+    template_src: Option<&str>,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let tmpl_src = template_src
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_INVOICE_PDF_TEMPLATE);
+    let root = sample_invoice_pdf_root(tz);
+    let work_dir = typst::typst_work_dir();
+    write_bundled_pdf_assets(&work_dir).map_err(InvoicePdfError::msg)?;
+    let typst_src = render_template(tmpl_src, &root, &work_dir)?;
+    let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
+        .await
+        .map_err(InvoicePdfError::msg)?;
+    let _ = std::fs::remove_dir_all(&work_dir);
+    Ok(InvoicePdfResult {
+        bytes: pdf_bytes,
+        filename_base: "invoice-preview".to_string(),
+    })
+}
+
+async fn render_pdf_from_prefs(
+    db: &DatabaseConnection,
+    root: &PdfRoot,
+    filename_base: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let prefs = load_accounting_preferences(db).await;
+    let tmpl_src = prefs
+        .invoice_pdf_template
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_INVOICE_PDF_TEMPLATE);
+    let work_dir = typst::typst_work_dir();
+    write_bundled_pdf_assets(&work_dir).map_err(InvoicePdfError::msg)?;
+    let typst_src = render_template(tmpl_src, root, &work_dir)?;
+    let pdf_bytes = typst::typst_compile_in(&work_dir, &typst_src)
+        .await
+        .map_err(InvoicePdfError::msg)?;
+    let _ = std::fs::remove_dir_all(&work_dir);
+    Ok(InvoicePdfResult {
+        bytes: pdf_bytes,
+        filename_base: filename_base.to_string(),
+    })
+}
+
+fn render_template(
+    tmpl_src: &str,
+    root: &PdfRoot,
+    asset_dir: &Path,
+) -> Result<String, InvoicePdfError> {
+    let grand_words = invoice_amount_words_from_decimal(pdf_receivable_grand_total(root));
+    let mut env = Environment::new();
+    env.add_function("num2words", num2words_fn);
+    env.add_function("num2wordsAnd", num2words_and_fn);
+    env.add_function("num2wordsRupees", num2words_rupees_fn);
+    let asset_dir = asset_dir.to_path_buf();
+    env.add_function("urlImage", move |url: String| -> Result<String, minijinja::Error> {
+        url_image_sync(&url, &asset_dir)
+            .map_err(|e| minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, e))
+    });
+    env.add_function("invoiceGrandTotalWords", move || -> Result<String, minijinja::Error> {
+        Ok(grand_words.clone())
+    });
+    let tmpl = env
+        .template_from_str(tmpl_src)
+        .map_err(|e| InvoicePdfError::msg(format!("invalid invoice PDF template: {e}")))?;
+    tmpl.render(root)
+        .map_err(|e| InvoicePdfError::msg(format!("rendering invoice PDF template failed: {e}")))
+}
+
+fn num2words_fn(n: i64) -> Result<String, minijinja::Error> {
+    Ok(num2words_cardinal(n))
+}
+
+fn num2words_and_fn(n: i64) -> Result<String, minijinja::Error> {
+    Ok(num2words_and(n))
+}
+
+fn num2words_rupees_fn(n: i64) -> Result<String, minijinja::Error> {
+    Ok(invoice_amount_words(n))
+}
+
+pub fn pdf_filename_base(number: Option<&str>, fallback: &str) -> String {
+    if let Some(n) = number.map(str::trim).filter(|s| !s.is_empty()) {
+        sanitize_pdf_filename_base(n)
+    } else {
+        fallback.to_string()
+    }
+}
+
+pub fn sanitize_pdf_filename_base(s: &str) -> String {
+    let mut s = s.trim().to_string();
+    for ch in ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] {
+        s = s.replace(ch, "-");
+    }
+    if s.is_empty() {
+        "invoice".to_string()
+    } else {
+        s
+    }
+}
+
+fn num2words_cardinal(n: i64) -> String {
+    Num2Words::new(n)
+        .lang(Lang::English)
+        .to_words()
+        .unwrap_or_default()
+}
+
+fn num2words_and(n: i64) -> String {
+    let words = num2words_cardinal(n);
+    if words.contains(" and ") {
+        return words;
+    }
+    let parts: Vec<&str> = words.split_whitespace().collect();
+    if parts.len() >= 3 {
+        let mut out = parts[..parts.len() - 2].join(" ");
+        out.push_str(" and ");
+        out.push_str(parts[parts.len() - 2]);
+        out.push(' ');
+        out.push_str(parts[parts.len() - 1]);
+        return out;
+    }
+    words
+}
+
+fn title_word(w: &str) -> String {
+    w.split('-')
+        .map(|seg| {
+            let mut c = seg.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str().to_lowercase().as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn title_invoice_words(s: &str) -> String {
+    s.split_whitespace()
+        .map(|p| {
+            if p.eq_ignore_ascii_case("and") {
+                "And".to_string()
+            } else {
+                title_word(p)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub fn invoice_amount_words(amount: i64) -> String {
+    let words = if amount < 0 {
+        title_invoice_words(&num2words_and(amount))
+    } else {
+        title_invoice_words(&num2words_and(amount))
+    };
+    format!("{words} Rupees")
+}
+
+pub fn invoice_amount_words_from_decimal(d: Decimal) -> String {
+    let rounded = d.round().to_string().parse::<i64>().unwrap_or(0);
+    invoice_amount_words(rounded)
+}
+
+fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
+    let mut totals = InvoiceLinesTotals::default();
+    let mut line_tax_ids = HashSet::new();
+    for line in &root.lines {
+        let qty: Decimal = line.quantity.parse().unwrap_or(Decimal::ZERO);
+        let rate: Decimal = line.rate.parse().unwrap_or(Decimal::ZERO);
+        let taxes: Vec<tax::Model> = line
+            .taxes
+            .iter()
+            .map(|t| tax::Model {
+                id: t.id,
+                created_at: None,
+                updated_at: None,
+                deleted_at: None,
+                name: t.name.clone(),
+                percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
+                tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
+                account_id: None,
+            })
+            .collect();
+        let (untaxed, levied, withholding, _) =
+            invoice_line_amount_breakdown(qty, rate, &taxes);
+        totals.untaxed_subtotal += untaxed;
+        totals.lines_levied += levied;
+        totals.lines_withholding += withholding;
+        merge_invoice_line_tax_ids(&mut line_tax_ids, &taxes);
+    }
+    let header_taxes: Vec<tax::Model> = root
+        .taxes
+        .iter()
+        .map(|t| tax::Model {
+            id: t.id,
+            created_at: None,
+            updated_at: None,
+            deleted_at: None,
+            name: t.name.clone(),
+            percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
+            tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
+            account_id: None,
+        })
+        .collect();
+    invoice_receivable_grand_total(&totals, &header_taxes, &line_tax_ids)
+}
+
+/// Download a remote image into `asset_dir` and return a local filename for Typst.
+///
+/// The filename is a SHA-256 hash of the URL (cache key), not the original name.
+fn url_image_sync(url: &str, asset_dir: &Path) -> Result<String, String> {
+    if url.trim().is_empty() {
+        return Err("urlImage: empty URL".into());
+    }
+    std::fs::create_dir_all(asset_dir).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    hasher.update(url.as_bytes());
+    let hash_name: String = hasher.finalize().encode_hex();
+    let ext = Path::new(url)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{e}"))
+        .filter(|e| !e.contains('?'))
+        .unwrap_or_else(|| ".png".to_string());
+    let filename = format!("{hash_name}{ext}");
+    let tmp_path = asset_dir.join(&filename);
+    if is_valid_cached_image(&tmp_path) {
+        return Ok(filename);
+    }
+    let _ = std::fs::remove_file(&tmp_path);
+    // reqwest::blocking must not run on the tokio runtime thread — spawn a plain
+    // std thread so the blocking client's internal runtime can shut down safely.
+    let url = url.to_string();
+    std::thread::Builder::new()
+        .name("url-image-fetch".into())
+        .spawn(move || download_url_to_file(&url, &tmp_path))
+        .map_err(|e| e.to_string())?
+        .join()
+        .map_err(|_| "urlImage: download thread panicked".to_string())??;
+    Ok(filename)
+}
+
+fn is_valid_cached_image(path: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    is_valid_image_bytes(&bytes)
+}
+
+fn is_valid_image_bytes(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+        || bytes.starts_with(b"\xff\xd8\xff")
+        || (bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP")
+        || bytes.starts_with(b"GIF87a")
+        || bytes.starts_with(b"GIF89a")
+}
+
+fn download_url_to_file(url: &str, tmp_path: &Path) -> Result<(), String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("urlImage: HTTP client: {e}"))?;
+    let resp = client
+        .get(url)
+        .send()
+        .map_err(|e| format!("urlImage: fetch {url}: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "urlImage: fetch {url}: HTTP {}",
+            resp.status()
+        ));
+    }
+    let bytes = resp
+        .bytes()
+        .map_err(|e| format!("urlImage: read {url}: {e}"))?;
+    if !is_valid_image_bytes(&bytes) {
+        return Err(format!("urlImage: {url}: response is not a recognized image"));
+    }
+    std::fs::write(tmp_path, &bytes).map_err(|e| format!("urlImage: write cache: {e}"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+    use rust_decimal::Decimal;
+    use uniquity_finance_accounts::DEFAULT_INVOICE_PDF_TEMPLATE;
+
+    fn sample_example_invoice_root() -> PdfRoot {
+        sample_invoice_pdf_root(lariv_rs::datetime::DEFAULT_TIMEZONE)
+    }
+
+    #[test]
+    fn num2words_rupees_matches_go_sample() {
+        assert_eq!(
+            invoice_amount_words(63_720),
+            "Sixty-Three Thousand Seven Hundred And Twenty Rupees"
+        );
+    }
+
+    #[test]
+    fn grand_total_words_for_sample_invoice() {
+        let root = sample_example_invoice_root();
+        let grand = pdf_receivable_grand_total(&root);
+        assert_eq!(grand, Decimal::from(63_720));
+        assert_eq!(
+            invoice_amount_words_from_decimal(grand),
+            "Sixty-Three Thousand Seven Hundred And Twenty Rupees"
+        );
+    }
+
+    #[test]
+    fn example_invoice_pdf_template_renders() {
+        let root = sample_example_invoice_root();
+        let asset_dir = std::env::temp_dir().join("uniquity-invoice-pdf-test");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(DEFAULT_INVOICE_PDF_TEMPLATE, &root, &asset_dir).expect("render");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(out.contains("Sixty-Three Thousand Seven Hundred And Twenty Rupees"));
+        assert!(out.contains("Acme Industries Pvt. Ltd."));
+        assert!(out.contains("INV/2025-26/0042"));
+        assert!(out.contains("08/02/2026"));
+        assert!(!out.contains("```"));
+        assert!(out.contains("Mumbai 400001"));
+        assert!(out.contains("GSTIN: 27AAAAA0000A1Z5"));
+        assert!(out.contains("Place of supply: Maharashtra"));
+        assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
+    }
+
+    #[test]
+    fn minijinja_renders_simple_template() {
+        let dt = Utc.with_ymd_and_hms(2026, 2, 8, 0, 0, 0).unwrap();
+        let (datetime_display, datetime_year, datetime_month, datetime_day) =
+            invoice_date_parts(dt, lariv_rs::datetime::DEFAULT_TIMEZONE);
+        let root = PdfRoot {
+            id: 1,
+            number: Some("INV-1".into()),
+            reference: None,
+            payment_reference: None,
+            bank_account: None,
+            datetime: dt,
+            datetime_display,
+            datetime_year,
+            datetime_month,
+            datetime_day,
+            delivery_date: None,
+            customer_id: 1,
+            customer: PdfCustomer {
+                id: 1,
+                name: "Acme".into(),
+                address: None,
+                gstin: None,
+                pan: None,
+                phone: None,
+                email: None,
+                website: None,
+            },
+            payment_term_type: String::new(),
+            payment_term_id: 1,
+            payment_term: PdfPaymentTerm {
+                id: 1,
+                term_type: String::new(),
+                summary: String::new(),
+            },
+            taxes: vec![],
+            lines: vec![],
+            payments: vec![],
+        };
+        let asset_dir = std::env::temp_dir().join("uniquity-invoice-pdf-test-simple");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(
+            "#set page(paper: \"a4\")\n= {{ Customer.Name }}\n",
+            &root,
+            &asset_dir,
+        )
+        .expect("render");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(out.contains("Acme"));
+    }
+}

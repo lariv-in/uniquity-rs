@@ -1,0 +1,37 @@
+[package]
+name = "uniquity-bin"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "uniquity-ventures-rs"
+path = "src/main.rs"
+
+[dependencies]
+lariv-rs = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uniquity-employees = { workspace = true }
+uniquity-finance-accounts = { workspace = true }
+uniquity-finance-customer = { workspace = true }
+uniquity-finance-creditnotes = { workspace = true }
+uniquity-finance-fiscal-year = { workspace = true }
+uniquity-finance-taxes = { workspace = true }
+uniquity-finance-products = { workspace = true }
+uniquity-finance-invoices = { workspace = true }
+uniquity-finance-indian = { workspace = true }
+uniquity-video = { workspace = true }
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
+tokio = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+axum = { workspace = true }
+sea-orm = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+urlencoding = "2"
+lariv-rs = { workspace = true }
+frunk = { workspace = true }

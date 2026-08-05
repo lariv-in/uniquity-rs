@@ -1,0 +1,185 @@
+//! Invoice list filters (fiscal year, datetime range, tab eligibility).
+
+use std::collections::HashMap;
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Expr};
+
+use uniquity_finance_fiscal_year::{
+    entities::fiscal_year::{self, Entity as FiscalYearEntity},
+    scope::{load_active_fiscal_year, load_fiscal_year_for_datetime},
+};
+
+pub const INVOICE_FISCAL_YEAR_COOKIE: &str = "finance_invoices_fiscal_year";
+
+pub fn parse_filter_datetime(s: &str) -> Option<DateTime<Utc>> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+        .or_else(|| {
+            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+                .ok()
+                .map(|ndt| ndt.and_utc())
+        })
+}
+
+/// Parse the Lariv `environment` JSON cookie from a raw `Cookie` header value.
+pub fn parse_environment_from_cookie_header(cookie_raw: Option<&str>) -> HashMap<String, String> {
+    let Some(raw) = cookie_raw else {
+        return HashMap::new();
+    };
+    for part in raw.split(';') {
+        let part = part.trim();
+        if let Some(val) = part.strip_prefix("environment=") {
+            let decoded = percent_decode(val);
+            if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&decoded) {
+                return map;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len()
+            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+pub struct FiscalYearScope {
+    pub restrict: bool,
+    pub starts_at: DateTime<Utc>,
+    pub ends_at: DateTime<Utc>,
+}
+
+pub async fn default_fiscal_year_id(db: &DatabaseConnection) -> Option<i64> {
+    let now = Utc::now();
+    if let Some(fy) = load_fiscal_year_for_datetime(db, now).await {
+        return Some(fy.id);
+    }
+    load_active_fiscal_year(db).await.map(|fy| fy.id)
+}
+
+/// Selected fiscal year for the environment dropdown (None = explicit "—" / all years).
+pub async fn selected_fiscal_year_id_for_ui(
+    db: &DatabaseConnection,
+    env: &HashMap<String, String>,
+) -> Option<i64> {
+    if env.contains_key(INVOICE_FISCAL_YEAR_COOKIE) {
+        let raw = env
+            .get(INVOICE_FISCAL_YEAR_COOKIE)
+            .map(|s| s.trim())
+            .unwrap_or("");
+        if raw.is_empty() {
+            return None;
+        }
+        if let Ok(id) = raw.parse::<i64>() {
+            if id > 0 {
+                return Some(id);
+            }
+        }
+        return None;
+    }
+    default_fiscal_year_id(db).await
+}
+
+pub async fn list_fiscal_year_options(db: &DatabaseConnection) -> Vec<(i64, String)> {
+    FiscalYearEntity::find()
+        .filter(fiscal_year::Column::DeletedAt.is_null())
+        .order_by_desc(fiscal_year::Column::StartsAt)
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|fy| (fy.id, format!("{} — {}", fy.code, fy.name)))
+        .collect()
+}
+
+pub async fn resolve_list_fiscal_year(
+    db: &DatabaseConnection,
+    env: &HashMap<String, String>,
+) -> Option<FiscalYearScope> {
+    if env.contains_key(INVOICE_FISCAL_YEAR_COOKIE) {
+        let raw = env
+            .get(INVOICE_FISCAL_YEAR_COOKIE)
+            .map(|s| s.trim())
+            .unwrap_or("");
+        if raw.is_empty() {
+            return None;
+        }
+        if let Ok(id) = raw.parse::<i64>() {
+            if id > 0 {
+                if let Ok(Some(fy)) = FiscalYearEntity::find_by_id(id).one(db).await {
+                    return Some(FiscalYearScope {
+                        restrict: true,
+                        starts_at: fy.starts_at,
+                        ends_at: fy.ends_at,
+                    });
+                }
+            }
+        }
+        return None;
+    }
+    let now = Utc::now();
+    if let Some(fy) = load_fiscal_year_for_datetime(db, now).await {
+        return Some(FiscalYearScope {
+            restrict: true,
+            starts_at: fy.starts_at,
+            ends_at: fy.ends_at,
+        });
+    }
+    if let Some(fy) = load_active_fiscal_year(db).await {
+        return Some(FiscalYearScope {
+            restrict: true,
+            starts_at: fy.starts_at,
+            ends_at: fy.ends_at,
+        });
+    }
+    None
+}
+
+pub fn sql_posted_not_cancelled() -> sea_orm::sea_query::SimpleExpr {
+    Expr::cust(
+        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = posted_invoices.id AND c.deleted_at IS NULL)",
+    )
+}
+
+pub fn sql_posted_not_fully_paid() -> sea_orm::sea_query::SimpleExpr {
+    Expr::cust(
+        "NOT EXISTS (SELECT 1 FROM paid_invoices paid WHERE paid.posted_invoice_id = posted_invoices.id AND paid.deleted_at IS NULL)",
+    )
+}
+
+pub fn sql_posted_not_partially_paid() -> sea_orm::sea_query::SimpleExpr {
+    Expr::cust(
+        "NOT EXISTS (SELECT 1 FROM partially_paid_invoices pp WHERE pp.posted_invoice_id = posted_invoices.id AND pp.deleted_at IS NULL)",
+    )
+}
+
+pub fn sql_settlement_posted_not_cancelled(table: &str) -> sea_orm::sea_query::SimpleExpr {
+    Expr::cust(format!(
+        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = {table}.posted_invoice_id AND c.deleted_at IS NULL)"
+    ))
+}
+
+pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
+    Expr::cust(
+        "NOT EXISTS (SELECT 1 FROM posted_invoices p WHERE p.draft_invoice_id = draft_invoices.id AND p.deleted_at IS NULL)",
+    )
+}

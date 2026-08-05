@@ -1,0 +1,214 @@
+use frunk::Generic;
+use maud::{Markup, html};
+
+use lariv_rs::{
+    components::{
+        FieldText, FieldTitle, ObjectList,
+        PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+        TableColumnHeader, TablePagination, TableRow, container_column,
+        data_table_list, detail, field_text, field_title,
+        label_inline, pagination_pages,
+        row_attr_navigate_route, table_pagination,
+    },
+    http::ProvideRequestCaps,
+    template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+};
+
+use uniquity_finance_accounts::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+use uniquity_finance_accounts::routes::JournalEntryDetailRouteTag;
+use uniquity_finance_accounts::templates::{
+    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
+    layout_with_sidebar,
+};
+
+use super::keys::CreditNoteTableKey;
+use super::routes::{CreditNoteDefaultRouteTag, CreditNoteDetailRouteTag};
+
+fn credit_note_detail_menu(id: i64) -> Markup {
+    detail_sidebar_menu(
+        format!("Credit note #{id}"),
+        "Back to Credit Notes",
+        CreditNoteDefaultRouteTag.url(),
+        &[DetailMenuNavItem {
+            title: "Credit Note Detail",
+            url: CreditNoteDetailRouteTag::new(id).url(),
+            active: true,
+        }],
+        None,
+        html! {},
+    )
+}
+
+lariv_rs::define_register_items! {
+    plugin: UniquityFinanceCreditnotesTag;
+    capability: TemplateCapability;
+    trait: TemplateRegistrar;
+    method: register_templates;
+    wrapper: TemplateOf;
+    bounds: [Clone, ProvideRequestCaps, Send, Sync];
+    hook: Hook;
+    items: [
+        CreditNoteListIdx: CreditNoteListPageTag => CreditNoteListPage,
+        CreditNoteDetailIdx: CreditNoteDetailPageTag => CreditNoteDetailPage,
+    ]
+}
+
+lariv_rs::define_register_items! {
+    plugin: UniquityFinanceCreditnotesTag;
+    capability: SlotCapability;
+    trait: SlotRegistrar;
+    method: register_slots;
+    bounds: [];
+    items: [];
+    hook: SlotsHook;
+}
+
+fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, true);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination(TablePagination {
+        pages: &pages,
+        hx_target: K::SELECTOR,
+    })
+}
+
+#[derive(Clone)]
+pub struct CreditNoteRow {
+    pub id: i64,
+    pub datetime: String,
+    pub reason: String,
+    pub original_entry_label: String,
+    pub reversal_entry_label: String,
+}
+
+#[derive(Generic)]
+pub struct CreditNoteListPage {
+    pub credit_notes: ObjectList<CreditNoteRow>,
+    pub path_and_query: String,
+}
+
+impl CreditNoteListPage {
+    pub fn render_table(&self) -> Markup {
+        let headers = [
+            TableColumnHeader { label: "Date", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Reason", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Original entry", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Reversal entry", sort_url: None, push_url: true },
+        ];
+        let rows: Vec<TableRow> = self
+            .credit_notes
+            .items
+            .iter()
+            .map(|c| TableRow {
+                attrs: row_attr_navigate_route(CreditNoteDetailRouteTag::new(c.id)),
+                cells: vec![
+                    field_text(FieldText { value: &c.datetime, classes: "" }),
+                    field_text(FieldText { value: &c.reason, classes: "" }),
+                    field_text(FieldText {
+                        value: &c.original_entry_label,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &c.reversal_entry_label,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let pagination = render_pagination::<CreditNoteTableKey>(
+            &self.path_and_query,
+            self.credit_notes.number,
+            self.credit_notes.num_pages,
+        );
+        data_table_list::<CreditNoteTableKey>(
+            "Credit Notes",
+            html! {},
+            &headers,
+            &rows,
+            pagination,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        self.render_table()
+    }
+}
+
+impl RenderAppPane for CreditNoteListPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        layout_with_sidebar(self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_content(self.body())
+    }
+}
+
+impl RenderTemplate for CreditNoteListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold("Credit Notes — Uniquity", chrome, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CreditNoteDetailPage {
+    pub id: i64,
+    pub datetime: String,
+    pub reason: String,
+    pub journal_entry_id: i64,
+    pub reversed_journal_entry_id: i64,
+}
+
+impl CreditNoteDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle {
+                        value: &format!("Credit note #{}", self.id),
+                        classes: "",
+                    }))
+                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label_inline("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
+                    (label_inline("Original journal entry", html! {
+                        a href=(JournalEntryDetailRouteTag::new(self.journal_entry_id).url()) {
+                            "Entry #" (self.journal_entry_id)
+                        }
+                    }))
+                    (label_inline("Reversal journal entry", html! {
+                        a href=(JournalEntryDetailRouteTag::new(self.reversed_journal_entry_id).url()) {
+                            "Entry #" (self.reversed_journal_entry_id)
+                        }
+                    }))
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        credit_note_detail_menu(self.id)
+    }
+}
+
+impl RenderAppPane for CreditNoteDetailPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        layout_with_entity_sidebar(self.menu(), self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_content(self.body())
+    }
+}
+
+impl RenderTemplate for CreditNoteDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold_with_sidebar("Credit Note — Uniquity", chrome, self.menu(), self.body())
+    }
+}

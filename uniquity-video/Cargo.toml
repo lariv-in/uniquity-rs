@@ -1,0 +1,25 @@
+[package]
+name = "uniquity-video"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lariv-rs = { workspace = true }
+uniquity-common = { workspace = true }
+uniquity-employees = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+maud = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+reqwest = { workspace = true }
+regex = "1"
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
