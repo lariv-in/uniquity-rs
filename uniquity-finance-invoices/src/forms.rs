@@ -148,7 +148,7 @@ impl FormWidget for InvoicePaymentDueSection {
             html! {
                 (PreEscaped(
                     r#"<div class="join w-full max-w-md shadow-sm">
-<button type="button" class="join-item btn btn-sm flex-1" x-bind:class="paymentTermMode === 'term' ? 'btn-primary' : 'btn-ghost'" @click="paymentTermMode = 'term'">Existing term</button>
+<button type="button" class="join-item btn btn-sm flex-1" x-bind:class="paymentTermMode === 'term' ? 'btn-primary' : 'btn-ghost'" @click="paymentTermMode = 'term'">Payment term</button>
 <button type="button" class="join-item btn btn-sm flex-1" x-bind:class="paymentTermMode === 'date' ? 'btn-primary' : 'btn-ghost'" @click="paymentTermMode = 'date'">Due date</button>
 </div>"#
                 ))
