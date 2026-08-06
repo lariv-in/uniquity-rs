@@ -7,7 +7,7 @@ lariv_rs::define_plugin_routes! {
     plugin: UniquityFinanceTaxesTag;
     routes: [
         get TaxDefaultRouteTag, "/finance-taxes", handlers::taxes::list, fragment(TaxTableKey);
-        get TaxCreateGetRouteTag, "/finance-taxes/create", handlers::taxes::create_get;
+        get TaxCreateGetRouteTag, "/finance-taxes/create", handlers::taxes::create_get, modal;
         post TaxCreatePostRouteTag, "/finance-taxes/create", handlers::taxes::create_post;
         get TaxDetailRouteTag, "/finance-taxes/t/{id}", handlers::taxes::detail;
         get TaxEditGetRouteTag, "/finance-taxes/t/{id}/edit", handlers::taxes::edit_get;

@@ -263,7 +263,8 @@ pub async fn create_payment_batch(
             .await
             .map_err(|e| e.to_string())?;
 
-        record_payment_settlement(&txn, pay.id, prep.posted.id, prep.is_full).await?;
+        let _settlement_id =
+            record_payment_settlement(&txn, pay.id, prep.posted.id, prep.is_full).await?;
 
         payment_ids.push(pay.id);
     }

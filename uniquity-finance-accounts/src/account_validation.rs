@@ -66,6 +66,13 @@ struct AccountBalanceCheck {
     is_group: bool,
 }
 
+#[derive(Debug, sea_orm::FromQueryResult)]
+struct AccountParentBalanceCheck {
+    #[allow(dead_code)]
+    id: i64,
+    balance_type: BalanceType,
+}
+
 /// Validates parent/child balance_type on save (mirrors PG trigger).
 pub async fn validate_parent_balance_type_on_save(
     db: &DatabaseConnection,
@@ -80,7 +87,7 @@ pub async fn validate_parent_balance_type_on_save(
         .select_only()
         .column(account::Column::Id)
         .column(account::Column::BalanceType)
-        .into_model::<AccountBalanceCheck>()
+        .into_model::<AccountParentBalanceCheck>()
         .one(db)
         .await
         .map_err(|e| format!("load parent account: {e}"))?

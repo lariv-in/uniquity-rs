@@ -15,7 +15,9 @@ use lariv_rs::{
         middleware::RequireAuth,
         state::AuthContext,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
     template::RenderAppPane,
 };
 
@@ -24,7 +26,7 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::employee,
     forms::EmployeeForm,
-    keys::{EmployeeSelectTableKey, EmployeeTableKey},
+    keys::{EmployeeCreateModalKey, EmployeeSelectTableKey, EmployeeTableKey},
     routes::{
         EmployeesDetailRouteTag, EmployeesEditGetRouteTag,
     },
@@ -34,10 +36,12 @@ use crate::{
     },
     state::EmployeesState,
     templates::{
-        EmployeeDetailPage, EmployeeFormPage, EmployeeListPage,
+        EmployeeCreateModalPage, EmployeeDetailPage, EmployeeFormPage, EmployeeListPage,
         EmployeeSelectPage,
     },
 };
+
+use super::ModalNameQuery;
 
 const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
 
@@ -149,28 +153,33 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/").into_response();
     }
-    let page = EmployeeFormPage {
-        id: 0,
+    let page = EmployeeCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         user_id: 0,
         user_display: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<EmployeesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<EmployeeForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/").into_response();
     }
+    let user_display = user_display_name(&state.db, form.user_id).await;
     let now = Utc::now();
     let model = employee::ActiveModel {
         id: Default::default(),
@@ -180,8 +189,21 @@ pub async fn create_post(
         user_id: Set(form.user_id),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&EmployeesDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/employees/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<EmployeeCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &EmployeesDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = EmployeeCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                user_id: form.user_id,
+                user_display,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -203,7 +225,6 @@ pub async fn edit_get(
         id: emp.id,
         user_id: emp.user_id,
         user_display,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

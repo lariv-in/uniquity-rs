@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use lariv_rs::components::{attrs::HtmlAttrs, htmx::{row_attr_select, row_attr_select_multi}};
+use lariv_rs::components::{attrs::HtmlAttrs, htmx::{row_attr_select_extra, row_attr_select_multi}};
 use lariv_rs::html_form::FormFieldKey;
 
 use crate::{
@@ -67,6 +67,7 @@ fn parse_query(path_and_query: &str) -> HashMap<String, String> {
 pub fn account_selection_row_attrs(
     row_id: i64,
     is_group: bool,
+    balance_type: &str,
     target_input: &str,
     display: &str,
     path_and_query: &str,
@@ -97,7 +98,12 @@ pub fn account_selection_row_attrs(
     if child_picker {
         return row_attr_select_multi(target_input, &row_id.to_string(), display);
     }
-    row_attr_select(target_input, &row_id.to_string(), display)
+    row_attr_select_extra(
+        target_input,
+        &row_id.to_string(),
+        display,
+        &[("balance_type", balance_type)],
+    )
 }
 
 /// HTMX attrs to drill into a group account row in the parent picker.

@@ -95,7 +95,7 @@ impl AccountingPreferencesPage {
 
 impl RenderAppPane for AccountingPreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&crate::routes::AccountingPreferencesRouteTag.url(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -104,6 +104,11 @@ impl RenderAppPane for AccountingPreferencesPage {
 
 impl RenderTemplate for AccountingPreferencesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Accounting Preferences — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Accounting Preferences — Uniquity",
+            chrome,
+            self.body(),
+            &crate::routes::AccountingPreferencesRouteTag.url(),
+        )
     }
 }

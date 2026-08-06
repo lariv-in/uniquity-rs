@@ -15,7 +15,9 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -28,18 +30,25 @@ use crate::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     forms::PaymentForm,
-    keys::{PaymentTableKey, PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey},
-    logic::{
-        create_payment, invoice_line_editor::invoice_header_tax_labels, parse_invoice_datetime,
-        parse_payment_amount, posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
-        CreatePaymentInput,
+    handlers::ModalNameQuery,
+    keys::{
+        PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
+        PostedInvoiceSelectTableKey,
     },
-    routes::{PaymentBatchDetailRouteTag, PostedInvoiceDetailRouteTag},
+    logic::{
+        create_payment, format_invoice_date, invoice_line_editor::invoice_header_tax_labels,
+        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
+        tax_assoc::load_payment_tax_ids, CreatePaymentInput,
+    },
+    routes::{
+        PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
+        PostedInvoiceDetailRouteTag,
+    },
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
     templates::{
-        PaymentDetailPage, PaymentFormPage, PaymentListPage, PaymentRow, PostedInvoiceSelectPage,
-        PostedInvoiceSelectRow,
+        PaymentCreateModalPage, PaymentDetailPage, PaymentListPage, PaymentRow,
+        PostedInvoiceSelectPage, PostedInvoiceSelectRow,
     },
 };
 
@@ -55,6 +64,8 @@ pub struct ListQuery {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct PaymentCreateQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
     #[serde(default, rename = "PostedInvoiceID")]
     pub posted_invoice_id: Option<i64>,
 }
@@ -108,6 +119,26 @@ async fn load_payment_form_context(
         .collect();
 
     (posted_invoice_display, account_display, tax_items)
+}
+
+async fn payment_create_modal_page(
+    db: &sea_orm::DatabaseConnection,
+    q: &PaymentCreateQuery,
+    form: PaymentForm,
+    error: String,
+) -> PaymentCreateModalPage {
+    let posted_invoice_id = form.posted_invoice_id;
+    let (posted_invoice_display, account_display, tax_items) =
+        load_payment_form_context(db, posted_invoice_id, &form.account_id, &form.taxes).await;
+    PaymentCreateModalPage {
+        form_name: q.modal.form_name(),
+        refresh_table: q.modal.refresh_table(),
+        form,
+        posted_invoice_display,
+        account_display,
+        tax_items,
+        error,
+    }
 }
 
 async fn load_posted_invoice_link(
@@ -200,9 +231,11 @@ pub async fn create_get(
     Cap(state): Cap<InvoicesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Query(q): Query<PaymentCreateQuery>,
 ) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to("/finance-invoices/payments/").into_response();
+    }
     let posted_invoice_id = q.posted_invoice_id.filter(|id| *id > 0).unwrap_or(0);
     let amount = if posted_invoice_id > 0 {
         let open = posted_invoice_open_balance(&state.db, posted_invoice_id)
@@ -216,27 +249,28 @@ pub async fn create_get(
     } else {
         String::new()
     };
-    let (posted_invoice_display, account_display, tax_items) =
-        load_payment_form_context(&state.db, posted_invoice_id, "", &[]).await;
-    let page = PaymentFormPage {
-        form: PaymentForm {
+    let page = payment_create_modal_page(
+        &state.db,
+        &q,
+        PaymentForm {
             posted_invoice_id,
             amount,
             account_id: String::new(),
             datetime: ctx.format_datetime_local_input(Utc::now()),
             taxes: vec![],
         },
-        posted_invoice_display,
-        account_display,
-        tax_items,
-        can_edit: require_superuser(&ctx),
-    };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        String::new(),
+    )
+    .await;
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<PaymentCreateQuery>,
     HtmlFormBody(form): HtmlFormBody<PaymentForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -245,7 +279,11 @@ pub async fn create_post(
     let posted_invoice_id = form.posted_invoice_id;
     let amount = match parse_payment_amount(&form.amount) {
         Ok(a) => a,
-        Err(_) => return Redirect::to("/finance-invoices/payments/create/").into_response(),
+        Err(e) => {
+            let page = payment_create_modal_page(&state.db, &q, form, e.to_string()).await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
     };
     let account_id = form
         .account_id
@@ -258,11 +296,25 @@ pub async fn create_post(
         amount,
         account_id,
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
-        withholding_tax_ids: form.taxes,
+        withholding_tax_ids: form.taxes.clone(),
     };
     match create_payment(&state.db, input).await {
-        Ok(p) => Redirect::to(&format!("/finance-invoices/payments/{}/", p.id)).into_response(),
-        Err(_) => Redirect::to("/finance-invoices/payments/create/").into_response(),
+        Ok(result) => {
+            let detail_url = if result.is_full {
+                PaidInvoiceDetailRouteTag::new(result.settlement_id).url()
+            } else {
+                PartiallyPaidInvoiceDetailRouteTag::new(result.settlement_id).url()
+            };
+            respond_create_modal_done::<PaymentCreateModalKey>(
+                &htmx,
+                &q.modal.refresh_table(),
+                &detail_url,
+            )
+        }
+        Err(e) => {
+            let page = payment_create_modal_page(&state.db, &q, form, e.to_string()).await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -336,7 +388,7 @@ pub async fn posted_fk_select(
         .map(|p| PostedInvoiceSelectRow {
             id: p.id,
             number: p.number.clone(),
-            datetime: ctx.format_datetime_short(p.datetime),
+            datetime: format_invoice_date(p.datetime, &ctx.timezone),
         })
         .collect();
     let invoices = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);

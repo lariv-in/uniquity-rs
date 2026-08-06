@@ -14,7 +14,9 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -22,7 +24,10 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::payment_term::{self, Entity as PaymentTermEntity, PAYMENT_TERM_TYPE_DUE_DATE, PAYMENT_TERM_TYPE_RELATIVE},
     forms::PaymentTermForm,
-    keys::{PaymentTermSelectModalKey, PaymentTermSelectTableKey, PaymentTermTableKey},
+    keys::{
+        PaymentTermCreateModalKey, PaymentTermSelectModalKey, PaymentTermSelectTableKey,
+        PaymentTermTableKey,
+    },
     logic::{
         create_payment_term, parse_due_datetime, payment_term_form_values, payment_term_summary,
         update_payment_term, CreatePaymentTermDueDate, CreatePaymentTermInput, CreatePaymentTermRelative,
@@ -30,10 +35,12 @@ use crate::{
     routes::{PaymentTermDetailRouteTag, PaymentTermEditGetRouteTag},
     state::InvoicesState,
     templates::{
-        PaymentTermDetailPage, PaymentTermFormPage,
+        PaymentTermCreateModalPage, PaymentTermDetailPage, PaymentTermFormPage,
         PaymentTermListPage, PaymentTermRow, PaymentTermSelectPage,
     },
 };
+
+use super::ModalNameQuery;
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -105,27 +112,30 @@ pub async fn list(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-invoices/payment-terms/").into_response();
     }
-    let page = PaymentTermFormPage {
-        id: 0,
+    let page = PaymentTermCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         form: PaymentTermForm {
             term_type: PAYMENT_TERM_TYPE_DUE_DATE.to_string(),
             due_datetime: String::new(),
             duration: String::new(),
         },
-        summary: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<PaymentTermForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -135,24 +145,63 @@ pub async fn create_post(
         PAYMENT_TERM_TYPE_DUE_DATE => {
             let dt = match parse_due_datetime(&form.due_datetime, &ctx.timezone) {
                 Ok(d) => d,
-                Err(_) => return Redirect::to("/finance-invoices/payment-terms/create/").into_response(),
+                Err(e) => {
+                    let page = PaymentTermCreateModalPage {
+                        form_name: q.form_name(),
+                        refresh_table: q.refresh_table(),
+                        form,
+                        error: e.to_string(),
+                    };
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
+                }
             };
             CreatePaymentTermInput::DueDate(CreatePaymentTermDueDate { datetime: dt })
         }
         PAYMENT_TERM_TYPE_RELATIVE => {
             let nanos = match lariv_rs::duration::parse_duration(&form.duration) {
                 Ok(n) => n,
-                Err(_) => return Redirect::to("/finance-invoices/payment-terms/create/").into_response(),
+                Err(e) => {
+                    let page = PaymentTermCreateModalPage {
+                        form_name: q.form_name(),
+                        refresh_table: q.refresh_table(),
+                        form,
+                        error: e.to_string(),
+                    };
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
+                }
             };
             CreatePaymentTermInput::Relative(CreatePaymentTermRelative {
                 duration_nanos: nanos,
             })
         }
-        _ => return Redirect::to("/finance-invoices/payment-terms/create/").into_response(),
+        _ => {
+            let page = PaymentTermCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                form,
+                error: "Invalid payment term type".into(),
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
     };
     match create_payment_term(&state.db, input).await {
-        Ok(pt) => Redirect::to(&format!("/finance-invoices/pt/{}/", pt.id)).into_response(),
-        Err(_) => Redirect::to("/finance-invoices/payment-terms/create/").into_response(),
+        Ok(pt) => respond_create_modal_done::<PaymentTermCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &PaymentTermDetailRouteTag::new(pt.id).url(),
+        ),
+        Err(e) => {
+            let page = PaymentTermCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                form,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -211,7 +260,6 @@ pub async fn edit_get(
             duration: values.duration,
         },
         summary,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

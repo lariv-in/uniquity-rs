@@ -12,19 +12,26 @@ use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
     template::RenderAppPane,
 };
 
 use crate::{
     entities::edited_video,
     forms::EditedVideoForm,
-    keys::{EditedVideoSelectTableKey, EditedVideoTableKey},
+    keys::{EditedCreateModalKey, EditedVideoSelectTableKey, EditedVideoTableKey},
     routes::{EditedDetailRouteTag, EditedEditGetRouteTag},
-    scope::{find_edited_video, query_edited_videos},
+    scope::{
+        find_edited_video, query_edited_videos, raw_footage_title, vnode_display_name,
+    },
     state::VideoState,
-    templates::{EditedDetailPage, EditedFormPage, EditedListPage, EditedSelectPage},
+    templates::{
+        EditedCreateModalPage, EditedDetailPage, EditedFormPage, EditedListPage,
+        EditedSelectPage,
+    },
 };
+
+use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct EditedListQuery {
@@ -44,6 +51,28 @@ fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
+}
+
+async fn edited_create_modal_page(
+    db: &sea_orm::DatabaseConnection,
+    q: &ModalNameQuery,
+    form: EditedVideoForm,
+    error: String,
+) -> EditedCreateModalPage {
+    let raw_display = if form.raw_footage_id > 0 {
+        raw_footage_title(db, form.raw_footage_id).await
+    } else {
+        String::new()
+    };
+    EditedCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        raw_footage_id: form.raw_footage_id,
+        raw_display,
+        edited_v_node_id: form.edited_v_node_id,
+        vnode_display: vnode_display_name(db, form.edited_v_node_id).await,
+        error,
+    }
 }
 
 pub async fn list(
@@ -98,22 +127,26 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let page = EditedFormPage {
-        id: 0,
+    let page = EditedCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         raw_footage_id: 0,
         raw_display: String::new(),
         edited_v_node_id: 0,
         vnode_display: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<VideoState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<EditedVideoForm>,
 ) -> Response {
     let now = Utc::now();
@@ -126,8 +159,15 @@ pub async fn create_post(
         edited_v_node_id: Set(form.edited_v_node_id),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&EditedDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/video/edited/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<EditedCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &EditedDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = edited_create_modal_page(&state.db, &q, form, e.to_string()).await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -147,7 +187,6 @@ pub async fn edit_get(
         raw_display: ev.raw_title,
         edited_v_node_id: ev.edited_v_node_id,
         vnode_display: ev.output_name,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

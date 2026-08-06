@@ -1,5 +1,5 @@
 use lariv_rs::html_form::{
-    html_form,
+    html_form, FormFieldKey,
     widgets::{Checkbox, Datetime, Number, Select, Text, Textarea},
 };
 
@@ -42,7 +42,13 @@ pub struct AccountForm {
     #[form(label = "Group account (summary)", widget = Checkbox)]
     pub is_group: String,
 
-    #[form(label = "Balance type", required, widget = Select, choices = "balance_type")]
+    #[form(
+        label = "Balance type",
+        required,
+        widget = Select,
+        choices = "balance_type",
+        model = "balanceType"
+    )]
     pub balance_type: String,
 
     #[form(
@@ -63,6 +69,22 @@ pub struct AccountForm {
         placeholder = "Select sub-accounts…"
     )]
     pub child_ids: Vec<i64>,
+}
+
+impl AccountForm {
+    /// Alpine `x-data` so Balance type can track parent picker selection.
+    pub fn balance_type_sync_x_data(balance_type: &str) -> String {
+        let escaped = balance_type.replace('\\', "\\\\").replace('\'', "\\'");
+        format!("{{ balanceType: '{escaped}' }}")
+    }
+
+    /// `@fk-select.window` handler: copy parent account balance_type into the select.
+    pub fn balance_type_sync_fk_handler() -> String {
+        format!(
+            "if ($event.detail && $event.detail.name === '{}' && $event.detail.balance_type != null && String($event.detail.balance_type).trim() !== '') balanceType = String($event.detail.balance_type)",
+            AccountFormField::ParentId.html_name()
+        )
+    }
 }
 
 #[html_form]

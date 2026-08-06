@@ -238,7 +238,7 @@ async fn load_product_pdf(
         id: p.id,
         name: p.name,
         hsn_code: p.hsn_code,
-        reference: p.reference,
+        reference: p.reference.unwrap_or_default(),
     })
 }
 

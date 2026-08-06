@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use lariv_rs::app::App;
-use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, otp, pwa, users};
+use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, no_signup, otp, pwa, users};
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:"
 [users]
@@ -28,7 +28,7 @@ fn temp_config(body: &str) -> PathBuf {
 #[tokio::test]
 async fn uniquity_stack_mounts() {
     let handle = std::thread::Builder::new()
-        .stack_size(16 * 1024 * 1024)
+        .stack_size(64 * 1024 * 1024)
         .spawn(|| {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -50,6 +50,7 @@ async fn uniquity_stack_mounts() {
                     let app = uniquity_employees::install(app);
                     let app = uniquity_video::install(app);
                     let app = otp::install(app);
+                    let app = no_signup::install(app);
                     let app = pwa::install(app);
                     let app = dashboard::install(app);
 

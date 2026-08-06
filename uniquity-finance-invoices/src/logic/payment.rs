@@ -228,12 +228,13 @@ pub fn build_payment_lines_for_allocation(
 }
 
 /// Insert paid or partially-paid settlement row for a payment.
+/// Returns the new settlement row id.
 pub async fn record_payment_settlement<C: ConnectionTrait>(
     db: &C,
     pay_id: i64,
     posted_id: i64,
     is_full: bool,
-) -> Result<(), String> {
+) -> Result<i64, String> {
     let prior = partially_paid_invoice::Entity::find()
         .filter(partially_paid_invoice::Column::PostedInvoiceId.eq(posted_id))
         .filter(partially_paid_invoice::Column::DeletedAt.is_null())
@@ -245,7 +246,7 @@ pub async fn record_payment_settlement<C: ConnectionTrait>(
     let now = Utc::now();
 
     if is_full {
-        paid_invoice::ActiveModel {
+        let row = paid_invoice::ActiveModel {
             payment_id: Set(pay_id),
             posted_invoice_id: Set(posted_id),
             prior_partially_paid_invoice_id: Set(prior_id),
@@ -256,8 +257,9 @@ pub async fn record_payment_settlement<C: ConnectionTrait>(
         .insert(db)
         .await
         .map_err(|e| e.to_string())?;
+        Ok(row.id)
     } else {
-        partially_paid_invoice::ActiveModel {
+        let row = partially_paid_invoice::ActiveModel {
             payment_id: Set(pay_id),
             posted_invoice_id: Set(posted_id),
             prior_partially_paid_invoice_id: Set(prior_id),
@@ -268,14 +270,21 @@ pub async fn record_payment_settlement<C: ConnectionTrait>(
         .insert(db)
         .await
         .map_err(|e| e.to_string())?;
+        Ok(row.id)
     }
-    Ok(())
+}
+
+pub struct CreatePaymentResult {
+    pub payment: payment::Model,
+    /// True when the payment fully settles the posted invoice.
+    pub is_full: bool,
+    pub settlement_id: i64,
 }
 
 pub async fn create_payment(
     db: &DatabaseConnection,
     input: CreatePaymentInput,
-) -> Result<payment::Model, String> {
+) -> Result<CreatePaymentResult, String> {
     let payment_prefs = load_payment_preferences(db).await;
     validate_payment_preferences_for_create(db, &payment_prefs).await?;
 
@@ -345,10 +354,14 @@ pub async fn create_payment(
         .await
         .map_err(|e| e.to_string())?;
 
-    record_payment_settlement(&txn, pay.id, posted.id, is_full).await?;
+    let settlement_id = record_payment_settlement(&txn, pay.id, posted.id, is_full).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
-    Ok(pay)
+    Ok(CreatePaymentResult {
+        payment: pay,
+        is_full,
+        settlement_id,
+    })
 }
 
 pub fn parse_payment_amount(s: &str) -> Result<Decimal, String> {

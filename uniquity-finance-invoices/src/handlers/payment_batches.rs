@@ -15,7 +15,9 @@ use lariv_rs::{
     http::Cap,
     plugins::users::middleware::RequireAuth,
     template::RenderAppPane,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -30,18 +32,21 @@ use crate::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     forms::PaymentBatchForm,
+    keys::PaymentBatchCreateModalKey,
     logic::{
         create_payment_batch, parse_batch_allocations_json, parse_invoice_datetime,
         posted_invoice_open_balance, CreatePaymentBatchInput,
     },
-    routes::{PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
+    routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
     templates::{
-        PaymentBatchAllocationRow, PaymentBatchDetailPage, PaymentBatchFormPage,
+        PaymentBatchAllocationRow, PaymentBatchCreateModalPage, PaymentBatchDetailPage,
         PaymentBatchListPage, PaymentBatchPaymentRow, PaymentBatchRow,
     },
 };
+
+use super::ModalNameQuery;
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
@@ -59,6 +64,8 @@ fn path_and_query(uri: &Uri) -> String {
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BatchCreateQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
     #[serde(default, rename = "PostedInvoiceIDs")]
     pub posted_invoice_ids: Option<String>,
 }
@@ -256,45 +263,31 @@ async fn enrich_allocations_json(
     serde_json::to_string(&out).unwrap_or_else(|_| allocations_json.to_string())
 }
 
-fn batch_form_page(
-    form: PaymentBatchForm,
-    account_display: String,
-    batch_allocations_preview: String,
-    error: Option<String>,
-    can_edit: bool,
-) -> PaymentBatchFormPage {
-    PaymentBatchFormPage {
-        form,
-        account_display,
-        batch_allocations_preview,
-        error,
-        can_edit,
-    }
-}
-
-async fn render_batch_form(
+async fn payment_batch_create_modal_page(
     state: &InvoicesState,
-    chrome: &SharedChromeFolder,
-    ctx: &lariv_rs::plugins::users::state::AuthContext,
-    htmx: &Htmx,
+    q: &ModalNameQuery,
     form: PaymentBatchForm,
-    error: Option<String>,
-) -> Response {
-    let account_id = form.account_id.trim().parse::<i64>().ok().filter(|id| *id > 0);
+    error: String,
+) -> PaymentBatchCreateModalPage {
+    let account_id = form
+        .account_id
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|id| *id > 0);
     let account_display = load_account_parent_label(&state.db, account_id).await;
     let allocations_json = enrich_allocations_json(&state.db, &form.allocations_json).await;
-    let form = PaymentBatchForm {
-        allocations_json,
-        ..form
-    };
-    let page = batch_form_page(
-        form,
+    PaymentBatchCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        form: PaymentBatchForm {
+            allocations_json,
+            ..form
+        },
         account_display,
-        batch_allocations_preview(&state.db).await,
+        batch_allocations_preview: batch_allocations_preview(&state.db).await,
         error,
-        require_superuser(ctx),
-    );
-    html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::from_auth(ctx)).into_response()
+    }
 }
 
 pub async fn list(
@@ -368,9 +361,12 @@ pub async fn create_get(
     Cap(state): Cap<InvoicesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Query(q): Query<BatchCreateQuery>,
 ) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to("/finance-invoices/?tab=posted").into_response();
+    }
+
     let posted_ids = q
         .posted_invoice_ids
         .as_deref()
@@ -378,23 +374,23 @@ pub async fn create_get(
         .unwrap_or_default();
 
     let (allocations_json, error) = match build_allocations_json(&state.db, &posted_ids).await {
-        Ok(json) => (json, None),
-        Err(e) if posted_ids.len() >= 2 => ("[]".into(), Some(e)),
-        Err(_) => ("[]".into(), None),
+        Ok(json) => (json, String::new()),
+        Err(e) if posted_ids.len() >= 2 => ("[]".into(), e),
+        Err(_) => ("[]".into(), String::new()),
     };
 
-    let page = batch_form_page(
+    let page = payment_batch_create_modal_page(
+        &state,
+        &q.modal,
         PaymentBatchForm {
             datetime: ctx.format_datetime_local_input(Utc::now()),
             account_id: String::new(),
             allocations_json,
         },
-        String::new(),
-        batch_allocations_preview(&state.db).await,
         error,
-        require_superuser(&ctx),
-    );
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    )
+    .await;
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
@@ -402,6 +398,7 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<BatchCreateQuery>,
     HtmlFormBody(form): HtmlFormBody<PaymentBatchForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -411,7 +408,9 @@ pub async fn create_post(
     let allocations = match parse_batch_allocations_json(&form.allocations_json) {
         Ok(a) => a,
         Err(e) => {
-            return render_batch_form(&state, &chrome, &ctx, &htmx, form, Some(e)).await;
+            let page = payment_batch_create_modal_page(&state, &q.modal, form, e).await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
         }
     };
 
@@ -429,12 +428,15 @@ pub async fn create_post(
     };
 
     match create_payment_batch(&state.db, input).await {
-        Ok(result) => Redirect::to(&format!(
-            "/finance-invoices/payment-batches/{}/",
-            result.batch.id
-        ))
-        .into_response(),
-        Err(e) => render_batch_form(&state, &chrome, &ctx, &htmx, form, Some(e)).await,
+        Ok(result) => respond_create_modal_done::<PaymentBatchCreateModalKey>(
+            &htmx,
+            &q.modal.refresh_table(),
+            &PaymentBatchDetailRouteTag::new(result.batch.id).url(),
+        ),
+        Err(e) => {
+            let page = payment_batch_create_modal_page(&state, &q.modal, form, e).await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

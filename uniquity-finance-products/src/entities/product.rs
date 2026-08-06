@@ -77,7 +77,7 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub product_type: ProductType,
-    pub reference: String,
+    pub reference: Option<String>,
     pub remarks: Option<String>,
     pub name: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]

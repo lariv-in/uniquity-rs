@@ -11,7 +11,7 @@ use lariv_rs::app::App;
 use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
-use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, otp, pwa};
+use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, no_signup, otp, pwa};
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use tower::ServiceExt;
@@ -69,6 +69,7 @@ async fn create_draft_invoice_via_http() {
     let app = uniquity_employees::install(app);
     let app = uniquity_video::install(app);
     let app = otp::install(app);
+    let app = no_signup::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
 

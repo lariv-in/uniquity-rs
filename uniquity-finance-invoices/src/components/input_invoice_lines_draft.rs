@@ -289,13 +289,19 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 		line.product_id = pid;
 		line.product_label = disp;
 		if (!pid) { line.rate = ''; line.line_taxes = []; continue; }
-		const prod = products.find(p => p.id === pid);
-		const sp = prod && prod.sales_price != null && String(prod.sales_price).trim() !== '' ? String(prod.sales_price).trim() : '';
+		// Prefer sales_price from the picker event (works for newly created products
+		// and when the form preview product list is stale/truncated).
+		let sp = $event.detail.sales_price != null && String($event.detail.sales_price).trim() !== ''
+			? String($event.detail.sales_price).trim() : '';
+		const prod = (products || []).find(p => Number(p.id) === pid);
+		if (!sp && prod && prod.sales_price != null && String(prod.sales_price).trim() !== '') {
+			sp = String(prod.sales_price).trim();
+		}
 		line.rate = sp;
 		if (prod && Array.isArray(prod.tax_ids) && Array.isArray(all_taxes)) {
 			line.line_taxes = [];
 			for (const tid of prod.tax_ids) {
-				const t = all_taxes.find(x => x.id === tid);
+				const t = all_taxes.find(x => Number(x.id) === Number(tid));
 				if (t) line.line_taxes.push({ Key: String(t.id), Value: t.name });
 			}
 		}

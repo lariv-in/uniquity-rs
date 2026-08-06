@@ -3,15 +3,17 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
-        button_delete, button_link, button_submit, container_column, container_row,
-        data_table_list, detail, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, label_inline, row_attr_navigate_route, row_attr_select, table_button_filter,
+        ButtonClear, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
+        button_delete, button_modal_form, button_submit, container_column, container_row,
+        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
+    web::modal_create_post_url,
 };
 
 use crate::{
@@ -20,7 +22,7 @@ use crate::{
         CurrencyFilterForm, CurrencyFilterFormField, CurrencyForm, CurrencyFormField,
         CurrencySelectionFilterForm, CurrencySelectionFilterFormField,
     },
-    keys::{CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey},
+    keys::{CurrencyCreateModalKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey},
     routes::{
         CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeletePostRouteTag,
         CurrencyDetailRouteTag, CurrencyEditGetRouteTag,
@@ -51,8 +53,6 @@ fn currency_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Ma
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Currencies",
-        CurrencyListRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -146,8 +146,11 @@ impl CurrencyListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.CurrencyCreateForm",
                     href: &CurrencyCreateGetRouteTag.url(),
+                    form_post_url: &CurrencyCreateGetRouteTag.path(),
+                    modal_uid: CurrencyCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -159,12 +162,13 @@ impl CurrencyListPage {
             self.currencies.number,
             self.currencies.num_pages,
         );
-        data_table_list::<CurrencyTableKey>(
+        data_table_list_refresh::<CurrencyTableKey>(
             "Currencies",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -175,7 +179,7 @@ impl CurrencyListPage {
 
 impl RenderAppPane for CurrencyListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -184,7 +188,7 @@ impl RenderAppPane for CurrencyListPage {
 
 impl RenderTemplate for CurrencyListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Currencies — Uniquity", chrome, self.body())
+        app_scaffold("Currencies — Uniquity", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -242,47 +246,25 @@ pub struct CurrencyFormPage {
     pub name: String,
     pub symbol: String,
     pub minor_unit: String,
-    pub is_edit: bool,
 }
 
 impl CurrencyFormPage {
-    pub fn new(is_edit: bool) -> Self {
-        Self {
-            id: 0,
-            code: String::new(),
-            name: String::new(),
-            symbol: String::new(),
-            minor_unit: String::new(),
-            is_edit,
-        }
-    }
-
-    pub fn from_model(c: &currency::Model, is_edit: bool) -> Self {
+    pub fn from_model(c: &currency::Model) -> Self {
         Self {
             id: c.id,
             code: c.code.to_string(),
             name: c.name.clone(),
             symbol: c.symbol.clone(),
             minor_unit: c.minor_unit.to_string(),
-            is_edit,
         }
     }
 
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Currency"
-        } else {
-            "Create Currency"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Currency", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(CurrencyEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(CurrencyCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(CurrencyEditPostRouteTag::new(self.id)),
                     inputs: CurrencyForm::render_inputs(
                         &FormCtx::form::<CurrencyForm>()
                             .value(CurrencyFormField::Code, &self.code)
@@ -297,13 +279,11 @@ impl CurrencyFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    CurrencyDeletePostRouteTag::new(self.id),
-                                    "Delete Currency",
-                                    "Permanently delete this currency?",
-                                ))
-                            }
+                            (button_delete(
+                                CurrencyDeletePostRouteTag::new(self.id),
+                                "Delete Currency",
+                                "Permanently delete this currency?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -313,11 +293,7 @@ impl CurrencyFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            currency_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            crate::accounting_sidebar::accounting_sidebar()
-        }
+        currency_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -332,7 +308,60 @@ impl RenderAppPane for CurrencyFormPage {
 
 impl RenderTemplate for CurrencyFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Currency Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Currency — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CurrencyCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub code: String,
+    pub name: String,
+    pub symbol: String,
+    pub minor_unit: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CurrencyCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_accounts.CurrencyCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<CurrencyCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Currency",
+                subtitle: "Create a new currency",
+                attrs: form_hx_post_url::<CurrencyCreateModalKey>(
+                    &modal_create_post_url(
+                        CurrencyCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: CurrencyForm::render_inputs(
+                    &FormCtx::form::<CurrencyForm>()
+                        .value(CurrencyFormField::Code, &self.code)
+                        .value(CurrencyFormField::Name, &self.name)
+                        .value(CurrencyFormField::Symbol, &self.symbol)
+                        .value(CurrencyFormField::MinorUnit, &self.minor_unit),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Currency",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 

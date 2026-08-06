@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::customer_type::CustomerType;
+
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "customers")]
 pub struct Model {
@@ -10,6 +12,7 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    pub customer_type: CustomerType,
     pub name: String,
     pub address_line_1: Option<String>,
     pub address_line_2: Option<String>,
@@ -90,6 +93,7 @@ mod tests {
             created_at: None,
             updated_at: None,
             deleted_at: None,
+            customer_type: CustomerType::Business,
             name: "WIPRO PARI PRIVATE LIMITED".into(),
             address_line_1: Some(
                 "GAT NO. 463/A/2/8 to 463/A/2/11, 463/A/2/15 and 463/A/2/16,".into(),
@@ -125,6 +129,7 @@ mod tests {
             created_at: None,
             updated_at: None,
             deleted_at: None,
+            customer_type: CustomerType::Business,
             name: "Acme".into(),
             address_line_1: Some("Line one".into()),
             address_line_2: None,

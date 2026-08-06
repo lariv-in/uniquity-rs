@@ -3,13 +3,13 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldCheckbox, FieldDate,
+        ButtonClear, ButtonModalForm, ButtonSubmit, FieldCheckbox, FieldDate,
         FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_delete, button_link,
+        TablePagination, TableRow, button_clear, button_delete, button_modal_form,
         button_submit, container_column, container_row, data_table_list,
-        detail, field_checkbox, field_date, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, label_inline,
+        data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title,
+        form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select,
         table_button_filter, table_pagination,
     },
@@ -17,6 +17,7 @@ use lariv_rs::{
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    web::modal_create_post_url,
 };
 
 use uniquity_finance_accounts::accounting_detail_menu::{
@@ -30,7 +31,9 @@ use uniquity_finance_accounts::templates::{
 use super::forms::{
     FiscalYearFilterForm, FiscalYearFilterFormField, FiscalYearForm, FiscalYearFormField,
 };
-use super::keys::{FiscalYearSelectModalKey, FiscalYearSelectTableKey, FiscalYearTableKey};
+use super::keys::{
+    FiscalYearCreateModalKey, FiscalYearSelectModalKey, FiscalYearSelectTableKey, FiscalYearTableKey,
+};
 use super::routes::{
     FiscalYearCreateGetRouteTag, FiscalYearCreatePostRouteTag, FiscalYearDefaultRouteTag,
     FiscalYearDeletePostRouteTag, FiscalYearDetailRouteTag,
@@ -54,8 +57,6 @@ fn fiscal_year_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) ->
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Fiscal Years",
-        FiscalYearDefaultRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -74,6 +75,7 @@ lariv_rs::define_register_items! {
         FiscalYearListIdx: FiscalYearListPageTag => FiscalYearListPage,
         FiscalYearDetailIdx: FiscalYearDetailPageTag => FiscalYearDetailPage,
         FiscalYearFormIdx: FiscalYearFormPageTag => FiscalYearFormPage,
+        FiscalYearCreateModalIdx: FiscalYearCreateModalPageTag => FiscalYearCreateModalPage,
         FiscalYearSelectIdx: FiscalYearSelectPageTag => FiscalYearSelectPage,
     ]
 }
@@ -181,8 +183,11 @@ impl FiscalYearListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_fiscal_year.FiscalYearCreateForm",
                     href: &FiscalYearCreateGetRouteTag.url(),
+                    form_post_url: &FiscalYearCreateGetRouteTag.path(),
+                    modal_uid: FiscalYearCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -194,12 +199,13 @@ impl FiscalYearListPage {
             self.fiscal_years.number,
             self.fiscal_years.num_pages,
         );
-        data_table_list::<FiscalYearTableKey>(
+        data_table_list_refresh::<FiscalYearTableKey>(
             "Fiscal Years",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -210,7 +216,7 @@ impl FiscalYearListPage {
 
 impl RenderAppPane for FiscalYearListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -219,7 +225,12 @@ impl RenderAppPane for FiscalYearListPage {
 
 impl RenderTemplate for FiscalYearListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Fiscal Years — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Fiscal Years — Uniquity",
+            chrome,
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -280,25 +291,15 @@ pub struct FiscalYearFormPage {
     pub start: String,
     pub end: String,
     pub is_active: bool,
-    pub is_edit: bool,
 }
 
 impl FiscalYearFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Fiscal Year"
-        } else {
-            "Create Fiscal Year"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Fiscal Year", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(FiscalYearEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(FiscalYearCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(FiscalYearEditPostRouteTag::new(self.id)),
                     inputs: FiscalYearForm::render_inputs(
                         &FormCtx::form::<FiscalYearForm>()
                             .value(FiscalYearFormField::Code, &self.code)
@@ -313,17 +314,15 @@ impl FiscalYearFormPage {
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
-                                label: if self.is_edit { "Update" } else { "Save" },
+                                label: "Update",
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    FiscalYearDeletePostRouteTag::new(self.id),
-                                    "Delete Fiscal Year",
-                                    "Permanently delete this fiscal year?",
-                                ))
-                            }
+                            (button_delete(
+                                FiscalYearDeletePostRouteTag::new(self.id),
+                                "Delete Fiscal Year",
+                                "Permanently delete this fiscal year?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -333,11 +332,7 @@ impl FiscalYearFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            fiscal_year_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
-        }
+        fiscal_year_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -352,7 +347,65 @@ impl RenderAppPane for FiscalYearFormPage {
 
 impl RenderTemplate for FiscalYearFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Fiscal Year Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Fiscal Year — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct FiscalYearCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub code: String,
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub is_active: bool,
+    pub error: String,
+}
+
+impl RenderTemplate for FiscalYearCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_fiscal_year.FiscalYearCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<FiscalYearCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Fiscal Year",
+                subtitle: "Create a new fiscal year",
+                attrs: form_hx_post_url::<FiscalYearCreateModalKey>(
+                    &modal_create_post_url(
+                        FiscalYearCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: FiscalYearForm::render_inputs(
+                    &FormCtx::form::<FiscalYearForm>()
+                        .value(FiscalYearFormField::Code, &self.code)
+                        .value(FiscalYearFormField::Name, &self.name)
+                        .value(FiscalYearFormField::Start, &self.start)
+                        .value(FiscalYearFormField::End, &self.end)
+                        .value(
+                            FiscalYearFormField::IsActive,
+                            if self.is_active { "on" } else { "" },
+                        ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Fiscal Year",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 

@@ -3,11 +3,12 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability,
+        ButtonClear, ButtonSubmit, FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_delete, button_link, button_submit, container_column,
-        container_row, data_table_list, detail, field_text, field_title,
-        form, form_hx_get_route, form_hx_post_main, label_inline, pagination_pages,
+        ButtonModalForm, button_clear, button_delete, button_modal_form, button_submit, container_column,
+        container_row, data_table_list_refresh, detail, field_text, field_title,
+        form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
+        pagination_pages,
         row_attr_navigate_route, row_attr_select,
         table_button_filter, table_pagination,
     },
@@ -15,6 +16,7 @@ use lariv_rs::{
     http::ProvideRequestCaps,
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
 use uniquity_finance_accounts::accounting_detail_menu::{
@@ -28,7 +30,7 @@ use uniquity_finance_accounts::templates::{
 use super::forms::{
     CustomerFilterForm, CustomerFilterFormField, CustomerForm, CustomerFormField,
 };
-use super::keys::{CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey};
+use super::keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey};
 use super::routes::{
     CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, CustomerDefaultRouteTag,
     CustomerDeletePostRouteTag, CustomerDetailRouteTag,
@@ -52,8 +54,6 @@ fn customer_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Ma
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Customers",
-        CustomerDefaultRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -72,6 +72,7 @@ lariv_rs::define_register_items! {
         CustomerListIdx: CustomerListPageTag => CustomerListPage,
         CustomerDetailIdx: CustomerDetailPageTag => CustomerDetailPage,
         CustomerFormIdx: CustomerFormPageTag => CustomerFormPage,
+        CustomerCreateModalIdx: CustomerCreateModalPageTag => CustomerCreateModalPage,
         CustomerSelectIdx: CustomerSelectPageTag => CustomerSelectPage,
     ]
 }
@@ -151,6 +152,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
 #[derive(Clone)]
 pub struct CustomerRow {
     pub id: i64,
+    pub customer_type: String,
     pub name: String,
     pub email: String,
     pub phone: String,
@@ -170,9 +172,7 @@ impl CustomerListPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
             TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Email", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Phone", sort_url: None, push_url: true },
-            TableColumnHeader { label: "GSTIN", sort_url: None, push_url: true },
+            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .customers
@@ -182,9 +182,7 @@ impl CustomerListPage {
                 attrs: row_attr_navigate_route(CustomerDetailRouteTag::new(c.id)),
                 cells: vec![
                     field_text(FieldText { value: &c.name, classes: "" }),
-                    field_text(FieldText { value: &c.email, classes: "" }),
-                    field_text(FieldText { value: &c.phone, classes: "" }),
-                    field_text(FieldText { value: &c.gstin, classes: "" }),
+                    field_text(FieldText { value: &c.customer_type, classes: "" }),
                 ],
             })
             .collect();
@@ -197,8 +195,11 @@ impl CustomerListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_customer.CustomerCreateForm",
                     href: &CustomerCreateGetRouteTag.url(),
+                    form_post_url: &CustomerCreateGetRouteTag.path(),
+                    modal_uid: CustomerCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -210,12 +211,13 @@ impl CustomerListPage {
             self.customers.number,
             self.customers.num_pages,
         );
-        data_table_list::<CustomerTableKey>(
+        data_table_list_refresh::<CustomerTableKey>(
             "Customers",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -226,7 +228,7 @@ impl CustomerListPage {
 
 impl RenderAppPane for CustomerListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -235,13 +237,19 @@ impl RenderAppPane for CustomerListPage {
 
 impl RenderTemplate for CustomerListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Finance Customers — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Finance Customers — Uniquity",
+            chrome,
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
 #[derive(Generic)]
 pub struct CustomerDetailPage {
     pub id: i64,
+    pub customer_type: String,
     pub name: String,
     pub address_line_1: String,
     pub address_line_2: String,
@@ -262,6 +270,7 @@ impl CustomerDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (label_inline("Type", field_text(FieldText { value: &self.customer_type, classes: "" })))
                     (label_inline("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
                     (label_inline("Address line 2", field_text(FieldText { value: &self.address_line_2, classes: "" })))
                     (label_inline("City", field_text(FieldText { value: &self.city, classes: "" })))
@@ -300,6 +309,7 @@ impl RenderTemplate for CustomerDetailPage {
 #[derive(Generic)]
 pub struct CustomerFormPage {
     pub id: i64,
+    pub customer_type: String,
     pub name: String,
     pub address_line_1: String,
     pub address_line_2: String,
@@ -311,39 +321,40 @@ pub struct CustomerFormPage {
     pub phone: String,
     pub email: String,
     pub website: String,
-    pub is_edit: bool,
 }
 
 impl CustomerFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Customer"
-        } else {
-            "Create Customer"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Customer", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(CustomerEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(CustomerCreatePostRouteTag)
+                    attrs: form_hx_post_main(CustomerEditPostRouteTag::new(self.id)),
+                    inputs: {
+                        let choices = CustomerForm::customer_type_choices();
+                        CustomerForm::render_inputs(
+                            &FormCtx::form::<CustomerForm>()
+                                .value(CustomerFormField::CustomerType, &self.customer_type)
+                                .value(CustomerFormField::Name, &self.name)
+                                .value(CustomerFormField::AddressLine1, &self.address_line_1)
+                                .value(CustomerFormField::AddressLine2, &self.address_line_2)
+                                .value(CustomerFormField::City, &self.city)
+                                .value(CustomerFormField::Pincode, &self.pincode)
+                                .value(CustomerFormField::State, &self.state)
+                                .value(CustomerFormField::Gstin, &self.gstin)
+                                .value(CustomerFormField::Pan, &self.pan)
+                                .value(CustomerFormField::Phone, &self.phone)
+                                .value(CustomerFormField::Email, &self.email)
+                                .value(CustomerFormField::Website, &self.website)
+                                .choices(
+                                    CustomerFormField::CustomerType,
+                                    &choices
+                                        .iter()
+                                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                                        .collect::<Vec<_>>(),
+                                ),
+                        )
                     },
-                    inputs: CustomerForm::render_inputs(
-                        &FormCtx::form::<CustomerForm>()
-                            .value(CustomerFormField::Name, &self.name)
-                            .value(CustomerFormField::AddressLine1, &self.address_line_1)
-                            .value(CustomerFormField::AddressLine2, &self.address_line_2)
-                            .value(CustomerFormField::City, &self.city)
-                            .value(CustomerFormField::Pincode, &self.pincode)
-                            .value(CustomerFormField::State, &self.state)
-                            .value(CustomerFormField::Gstin, &self.gstin)
-                            .value(CustomerFormField::Pan, &self.pan)
-                            .value(CustomerFormField::Phone, &self.phone)
-                            .value(CustomerFormField::Email, &self.email)
-                            .value(CustomerFormField::Website, &self.website),
-                    ),
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
@@ -351,13 +362,11 @@ impl CustomerFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    CustomerDeletePostRouteTag::new(self.id),
-                                    "Delete Customer",
-                                    "Permanently delete this customer?",
-                                ))
-                            }
+                            (button_delete(
+                                CustomerDeletePostRouteTag::new(self.id),
+                                "Delete Customer",
+                                "Permanently delete this customer?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -367,11 +376,7 @@ impl CustomerFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            customer_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
-        }
+        customer_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -386,7 +391,85 @@ impl RenderAppPane for CustomerFormPage {
 
 impl RenderTemplate for CustomerFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Customer Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Customer — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct CustomerCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub customer_type: String,
+    pub name: String,
+    pub address_line_1: String,
+    pub address_line_2: String,
+    pub city: String,
+    pub pincode: String,
+    pub state: String,
+    pub gstin: String,
+    pub pan: String,
+    pub phone: String,
+    pub email: String,
+    pub website: String,
+    pub error: String,
+}
+
+impl RenderTemplate for CustomerCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_customer.CustomerCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let choices = CustomerForm::customer_type_choices();
+        modal_keyed::<CustomerCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Customer",
+                subtitle: "Create a new customer",
+                classes: "@container",
+                attrs: form_hx_post_url::<CustomerCreateModalKey>(
+                    &modal_create_post_url(
+                        CustomerCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: CustomerForm::render_inputs(
+                    &FormCtx::form::<CustomerForm>()
+                        .value(CustomerFormField::CustomerType, &self.customer_type)
+                        .value(CustomerFormField::Name, &self.name)
+                        .value(CustomerFormField::AddressLine1, &self.address_line_1)
+                        .value(CustomerFormField::AddressLine2, &self.address_line_2)
+                        .value(CustomerFormField::City, &self.city)
+                        .value(CustomerFormField::Pincode, &self.pincode)
+                        .value(CustomerFormField::State, &self.state)
+                        .value(CustomerFormField::Gstin, &self.gstin)
+                        .value(CustomerFormField::Pan, &self.pan)
+                        .value(CustomerFormField::Phone, &self.phone)
+                        .value(CustomerFormField::Email, &self.email)
+                        .value(CustomerFormField::Website, &self.website)
+                        .choices(
+                            CustomerFormField::CustomerType,
+                            &choices
+                                .iter()
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                                .collect::<Vec<_>>(),
+                        ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Customer",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -397,6 +480,7 @@ pub struct CustomerSelectPage {
     pub filter_email: String,
     pub target_input: String,
     pub path_and_query: String,
+    pub can_edit: bool,
 }
 
 impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for CustomerSelectPage {
@@ -419,7 +503,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                 ],
             })
             .collect();
-        let actions = html! {
+        let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: customer_select_filter_form(
                     &self.filter_name,
@@ -429,17 +513,32 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                 ..Default::default()
             }))
         };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_customer.CustomerCreateForm",
+                    href: &CustomerCreateGetRouteTag.url(),
+                    form_post_url: &CustomerCreateGetRouteTag.path(),
+                    modal_uid: CustomerCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
         let pagination = render_pagination::<CustomerSelectTableKey>(
             &self.path_and_query,
             self.customers.number,
             self.customers.num_pages,
         );
-        data_table_list::<CustomerSelectTableKey>(
+        data_table_list_refresh::<CustomerSelectTableKey>(
             "Select Customer",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }

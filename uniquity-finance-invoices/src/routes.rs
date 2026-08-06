@@ -11,8 +11,8 @@ lariv_rs::define_plugin_routes! {
     plugin: UniquityFinanceInvoicesTag;
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(InvoiceHubTableKey);
-        get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get;
-        post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", bare handlers::drafts::create_post, redirect;
+        get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal;
+        post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post;
         get DraftInvoiceDetailRouteTag, "/finance-invoices/i/{id}", handlers::drafts::detail;
         get DraftInvoiceEditGetRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_get;
         post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", bare handlers::drafts::edit_post, redirect;
@@ -34,7 +34,7 @@ lariv_rs::define_plugin_routes! {
         get PartiallyPaidInvoiceDetailRouteTag, "/finance-invoices/partial/{id}", handlers::settlements::partial_detail;
 
         get PaymentTermListRouteTag, "/finance-invoices/payment-terms", handlers::payment_terms::list, fragment(PaymentTermTableKey);
-        get PaymentTermCreateGetRouteTag, "/finance-invoices/payment-terms/create", handlers::payment_terms::create_get;
+        get PaymentTermCreateGetRouteTag, "/finance-invoices/payment-terms/create", handlers::payment_terms::create_get, modal;
         post PaymentTermCreatePostRouteTag, "/finance-invoices/payment-terms/create", handlers::payment_terms::create_post;
         get PaymentTermDetailRouteTag, "/finance-invoices/pt/{id}", handlers::payment_terms::detail;
         get PaymentTermEditGetRouteTag, "/finance-invoices/pt/{id}/edit", handlers::payment_terms::edit_get;
@@ -43,13 +43,13 @@ lariv_rs::define_plugin_routes! {
         get PaymentTermFkSelectRouteTag, "/finance-invoices/payment-terms/pick", handlers::payment_terms::fk_select, fk_select(PaymentTermSelectTableKey, PaymentTermSelectModalKey);
 
         get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PaymentTableKey);
-        get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get;
-        post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", bare handlers::payments::create_post, redirect;
+        get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get, modal;
+        post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post;
         get PaymentDetailRouteTag, "/finance-invoices/payments/{id}", handlers::payments::detail;
 
         get PaymentBatchListRouteTag, "/finance-invoices/payment-batches", handlers::payment_batches::list, fragment(PaymentBatchTableKey);
-        get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get;
-        post PaymentBatchCreatePostRouteTag, "/finance-invoices/payments/batch/create", bare handlers::payment_batches::create_post, redirect;
+        get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get, modal;
+        post PaymentBatchCreatePostRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_post;
         get PaymentBatchDetailRouteTag, "/finance-invoices/payment-batches/{id}", handlers::payment_batches::detail;
 
         get InvoicePreferencesRouteTag, "/finance-invoices/preferences", handlers::preferences::invoice_preferences_get;

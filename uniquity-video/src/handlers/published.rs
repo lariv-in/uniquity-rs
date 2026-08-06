@@ -15,7 +15,7 @@ use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
     template::RenderAppPane,
 };
 use uniquity_common::require_superuser;
@@ -27,18 +27,20 @@ use uniquity_employees::{
 use crate::{
     entities::published_video,
     forms::{EditorPointsForm, PublishedVideoForm},
-    keys::{PublishedVideoSelectTableKey, PublishedVideoTableKey},
+    keys::{PublishedCreateModalKey, PublishedVideoSelectTableKey, PublishedVideoTableKey},
     routes::{
         PublishedDetailRouteTag, PublishedEditGetRouteTag, PublishedEditorPointsPostRouteTag,
     },
     scope::{edited_video_display, find_published_video, query_published_videos},
     state::VideoState,
     templates::{
-        EditorPointsPage, PublishedDetailPage, PublishedFormPage,
+        EditorPointsPage, PublishedCreateModalPage, PublishedDetailPage, PublishedFormPage,
         PublishedListPage, PublishedSelectPage,
     },
     youtube::{self, YouTubeSnippetMeta, dash_if_empty, fetch_youtube_snippet_meta},
 };
+
+use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct PublishedListQuery {
@@ -136,26 +138,41 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let page = PublishedFormPage {
-        id: 0,
+    let page = PublishedCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         edited_video_id: 0,
         edited_display: String::new(),
         you_tube_video_id: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<VideoState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<PublishedVideoForm>,
 ) -> Response {
     let video_id = match youtube::clean_youtube_video_id(&form.you_tube_video_id) {
         Ok(id) => id,
-        Err(_) => return Redirect::to("/video/published/create/").into_response(),
+        Err(e) => {
+            let page = PublishedCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                edited_video_id: form.edited_video_id,
+                edited_display: edited_video_display(&state.db, form.edited_video_id).await,
+                you_tube_video_id: form.you_tube_video_id,
+                error: e.to_string(),
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
     };
     let now = Utc::now();
     let model = published_video::ActiveModel {
@@ -167,8 +184,22 @@ pub async fn create_post(
         you_tube_video_id: Set(video_id),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&PublishedDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/video/published/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<PublishedCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &PublishedDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = PublishedCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                edited_video_id: form.edited_video_id,
+                edited_display: edited_video_display(&state.db, form.edited_video_id).await,
+                you_tube_video_id: form.you_tube_video_id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -188,7 +219,6 @@ pub async fn edit_get(
         edited_video_id: pv.edited_video_id,
         edited_display,
         you_tube_video_id: pv.youtube_id,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

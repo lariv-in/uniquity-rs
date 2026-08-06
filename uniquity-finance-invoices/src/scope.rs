@@ -10,6 +10,13 @@ use uniquity_finance_fiscal_year::{
     scope::{load_active_fiscal_year, load_fiscal_year_for_datetime},
 };
 
+use crate::entities::{
+    draft_invoice::{self, Entity as DraftInvoiceEntity},
+    paid_invoice::{self, Entity as PaidInvoiceEntity},
+    partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
+    posted_invoice::{self, Entity as PostedInvoiceEntity},
+};
+
 pub const INVOICE_FISCAL_YEAR_COOKIE: &str = "finance_invoices_fiscal_year";
 
 pub fn parse_filter_datetime(s: &str) -> Option<DateTime<Utc>> {
@@ -107,7 +114,7 @@ pub async fn list_fiscal_year_options(db: &DatabaseConnection) -> Vec<(i64, Stri
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|fy| (fy.id, format!("{} — {}", fy.code, fy.name)))
+        .map(|fy| (fy.id, fy.name))
         .collect()
 }
 
@@ -182,4 +189,64 @@ pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(
         "NOT EXISTS (SELECT 1 FROM posted_invoices p WHERE p.draft_invoice_id = draft_invoices.id AND p.deleted_at IS NULL)",
     )
+}
+
+/// Hub list URL for a tab (`drafts`, `posted`, `paid`, `partial`, `cancelled`).
+pub fn hub_tab_url(tab: &str) -> String {
+    format!("/finance-invoices/?tab={tab}")
+}
+
+/// Draft still listed under the drafts hub tab (not deleted, not posted).
+pub async fn find_active_draft(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<draft_invoice::Model> {
+    DraftInvoiceEntity::find_by_id(id)
+        .filter(draft_invoice::Column::DeletedAt.is_null())
+        .filter(sql_draft_not_posted())
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Posted invoice still listed under the posted hub tab.
+pub async fn find_active_posted(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<posted_invoice::Model> {
+    PostedInvoiceEntity::find_by_id(id)
+        .filter(posted_invoice::Column::DeletedAt.is_null())
+        .filter(sql_posted_not_cancelled())
+        .filter(sql_posted_not_fully_paid())
+        .filter(sql_posted_not_partially_paid())
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Paid settlement still listed under the paid hub tab.
+pub async fn find_active_paid(db: &DatabaseConnection, id: i64) -> Option<paid_invoice::Model> {
+    PaidInvoiceEntity::find_by_id(id)
+        .filter(paid_invoice::Column::DeletedAt.is_null())
+        .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Partial settlement still listed under the partial hub tab.
+pub async fn find_active_partial(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<partially_paid_invoice::Model> {
+    PartiallyPaidInvoiceEntity::find_by_id(id)
+        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
+        .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"))
+        .one(db)
+        .await
+        .ok()
+        .flatten()
 }

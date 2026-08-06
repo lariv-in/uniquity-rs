@@ -13,7 +13,7 @@ lariv_rs::define_plugin_routes! {
     plugin: UniquityFinanceAccountsTag;
     routes: [
         get FinanceDefaultRouteTag, "/finance", handlers::accounts::list, fragment(AccountTableKey);
-        get AccountCreateGetRouteTag, "/finance/accounts/create", handlers::accounts::create_get;
+        get AccountCreateGetRouteTag, "/finance/accounts/create", handlers::accounts::create_get, modal;
         post AccountCreatePostRouteTag, "/finance/accounts/create", handlers::accounts::create_post;
         get AccountSelectRouteTag, "/finance/accounts/select", handlers::accounts::select, fk_select(AccountSelectTableKey, AccountSelectModalKey);
         get AccountDetailRouteTag, "/finance/accounts/{id}", handlers::accounts::detail;
@@ -22,7 +22,7 @@ lariv_rs::define_plugin_routes! {
         post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, redirect;
 
         get CurrencyListRouteTag, "/finance/currencies", handlers::currencies::list, fragment(CurrencyTableKey);
-        get CurrencyCreateGetRouteTag, "/finance/currencies/create", handlers::currencies::create_get;
+        get CurrencyCreateGetRouteTag, "/finance/currencies/create", handlers::currencies::create_get, modal;
         post CurrencyCreatePostRouteTag, "/finance/currencies/create", handlers::currencies::create_post;
         get CurrencySelectRouteTag, "/finance/currencies/select", handlers::currencies::select, fk_select(CurrencySelectTableKey, CurrencySelectModalKey);
         get CurrencyDetailRouteTag, "/finance/currencies/{id}", handlers::currencies::detail;
@@ -31,7 +31,7 @@ lariv_rs::define_plugin_routes! {
         post CurrencyDeletePostRouteTag, "/finance/currencies/{id}/delete", bare handlers::currencies::delete_post, redirect;
 
         get JournalListRouteTag, "/finance/journals", handlers::journals::list, fragment(JournalTableKey);
-        get JournalCreateGetRouteTag, "/finance/journals/create", handlers::journals::create_get;
+        get JournalCreateGetRouteTag, "/finance/journals/create", handlers::journals::create_get, modal;
         post JournalCreatePostRouteTag, "/finance/journals/create", handlers::journals::create_post;
         get JournalSelectRouteTag, "/finance/journals/select", handlers::journals::select, fk_select(JournalSelectTableKey, JournalSelectModalKey);
         get JournalDetailRouteTag, "/finance/journals/{id}", handlers::journals::detail;
@@ -39,7 +39,7 @@ lariv_rs::define_plugin_routes! {
         post JournalEditPostRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_post;
         post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, redirect;
 
-        get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64;
+        get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal;
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64;
         get JournalEntryDetailRouteTag, "/finance/journal-entries/{id}", handlers::journal_entries::detail;
         get JournalEntrySelectRouteTag, "/finance/journal-entries/select", handlers::journal_entries::select, fk_select(JournalEntrySelectTableKey, JournalEntrySelectModalKey);

@@ -1,6 +1,6 @@
 use axum::{
     extract::Path,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -15,8 +15,6 @@ use uniquity_common::require_superuser;
 
 use crate::{
     entities::{
-        paid_invoice::{self, Entity as PaidInvoiceEntity},
-        partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
         payment::{self, Entity as PaymentEntity},
         payment_term::Entity as PaymentTermEntity,
         posted_invoice::{self, Entity as PostedInvoiceEntity},
@@ -25,11 +23,12 @@ use crate::{
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
-        optional_display,
+        format_invoice_date, optional_display,
         payment_term::payment_term_summary,
         posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
     },
+    scope::{find_active_paid, find_active_partial, hub_tab_url},
     state::InvoicesState,
     templates::{PaidInvoiceDetailPage, PartiallyPaidInvoiceDetailPage, SettlementDetailContext},
 };
@@ -83,7 +82,7 @@ async fn load_settlement_context(
         reference: optional_display(&posted.reference),
         payment_reference: optional_display(&posted.payment_reference),
         bank_account: optional_display(&posted.bank_account),
-        datetime: lariv_rs::datetime::format_datetime_short(posted.datetime, tz),
+        datetime: format_invoice_date(posted.datetime, tz),
         posted_at: posted
             .posted_at
             .map(|t| lariv_rs::datetime::format_datetime_short(t, tz)),
@@ -108,34 +107,26 @@ pub async fn paid_detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let paid = PaidInvoiceEntity::find_by_id(id)
-        .filter(paid_invoice::Column::DeletedAt.is_null())
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let Some(paid) = find_active_paid(&state.db, id).await else {
+        return Redirect::to(&hub_tab_url("paid")).into_response();
+    };
     let can_edit = require_superuser(&ctx);
-    let page = if let Some(paid) = paid {
-        if let Some(ctx_data) = load_settlement_context(
-            &state.db,
-            paid.id,
-            paid.payment_id,
-            paid.posted_invoice_id,
-            paid.prior_partially_paid_invoice_id,
-            &ctx.timezone,
-        )
-        .await
-        {
-            PaidInvoiceDetailPage {
-                ctx: ctx_data,
-                can_edit,
-                can_pay: false,
-            }
-        } else {
-            PaidInvoiceDetailPage::not_found(id)
-        }
-    } else {
-        PaidInvoiceDetailPage::not_found(id)
+    let Some(ctx_data) = load_settlement_context(
+        &state.db,
+        paid.id,
+        paid.payment_id,
+        paid.posted_invoice_id,
+        paid.prior_partially_paid_invoice_id,
+        &ctx.timezone,
+    )
+    .await
+    else {
+        return Redirect::to(&hub_tab_url("paid")).into_response();
+    };
+    let page = PaidInvoiceDetailPage {
+        ctx: ctx_data,
+        can_edit,
+        can_pay: false,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -147,36 +138,28 @@ pub async fn partial_detail(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    let partial = PartiallyPaidInvoiceEntity::find_by_id(id)
-        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let Some(partial) = find_active_partial(&state.db, id).await else {
+        return Redirect::to(&hub_tab_url("partial")).into_response();
+    };
     let can_edit = require_superuser(&ctx);
-    let page = if let Some(partial) = partial {
-        if let Some(ctx_data) = load_settlement_context(
-            &state.db,
-            partial.id,
-            partial.payment_id,
-            partial.posted_invoice_id,
-            partial.prior_partially_paid_invoice_id,
-            &ctx.timezone,
-        )
-        .await
-        {
-            let can_pay = can_edit
-                && posted_invoice_can_accept_payment(&state.db, partial.posted_invoice_id).await;
-            PartiallyPaidInvoiceDetailPage {
-                ctx: ctx_data,
-                can_edit,
-                can_pay,
-            }
-        } else {
-            PartiallyPaidInvoiceDetailPage::not_found(id)
-        }
-    } else {
-        PartiallyPaidInvoiceDetailPage::not_found(id)
+    let Some(ctx_data) = load_settlement_context(
+        &state.db,
+        partial.id,
+        partial.payment_id,
+        partial.posted_invoice_id,
+        partial.prior_partially_paid_invoice_id,
+        &ctx.timezone,
+    )
+    .await
+    else {
+        return Redirect::to(&hub_tab_url("partial")).into_response();
+    };
+    let can_pay =
+        can_edit && posted_invoice_can_accept_payment(&state.db, partial.posted_invoice_id).await;
+    let page = PartiallyPaidInvoiceDetailPage {
+        ctx: ctx_data,
+        can_edit,
+        can_pay,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

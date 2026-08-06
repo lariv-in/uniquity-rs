@@ -3,15 +3,17 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
-        button_delete, button_link, button_submit, container_column, container_row,
-        data_table_list, detail, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, label_inline, row_attr_navigate_route, row_attr_select, table_button_filter,
+        ButtonClear, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
+        button_delete, button_modal_form, button_submit, container_column, container_row,
+        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
+    web::modal_create_post_url,
 };
 
 use crate::{
@@ -21,8 +23,8 @@ use crate::{
         JournalForm, JournalFormField,
     },
     keys::{
-        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey,
+        JournalCreateModalKey, JournalEntryCreateModalKey, JournalEntrySelectModalKey,
+        JournalEntrySelectTableKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
     },
     routes::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeletePostRouteTag,
@@ -56,19 +58,15 @@ fn journal_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Journals",
-        JournalListRouteTag.url(),
         &nav,
         None,
         html! {},
     )
 }
 
-fn journal_entry_detail_menu(entry_id: i64, journal_id: i64) -> Markup {
+fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64) -> Markup {
     detail_sidebar_menu(
         format!("Journal entry #{entry_id}"),
-        "Back to Journal",
-        JournalDetailRouteTag::new(journal_id).url(),
         &[DetailMenuNavItem {
             title: "Entry Detail",
             url: JournalEntryDetailRouteTag::new(entry_id).url(),
@@ -181,8 +179,11 @@ impl JournalListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.JournalCreateForm",
                     href: &JournalCreateGetRouteTag.url(),
+                    form_post_url: &JournalCreateGetRouteTag.path(),
+                    modal_uid: JournalCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -194,12 +195,13 @@ impl JournalListPage {
             self.journals.number,
             self.journals.num_pages,
         );
-        data_table_list::<JournalTableKey>(
+        data_table_list_refresh::<JournalTableKey>(
             "Journals",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -210,7 +212,7 @@ impl JournalListPage {
 
 impl RenderAppPane for JournalListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -219,7 +221,7 @@ impl RenderAppPane for JournalListPage {
 
 impl RenderTemplate for JournalListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Journals — Uniquity", chrome, self.body())
+        app_scaffold("Journals — Uniquity", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -232,6 +234,7 @@ pub struct JournalDetailPage {
     pub currency_label: String,
     pub journal_type: String,
     pub entries: ObjectList<JournalEntryRow>,
+    pub path_and_query: String,
     pub can_edit: bool,
 }
 
@@ -258,20 +261,24 @@ impl JournalDetailPage {
         let mut actions = html! {};
         if self.can_edit {
             actions = html! {
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.JournalEntryCreateForm",
                     href: &JournalEntryCreateGetRouteTag::new(self.id).url(),
+                    form_post_url: &JournalEntryCreateGetRouteTag::new(self.id).path(),
+                    modal_uid: JournalEntryCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_list::<JournalTableKey>(
+        data_table_list_refresh::<JournalTableKey>(
             "Journal entries",
             actions,
             &headers,
             &rows,
             html! {},
+            &self.path_and_query,
         )
     }
 
@@ -322,23 +329,10 @@ pub struct JournalFormPage {
     pub currency_id: String,
     pub currency_display: String,
     pub journal_type: String,
-    pub is_edit: bool,
 }
 
 impl JournalFormPage {
-    pub fn new(is_edit: bool) -> Self {
-        Self {
-            id: 0,
-            name: String::new(),
-            is_active: true,
-            currency_id: String::new(),
-            currency_display: String::new(),
-            journal_type: "Debit".to_string(),
-            is_edit,
-        }
-    }
-
-    pub fn from_model(j: &journal::Model, currency_display: String, is_edit: bool) -> Self {
+    pub fn from_model(j: &journal::Model, currency_display: String) -> Self {
         Self {
             id: j.id,
             name: j.name.clone(),
@@ -346,25 +340,15 @@ impl JournalFormPage {
             currency_id: j.currency_id.to_string(),
             currency_display,
             journal_type: j.journal_type.to_string(),
-            is_edit,
         }
     }
 
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Journal"
-        } else {
-            "Create Journal"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Journal", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(JournalEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(JournalCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(JournalEditPostRouteTag::new(self.id)),
                     inputs: JournalForm::render_inputs(
                         &FormCtx::form::<JournalForm>()
                             .value(JournalFormField::Name, &self.name)
@@ -384,13 +368,11 @@ impl JournalFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    JournalDeletePostRouteTag::new(self.id),
-                                    "Delete Journal",
-                                    "Permanently delete this journal?",
-                                ))
-                            }
+                            (button_delete(
+                                JournalDeletePostRouteTag::new(self.id),
+                                "Delete Journal",
+                                "Permanently delete this journal?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -400,11 +382,7 @@ impl JournalFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            journal_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            crate::accounting_sidebar::accounting_sidebar()
-        }
+        journal_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -419,7 +397,66 @@ impl RenderAppPane for JournalFormPage {
 
 impl RenderTemplate for JournalFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Journal Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Journal — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct JournalCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub is_active: bool,
+    pub currency_id: String,
+    pub currency_display: String,
+    pub journal_type: String,
+    pub error: String,
+}
+
+impl RenderTemplate for JournalCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_accounts.JournalCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<JournalCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Journal",
+                subtitle: "Create a new journal",
+                attrs: form_hx_post_url::<JournalCreateModalKey>(
+                    &modal_create_post_url(
+                        JournalCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: JournalForm::render_inputs(
+                    &FormCtx::form::<JournalForm>()
+                        .value(JournalFormField::Name, &self.name)
+                        .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
+                        .value(JournalFormField::CurrencyId, &self.currency_id)
+                        .display(JournalFormField::CurrencyId, &self.currency_display)
+                        .value(JournalFormField::JournalType, &self.journal_type)
+                        .choices(
+                            JournalFormField::JournalType,
+                            &crate::forms::journal_type_choices(),
+                        ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Journal",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -512,68 +549,76 @@ impl RenderTemplate for JournalSelectPage {
 }
 
 #[derive(Generic)]
-pub struct JournalEntryFormPage {
+pub struct JournalEntryCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub journal_id: i64,
     pub journal_name: String,
     pub datetime: String,
     pub source_doc_id: String,
     pub source_doc_display: String,
+    pub error: String,
 }
 
-impl JournalEntryFormPage {
-    pub fn new(journal_id: i64, journal_name: String, datetime: String) -> Self {
+impl JournalEntryCreateModalPage {
+    pub fn new(
+        form_name: String,
+        refresh_table: String,
+        journal_id: i64,
+        journal_name: String,
+        datetime: String,
+    ) -> Self {
         Self {
+            form_name,
+            refresh_table,
             journal_id,
             journal_name,
             datetime,
             source_doc_id: String::new(),
             source_doc_display: String::new(),
+            error: String::new(),
         }
     }
+}
 
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle {
-                    value: &format!("New entry — {}", self.journal_name),
-                    classes: "",
-                }))
-                (form(FormOpts {
-                    attrs: form_hx_post_main(JournalEntryCreatePostRouteTag::new(self.journal_id)),
-                    inputs: JournalEntryForm::render_inputs(
-                        &FormCtx::form::<JournalEntryForm>()
-                            .value(JournalEntryFormField::Datetime, &self.datetime)
-                            .value(JournalEntryFormField::SourceDocId, &self.source_doc_id)
-                            .display(JournalEntryFormField::SourceDocId, &self.source_doc_display),
+impl RenderTemplate for JournalEntryCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_accounts.JournalEntryCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<JournalEntryCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Journal Entry",
+                subtitle: &format!("New entry — {}", self.journal_name),
+                attrs: form_hx_post_url::<JournalEntryCreateModalKey>(
+                    &modal_create_post_url(
+                        JournalEntryCreatePostRouteTag::new(self.journal_id),
+                        form_name,
+                        &self.refresh_table,
                     ),
-                    actions: html! {
-                        (container_row("flex gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save Entry",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: JournalEntryForm::render_inputs(
+                    &FormCtx::form::<JournalEntryForm>()
+                        .value(JournalEntryFormField::Datetime, &self.datetime)
+                        .value(JournalEntryFormField::SourceDocId, &self.source_doc_id)
+                        .display(JournalEntryFormField::SourceDocId, &self.source_doc_display),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Entry",
+                            classes: "btn-primary",
+                            ..Default::default()
                         }))
-                    },
-                    ..Default::default()
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for JournalEntryFormPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
-    }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
-    }
-}
-
-impl RenderTemplate for JournalEntryFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Journal Entry — Uniquity", chrome, self.body())
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 

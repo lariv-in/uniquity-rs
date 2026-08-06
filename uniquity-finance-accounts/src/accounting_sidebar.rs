@@ -12,10 +12,10 @@ use lariv_rs::{
     app::App,
     capability::{CapHookExt, Capability, HasCapTag},
     components::{
-        SidebarMenu, SidebarMenuBack, SidebarMenuItem, sidebar_menu, sidebar_menu_item,
+        SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path,
+        sidebar_menu, sidebar_nav_items_pane,
     },
     http::RouteUrl,
-    plugins::dashboard::routes::DashboardAppsRouteTag,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -38,6 +38,8 @@ pub struct AccountingSidebarLink {
     pub url: String,
     pub order: u16,
     pub icon: Option<&'static str>,
+    /// Extra path prefixes that mark this link active. Empty ⇒ use [`Self::url`] only.
+    pub match_prefixes: &'static [&'static str],
 }
 
 /// Build a sidebar link from a typed route tag (compile-time path checking).
@@ -53,7 +55,53 @@ pub fn link<R: RouteUrl + Default>(
         url: R::default().url(),
         order,
         icon,
+        match_prefixes: &[],
     }
+}
+
+/// Like [`link`], but with extra path prefixes for active-state matching.
+pub fn link_with_prefixes<R: RouteUrl + Default>(
+    section: &'static str,
+    label: &'static str,
+    order: u16,
+    icon: Option<&'static str>,
+    match_prefixes: &'static [&'static str],
+) -> AccountingSidebarLink {
+    AccountingSidebarLink {
+        section,
+        label,
+        url: R::default().url(),
+        order,
+        icon,
+        match_prefixes,
+    }
+}
+
+/// Strip query string and trailing slash (except root) for sidebar matching.
+pub fn normalize_current_path(path_and_query: &str) -> String {
+    normalize_nav_path(path_and_query)
+}
+
+fn nav_links_from(links: &[AccountingSidebarLink]) -> Vec<SidebarNavLink<'_>> {
+    links
+        .iter()
+        .map(|link| SidebarNavLink {
+            key: link.section,
+            title: link.label,
+            url: link.url.as_str(),
+            icon_name: link.icon,
+            match_prefixes: link.match_prefixes,
+        })
+        .collect()
+}
+
+/// Longest matching prefix wins; returns the active section key.
+pub fn active_section_for_path<'a>(
+    links: &'a [AccountingSidebarLink],
+    current_path: &str,
+) -> Option<&'a str> {
+    let nav = nav_links_from(links);
+    active_nav_key(&nav, current_path)
 }
 
 /// Plugin hook for patching accounting sidebar links and preferences (mirrors Go menu/page patches).
@@ -233,33 +281,15 @@ where
     app.add_capability(AccountingSidebarCap::new())
 }
 
-/// Render the patched accounting sidebar.
-pub fn accounting_sidebar() -> Markup {
+/// Render the patched accounting sidebar, highlighting the link that matches `current_path`.
+pub fn accounting_sidebar(current_path: &str) -> Markup {
     let links = LINKS
         .get()
         .expect("accounting sidebar not initialized — mount the app after finance plugins install");
-    let back_url = DashboardAppsRouteTag.url();
+    let nav = nav_links_from(links);
     sidebar_menu(SidebarMenu {
         title: "Accounting",
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &back_url,
-        }),
-        children: {
-            let mut items = Markup::default();
-            for link in links {
-                items = maud::html! {
-                    (items)
-                    (sidebar_menu_item(SidebarMenuItem {
-                        title: link.label,
-                        url: &link.url,
-                        icon_name: link.icon,
-                        ..Default::default()
-                    }))
-                };
-            }
-            items
-        },
+        children: sidebar_nav_items_pane(&nav, current_path),
     })
 }
 
@@ -277,20 +307,32 @@ impl AccountingSidebarRegistrar for BaseHook {
             JournalListRouteTag,
         };
 
-        cap.push(link::<FinanceDefaultRouteTag>("accounts", "Accounts", 10, Some("building-library")))
-            .push(link::<CurrencyListRouteTag>(
-                "currencies",
-                "Currencies",
-                20,
-                Some("currency-dollar"),
-            ))
-            .push(link::<JournalListRouteTag>("journals", "Journals", 30, Some("book-open")))
-            .push(link::<AccountingPreferencesRouteTag>(
-                "preferences",
-                "Accounting preferences",
-                40,
-                Some("adjustments-horizontal"),
-            ))
+        cap.push(link_with_prefixes::<FinanceDefaultRouteTag>(
+            "accounts",
+            "Accounts",
+            10,
+            Some("building-library"),
+            &["/finance", "/finance/accounts"],
+        ))
+        .push(link::<CurrencyListRouteTag>(
+            "currencies",
+            "Currencies",
+            20,
+            Some("currency-dollar"),
+        ))
+        .push(link_with_prefixes::<JournalListRouteTag>(
+            "journals",
+            "Journals",
+            30,
+            Some("book-open"),
+            &["/finance/journals", "/finance/journal-entries"],
+        ))
+        .push(link::<AccountingPreferencesRouteTag>(
+            "preferences",
+            "Accounting preferences",
+            40,
+            Some("adjustments-horizontal"),
+        ))
     }
 }
 
@@ -318,6 +360,43 @@ mod tests {
         }
     }
 
+    fn sample_links() -> Vec<AccountingSidebarLink> {
+        vec![
+            AccountingSidebarLink {
+                section: "accounts",
+                label: "Accounts",
+                url: "/finance/".into(),
+                order: 10,
+                icon: None,
+                match_prefixes: &["/finance", "/finance/accounts"],
+            },
+            AccountingSidebarLink {
+                section: "customers",
+                label: "Customers",
+                url: "/finance-customers/".into(),
+                order: 50,
+                icon: None,
+                match_prefixes: &[],
+            },
+            AccountingSidebarLink {
+                section: "journals",
+                label: "Journals",
+                url: "/finance/journals/".into(),
+                order: 30,
+                icon: None,
+                match_prefixes: &["/finance/journals", "/finance/journal-entries"],
+            },
+            AccountingSidebarLink {
+                section: "preferences",
+                label: "Preferences",
+                url: "/finance/preferences/".into(),
+                order: 40,
+                icon: None,
+                match_prefixes: &[],
+            },
+        ]
+    }
+
     #[test]
     fn resolve_hooks_folds_base_and_addon_links() {
         let cap = AccountingSidebarCap::<HNil>::new()
@@ -335,5 +414,34 @@ mod tests {
         assert!(sections.contains(&"accounts"));
         assert!(sections.contains(&"test-addon"));
         assert!(sections.contains(&"preferences"));
+    }
+
+    #[test]
+    fn active_section_longest_prefix() {
+        let links = sample_links();
+        assert_eq!(
+            active_section_for_path(&links, "/finance"),
+            Some("accounts")
+        );
+        assert_eq!(
+            active_section_for_path(&links, "/finance/accounts/create"),
+            Some("accounts")
+        );
+        assert_eq!(
+            active_section_for_path(&links, "/finance/journals?page=2"),
+            Some("journals")
+        );
+        assert_eq!(
+            active_section_for_path(&links, "/finance/journal-entries/9"),
+            Some("journals")
+        );
+        assert_eq!(
+            active_section_for_path(&links, "/finance-customers/c/1"),
+            Some("customers")
+        );
+        assert_eq!(
+            active_section_for_path(&links, "/finance/preferences"),
+            Some("preferences")
+        );
     }
 }

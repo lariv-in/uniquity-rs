@@ -3,19 +3,20 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle,
         FormOpts, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_delete, button_link,
+        TablePagination, TableRow, button_clear, button_delete, button_link, button_modal_form,
         button_submit, container_column, container_row, data_table_list,
-        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        label_inline, layout_sidebar, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, table_button_filter,
-        table_pagination,
+        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_sidebar, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 
 use super::forms::{
@@ -23,7 +24,8 @@ use super::forms::{
     PointsFormField,
 };
 use super::keys::{
-    EmployeeSelectTableKey, EmployeeTableKey, PointsTableKey,
+    EmployeeCreateModalKey, EmployeeSelectTableKey, EmployeeTableKey, PointsCreateModalKey,
+    PointsTableKey,
 };
 use super::routes::{
     EmployeesCreateGetRouteTag, EmployeesCreatePostRouteTag, EmployeesDefaultRouteTag,
@@ -46,10 +48,11 @@ lariv_rs::define_register_items! {
         EmployeeListIdx: EmployeeListPageTag => EmployeeListPage,
         EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,
         EmployeeFormIdx: EmployeeFormPageTag => EmployeeFormPage,
+        EmployeeCreateModalIdx: EmployeeCreateModalPageTag => EmployeeCreateModalPage,
         EmployeeSelectIdx: EmployeeSelectPageTag => EmployeeSelectPage,
         PointsListIdx: PointsListPageTag => PointsListPage,
         PointsDetailIdx: PointsDetailPageTag => PointsDetailPage,
-        PointsFormIdx: PointsFormPageTag => PointsFormPage,
+        PointsCreateModalIdx: PointsCreateModalPageTag => PointsCreateModalPage,
     ]
 }
 
@@ -143,10 +146,13 @@ impl EmployeeListPage {
                 panel: employee_filter_form(&self.filter_name, &self.filter_email),
                 ..Default::default()
             }))
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_employees.EmployeeCreateForm",
                 href: &EmployeesCreateGetRouteTag.url(),
-                label: "New Employee",
-                classes: "btn btn-primary btn-sm",
+                form_post_url: &EmployeesCreateGetRouteTag.path(),
+                modal_uid: EmployeeCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
             (button_link(ButtonLink {
@@ -161,12 +167,13 @@ impl EmployeeListPage {
             self.employees.number,
             self.employees.num_pages,
         );
-        data_table_list::<EmployeeTableKey>(
+        data_table_list_refresh::<EmployeeTableKey>(
             "Employees",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -246,26 +253,21 @@ impl RenderTemplate for EmployeeDetailPage {
     }
 }
 
+/// Edit employee form (full page). Create uses [`EmployeeCreateModalPage`].
 #[derive(Generic)]
 pub struct EmployeeFormPage {
     pub id: i64,
     pub user_id: i64,
     pub user_display: String,
-    pub is_edit: bool,
 }
 
 impl EmployeeFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit { "Edit Employee" } else { "Create Employee" };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Employee", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(EmployeesEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(EmployeesCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(EmployeesEditPostRouteTag::new(self.id)),
                     inputs: EmployeeForm::render_inputs(
                         &FormCtx::form::<EmployeeForm>()
                             .value(EmployeeFormField::UserId, self.user_id.to_string())
@@ -278,13 +280,11 @@ impl EmployeeFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    EmployeesDeletePostRouteTag::new(self.id),
-                                    "Delete",
-                                    "Permanently delete this employee?",
-                                ))
-                            }
+                            (button_delete(
+                                EmployeesDeletePostRouteTag::new(self.id),
+                                "Delete",
+                                "Permanently delete this employee?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -308,7 +308,57 @@ impl RenderAppPane for EmployeeFormPage {
 
 impl RenderTemplate for EmployeeFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Employee Form — Uniquity", chrome, self.body())
+        app_scaffold("Edit Employee — Uniquity", chrome, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct EmployeeCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub user_id: i64,
+    pub user_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for EmployeeCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_employees.EmployeeCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<EmployeeCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Employee",
+                subtitle: "Link a user as an employee",
+                classes: "@container",
+                attrs: form_hx_post_url::<EmployeeCreateModalKey>(
+                    &modal_create_post_url(
+                        EmployeesCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: EmployeeForm::render_inputs(
+                    &FormCtx::form::<EmployeeForm>()
+                        .value(EmployeeFormField::UserId, self.user_id.to_string())
+                        .display(EmployeeFormField::UserId, &self.user_display),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -383,10 +433,13 @@ impl PointsListPage {
             })
             .collect();
         let actions = html! {
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_employees.PointsCreateForm",
                 href: &PointsCreateGetRouteTag.url(),
-                label: "Award Points",
-                classes: "btn btn-primary btn-sm",
+                form_post_url: &PointsCreateGetRouteTag.path(),
+                modal_uid: PointsCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
             (button_link(ButtonLink {
@@ -401,7 +454,14 @@ impl PointsListPage {
             self.points.number,
             self.points.num_pages,
         );
-        data_table_list::<PointsTableKey>("Points", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<PointsTableKey>(
+            "Points",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 
     fn body(&self) -> Markup {
@@ -476,53 +536,53 @@ impl RenderTemplate for PointsDetailPage {
 }
 
 #[derive(Generic)]
-pub struct PointsFormPage {
+pub struct PointsCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub to_employee_id: i64,
     pub employee_display: String,
     pub points: String,
+    pub error: String,
 }
 
-impl PointsFormPage {
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("@container", html! {
-                (field_title(FieldTitle { value: "Award Points", classes: "" }))
-                (form(FormOpts {
-                    attrs: form_hx_post_main(PointsCreatePostRouteTag),
-                    inputs: PointsForm::render_inputs(
-                        &FormCtx::form::<PointsForm>()
-                            .value(PointsFormField::ToEmployeeId, self.to_employee_id.to_string())
-                            .display(PointsFormField::ToEmployeeId, &self.employee_display)
-                            .value(PointsFormField::Points, &self.points),
+impl RenderTemplate for PointsCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_employees.PointsCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PointsCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Award Points",
+                subtitle: "Create a points transaction",
+                classes: "@container",
+                attrs: form_hx_post_url::<PointsCreateModalKey>(
+                    &modal_create_post_url(
+                        PointsCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
                     ),
-                    actions: html! {
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PointsForm::render_inputs(
+                    &FormCtx::form::<PointsForm>()
+                        .value(PointsFormField::ToEmployeeId, self.to_employee_id.to_string())
+                        .display(PointsFormField::ToEmployeeId, &self.employee_display)
+                        .value(PointsFormField::Points, &self.points),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
                         (button_submit(ButtonSubmit {
                             label: "Create",
                             classes: "btn-primary",
                             ..Default::default()
                         }))
-                    },
-                    ..Default::default()
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for PointsFormPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
-    }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
-    }
-}
-
-impl RenderTemplate for PointsFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Award Points — Uniquity", chrome, self.body())
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }

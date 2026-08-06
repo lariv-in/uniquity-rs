@@ -41,6 +41,7 @@ use crate::logic::tax_calculations::{
     InvoiceLinesTotals,
 };
 use crate::logic::invoice_number::posted_invoice_number;
+use crate::scope::find_active_posted;
 
 use crate::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
 
@@ -300,22 +301,9 @@ pub async fn posted_new_cancelled(
     reason: String,
     at: DateTime<Utc>,
 ) -> Result<cancelled_invoice::Model, String> {
-    let posted = PostedInvoiceEntity::find_by_id(posted_id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
-        .one(db)
+    let posted = find_active_posted(db, posted_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or("posted invoice required")?;
-
-    let cancelled_count = CancelledInvoiceEntity::find()
-        .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted_id))
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
-        .count(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if cancelled_count > 0 {
-        return Err("already cancelled".to_string());
-    }
+        .ok_or("posted invoice is not cancellable")?;
 
     let posted_lines = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))

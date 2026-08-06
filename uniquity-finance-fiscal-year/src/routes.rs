@@ -7,7 +7,7 @@ lariv_rs::define_plugin_routes! {
     plugin: UniquityFinanceFiscalYearTag;
     routes: [
         get FiscalYearDefaultRouteTag, "/finance-fiscal-years", handlers::fiscal_years::list, fragment(FiscalYearTableKey);
-        get FiscalYearCreateGetRouteTag, "/finance-fiscal-years/create", handlers::fiscal_years::create_get;
+        get FiscalYearCreateGetRouteTag, "/finance-fiscal-years/create", handlers::fiscal_years::create_get, modal;
         post FiscalYearCreatePostRouteTag, "/finance-fiscal-years/create", handlers::fiscal_years::create_post;
         get FiscalYearDetailRouteTag, "/finance-fiscal-years/fy/{id}", handlers::fiscal_years::detail;
         get FiscalYearEditGetRouteTag, "/finance-fiscal-years/fy/{id}/edit", handlers::fiscal_years::edit_get;

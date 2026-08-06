@@ -22,6 +22,7 @@ use crate::{
     },
     logic::{
         cancelled_new_draft,
+        format_invoice_date,
         invoice_line_editor::{
             cancelled_invoice_line_display_rows, invoice_customer_name, invoice_header_tax_labels,
         },
@@ -45,8 +46,7 @@ fn credit_note_display_label(
     reason: Option<&str>,
     tz: &str,
 ) -> String {
-    let date = lariv_rs::datetime::format_datetime_short(datetime, tz);
-    let date = date.split(' ').next().unwrap_or(&date);
+    let date = format_invoice_date(datetime, tz);
     if let Some(reason) = reason.map(str::trim).filter(|s| !s.is_empty()) {
         let summary = if reason.len() > 48 {
             format!("{}…", &reason[..45])
@@ -132,7 +132,7 @@ pub async fn detail(
             reference: optional_display(&c.reference),
             payment_reference: optional_display(&c.payment_reference),
             bank_account: optional_display(&c.bank_account),
-            datetime: ctx.format_datetime_short(c.datetime),
+            datetime: format_invoice_date(c.datetime, &ctx.timezone),
             customer_name,
             payment_term_summary,
             tax_labels,

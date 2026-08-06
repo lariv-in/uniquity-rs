@@ -22,13 +22,11 @@ use uniquity_finance_accounts::templates::{
 };
 
 use super::keys::CreditNoteTableKey;
-use super::routes::{CreditNoteDefaultRouteTag, CreditNoteDetailRouteTag};
+use super::routes::CreditNoteDetailRouteTag;
 
 fn credit_note_detail_menu(id: i64) -> Markup {
     detail_sidebar_menu(
         format!("Credit note #{id}"),
-        "Back to Credit Notes",
-        CreditNoteDefaultRouteTag.url(),
         &[DetailMenuNavItem {
             title: "Credit Note Detail",
             url: CreditNoteDetailRouteTag::new(id).url(),
@@ -145,7 +143,7 @@ impl CreditNoteListPage {
 
 impl RenderAppPane for CreditNoteListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -154,7 +152,12 @@ impl RenderAppPane for CreditNoteListPage {
 
 impl RenderTemplate for CreditNoteListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Credit Notes — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Credit Notes — Uniquity",
+            chrome,
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 

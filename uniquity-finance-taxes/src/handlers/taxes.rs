@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use axum::{
     Form,
     extract::{Path, Query},
@@ -16,7 +14,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -24,14 +25,15 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::tax::{self, Entity as TaxEntity, TaxKind},
     forms::{TaxForm, tax_type_label},
-    keys::{TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey},
+    handlers::ModalNameQuery,
+    keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey},
     routes::{TaxDetailRouteTag, TaxEditGetRouteTag},
     scope::{
         account_label, apply_tax_filters, find_tax_scoped, model_to_row, scope_taxes,
     },
     state::TaxesState,
     templates::{
-        TaxDetailPage, TaxFormPage, TaxListPage, TaxMultiSelectPage,
+        TaxCreateModalPage, TaxDetailPage, TaxFormPage, TaxListPage, TaxMultiSelectPage,
     },
 };
 
@@ -69,7 +71,7 @@ fn parse_account_id(s: &str) -> Option<i64> {
 }
 
 fn parse_percentage(s: &str) -> Option<Decimal> {
-    Decimal::from_str(s.trim()).ok()
+    uniquity_common::decimal::parse_decimal(s)
 }
 
 fn validate_tax(tax_type: TaxKind, account_id: Option<i64>) -> bool {
@@ -158,44 +160,62 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-taxes/").into_response();
     }
-    let page = TaxFormPage {
-        id: 0,
+    let page = TaxCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         tax_type: TaxKind::Levied.as_str().to_string(),
         percentage: String::new(),
         account_id: String::new(),
         account_display: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<TaxesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<TaxForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-taxes/").into_response();
     }
+    let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
+    let render_error = |error: String| {
+        let page = TaxCreateModalPage {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
+            name: form.name.clone(),
+            tax_type: form.tax_type.clone(),
+            percentage: form.percentage.clone(),
+            account_id: form.account_id.clone(),
+            account_display: account_display.clone(),
+            error,
+        };
+        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    };
     let Some(tax_type) = TaxKind::parse(&form.tax_type) else {
-        return Redirect::to("/finance-taxes/create/").into_response();
+        return render_error("Invalid tax type".into());
     };
     let Some(percentage) = parse_percentage(&form.percentage) else {
-        return Redirect::to("/finance-taxes/create/").into_response();
+        return render_error("Invalid percentage".into());
     };
     let account_id = parse_account_id(&form.account_id);
     if !validate_tax(tax_type, account_id) {
-        return Redirect::to("/finance-taxes/create/").into_response();
+        return render_error("Withholding taxes require an account".into());
     }
     let now = Utc::now();
     let model = tax::ActiveModel {
-        name: Set(form.name),
+        name: Set(form.name.clone()),
         tax_type: Set(tax_type),
         percentage: Set(percentage),
         account_id: Set(account_id),
@@ -204,8 +224,12 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&TaxDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance-taxes/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<TaxCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &TaxDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => render_error(e.to_string()),
     }
 }
 
@@ -229,7 +253,6 @@ pub async fn edit_get(
         percentage: t.percentage.normalize().to_string(),
         account_id: t.account_id.map(|id| id.to_string()).unwrap_or_default(),
         account_display: account_label(&state.db, t.account_id).await,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -310,6 +333,7 @@ pub async fn multi_select(
             .target_input
             .clone()
             .unwrap_or_else(|| "TaxIds".into()),
+        can_edit: require_superuser(&ctx),
     };
     respond_picker_select::<TaxMultiSelectTableKey, TaxMultiSelectModalKey, _>(&htmx, &page)
 }

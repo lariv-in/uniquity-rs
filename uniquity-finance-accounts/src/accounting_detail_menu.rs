@@ -3,7 +3,7 @@
 use maud::{Markup, html};
 
 use lariv_rs::components::{
-    SidebarMenu, SidebarMenuBack, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane,
+    SidebarMenu, SidebarMenuItem, sidebar_menu, sidebar_menu_item_pane,
 };
 
 /// One navigational item in an entity detail sidebar.
@@ -23,18 +23,12 @@ pub struct DetailMenuDeleteLink {
 /// Build a detail/edit sidebar for an accounting entity.
 pub fn detail_sidebar_menu(
     menu_title: String,
-    back_title: &'static str,
-    back_url: String,
     nav_items: &[DetailMenuNavItem],
     delete_link: Option<DetailMenuDeleteLink>,
     extra: Markup,
 ) -> Markup {
     sidebar_menu(SidebarMenu {
         title: menu_title.as_str(),
-        back: Some(SidebarMenuBack {
-            title: back_title,
-            url: &back_url,
-        }),
         children: {
             let mut children = Markup::default();
             for item in nav_items {

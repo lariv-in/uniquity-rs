@@ -4,6 +4,7 @@
 
 pub mod accounting_sidebar;
 pub mod apps;
+pub mod customer_type;
 pub mod entities;
 pub mod forms;
 pub mod handlers;

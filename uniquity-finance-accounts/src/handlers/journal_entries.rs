@@ -13,7 +13,10 @@ use lariv_rs::{
     http::Cap,
     picker::respond_picker_select,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -21,8 +24,9 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::journal_entry::{self},
     forms::JournalEntryForm,
-    keys::{JournalEntrySelectModalKey, JournalEntrySelectTableKey},
-    routes::{JournalDetailRouteTag, JournalEntryCreateGetRouteTag},
+    handlers::ModalNameQuery,
+    keys::{JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey},
+    routes::JournalDetailRouteTag,
     scope::{
         find_journal_entry_scoped, find_journal_scoped, load_journal_entry_items,
         load_source_doc_by_id, query_journal_entries_for_select,
@@ -30,7 +34,7 @@ use crate::{
     source_doc_label::source_doc_type_label,
     state::AccountsState,
     templates::{
-        JournalEntryDetailPage, JournalEntryFormPage, JournalEntryItemRow, JournalEntryRow,
+        JournalEntryCreateModalPage, JournalEntryDetailPage, JournalEntryItemRow, JournalEntryRow,
         JournalEntrySelectPage,
     },
 };
@@ -51,7 +55,7 @@ pub async fn create_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(journal_id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -60,24 +64,29 @@ pub async fn create_get(
     let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
         return Redirect::to("/finance/journals").into_response();
     };
-    let page = JournalEntryFormPage::new(
+    let page = JournalEntryCreateModalPage::new(
+        q.form_name(),
+        q.refresh_table(),
         journal.id,
         journal.name,
         ctx.format_datetime_local_input(Utc::now()),
     );
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Path(journal_id): Path<i64>,
     Form(form): Form<JournalEntryForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response();
     }
-    let Some(_journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
+    let Some(journal) = find_journal_scoped(&state.db, journal_id, &ctx).await else {
         return Redirect::to("/finance/journals").into_response();
     };
     let datetime = ctx
@@ -94,8 +103,32 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(_) => Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response(),
-        Err(_) => Redirect::to(&JournalEntryCreateGetRouteTag::new(journal_id).url()).into_response(),
+        Ok(_) => respond_create_modal_done::<JournalEntryCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &JournalDetailRouteTag::new(journal_id).url(),
+        ),
+        Err(e) => {
+            let source_doc_display = if source_doc_id > 0 {
+                load_source_doc_by_id(&state.db, source_doc_id)
+                    .await
+                    .map(|d| source_doc_type_label(&d.source_doc_type))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let page = JournalEntryCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                journal_id,
+                journal_name: journal.name,
+                datetime: form.datetime,
+                source_doc_id: form.source_doc_id,
+                source_doc_display,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

@@ -16,7 +16,7 @@ pub struct ProductForm {
     #[form(label = "Type", required, widget = Select)]
     pub product_type: String,
 
-    #[form(label = "Reference", required, widget = Text)]
+    #[form(label = "Reference", widget = Text)]
     pub reference: String,
 
     #[form(label = "Remarks", widget = Textarea, rows = 4)]

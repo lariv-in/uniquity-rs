@@ -11,15 +11,15 @@ pub mod tax_assoc;
 pub mod tax_calculations;
 
 pub use draft::{
-    create_draft_invoice, optional_display, optional_trimmed_text, parse_header_tax_ids,
-    parse_invoice_datetime, parse_lines_json, soft_delete_draft, update_draft_invoice,
-    CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
+    create_draft_invoice, format_invoice_date, optional_display, optional_trimmed_text,
+    parse_header_tax_ids, parse_invoice_datetime, parse_lines_json, soft_delete_draft,
+    update_draft_invoice, CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
 };
 pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};
 pub use payment::{
     build_payment_lines_for_allocation, create_payment, parse_payment_amount,
     parse_withholding_tax_ids, posted_invoice_can_accept_payment, posted_invoice_open_balance,
-    record_payment_settlement, validate_payment_allocation, CreatePaymentInput,
+    record_payment_settlement, validate_payment_allocation, CreatePaymentInput, CreatePaymentResult,
 };
 pub use payment_batch::{
     create_payment_batch, parse_batch_allocations_json, BatchAllocation, CreatePaymentBatchInput,

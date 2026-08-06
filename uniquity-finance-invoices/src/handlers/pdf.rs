@@ -2,9 +2,8 @@ use axum::{
     body::Body,
     extract::Path,
     http::{StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::EntityTrait;
 
 use lariv_rs::{
     http::Cap,
@@ -18,7 +17,9 @@ use crate::logic::invoice_pdf::{
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,
 };
 use crate::{
-    entities::PostedInvoiceEntity,
+    scope::{
+        find_active_draft, find_active_paid, find_active_partial, find_active_posted, hub_tab_url,
+    },
     state::InvoicesState,
 };
 
@@ -59,6 +60,9 @@ pub async fn draft_pdf(
     if !require_superuser(&ctx) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    if find_active_draft(&state.db, id).await.is_none() {
+        return Redirect::to(&hub_tab_url("drafts")).into_response();
+    }
     match render_draft_invoice_pdf(&state.db, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
         Err(e) => pdf_error_response(e),
@@ -73,14 +77,8 @@ pub async fn posted_pdf(
     if !require_superuser(&ctx) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let posted = match PostedInvoiceEntity::find_by_id(id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    {
-        Some(p) => p,
-        None => return pdf_error_response(InvoicePdfError::NotFound),
+    let Some(posted) = find_active_posted(&state.db, id).await else {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     };
     match render_posted_invoice_pdf(&state.db, posted, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
@@ -110,6 +108,9 @@ pub async fn paid_pdf(
     if !require_superuser(&ctx) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    if find_active_paid(&state.db, id).await.is_none() {
+        return Redirect::to(&hub_tab_url("paid")).into_response();
+    }
     match render_paid_invoice_pdf(&state.db, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
         Err(e) => pdf_error_response(e),
@@ -123,6 +124,9 @@ pub async fn partially_paid_pdf(
 ) -> Response {
     if !require_superuser(&ctx) {
         return StatusCode::FORBIDDEN.into_response();
+    }
+    if find_active_partial(&state.db, id).await.is_none() {
+        return Redirect::to(&hub_tab_url("partial")).into_response();
     }
     match render_partially_paid_invoice_pdf(&state.db, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),

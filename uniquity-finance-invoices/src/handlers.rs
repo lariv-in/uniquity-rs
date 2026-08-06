@@ -9,3 +9,6 @@ pub mod payment_terms;
 pub mod preferences;
 pub mod pdf;
 pub mod invoice_pdf_preview;
+
+/// Modal opener query (`?name=…&refresh=table-id`). Case-sensitive vs filter `Name`.
+pub use lariv_rs::web::ModalFormQuery as ModalNameQuery;

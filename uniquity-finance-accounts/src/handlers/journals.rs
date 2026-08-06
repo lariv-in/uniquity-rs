@@ -14,7 +14,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, query_bool, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, query_bool, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -22,8 +25,11 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::journal::{self, Entity as JournalEntity},
     forms::JournalForm,
+    handlers::ModalNameQuery,
     journal_type::JournalType,
-    keys::{JournalSelectModalKey, JournalSelectTableKey, JournalTableKey},
+    keys::{
+        JournalCreateModalKey, JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
+    },
     routes::{JournalDetailRouteTag, JournalEditGetRouteTag, JournalListRouteTag},
     scope::{
         apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
@@ -32,7 +38,7 @@ use crate::{
     source_doc_label::source_doc_type_label,
     state::AccountsState,
     templates::{
-        JournalDetailPage, JournalEntryRow, JournalFormPage,
+        JournalCreateModalPage, JournalDetailPage, JournalEntryRow, JournalFormPage,
         JournalListPage, JournalRow, JournalSelectPage,
     },
 };
@@ -137,6 +143,7 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
@@ -172,6 +179,7 @@ pub async fn detail(
         currency_label,
         journal_type: j.journal_type.to_string(),
         entries,
+        path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -180,18 +188,30 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
+        return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let page = JournalFormPage::new(false);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = JournalCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        name: String::new(),
+        is_active: true,
+        currency_id: String::new(),
+        currency_display: String::new(),
+        journal_type: "Debit".to_string(),
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn create_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<JournalForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -202,15 +222,39 @@ pub async fn create_post(
     let model = journal::ActiveModel {
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        name: Set(form.name),
+        name: Set(form.name.clone()),
         is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_empty()),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(0)),
         journal_type: Set(jtype),
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&JournalDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance/journals/create").into_response(),
+        Ok(saved) => respond_create_modal_done::<JournalCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &JournalDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let currency_display = if !form.currency_id.is_empty() {
+                load_currency_by_id(&state.db, parse_i64(&form.currency_id).unwrap_or(0))
+                    .await
+                    .map(|c| currency_summary(&c))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let page = JournalCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                name: form.name,
+                is_active: checkbox_on(&form.is_active) || form.is_active.is_empty(),
+                currency_id: form.currency_id,
+                currency_display,
+                journal_type: form.journal_type,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -231,7 +275,7 @@ pub async fn edit_get(
         .await
         .map(|c| currency_summary(&c))
         .unwrap_or_default();
-    let page = JournalFormPage::from_model(&j, currency_display, true);
+    let page = JournalFormPage::from_model(&j, currency_display);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

@@ -18,8 +18,8 @@ enum Taxes {
     Name,
 }
 
-/// Intra-state CGST+SGST (9%+9%) and inter-state IGST for the 18% GST slab.
-const DEFAULT_PRODUCT_TAX_NAMES: &[&str] = &["CGST 9%", "SGST 9%", "IGST 18%"];
+/// Intra-state CGST+SGST (9%+9%) for the 18% GST slab (IGST is selected when needed).
+const DEFAULT_PRODUCT_TAX_NAMES: &[&str] = &["CGST 9%", "SGST 9%"];
 
 fn preference_tax_link_exists() -> SimpleExpr {
     Expr::exists(

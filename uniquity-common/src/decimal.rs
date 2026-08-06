@@ -56,7 +56,7 @@ pub fn decimal_display_withholding(d: Decimal) -> String {
 }
 
 pub fn parse_decimal(s: &str) -> Option<Decimal> {
-    let s = s.trim();
+    let s = lariv_rs::html_form::preprocess_numeric_form_value(s);
     if s.is_empty() {
         return None;
     }
@@ -65,4 +65,22 @@ pub fn parse_decimal(s: &str) -> Option<Decimal> {
 
 pub fn optional_u64(v: Option<i64>) -> u64 {
     v.unwrap_or(0).max(0) as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn parse_decimal_strips_commas() {
+        assert_eq!(
+            parse_decimal("1,234.50"),
+            Some(normalize(Decimal::from_str("1234.50").unwrap()))
+        );
+        assert_eq!(
+            parse_decimal("1,000"),
+            Some(normalize(Decimal::from_str("1000").unwrap()))
+        );
+    }
 }

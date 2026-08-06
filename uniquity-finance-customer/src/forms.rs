@@ -1,10 +1,15 @@
 use lariv_rs::html_form::{
     html_form,
-    widgets::Text,
+    widgets::{Select, Text},
 };
+
+use crate::customer_type::{CUSTOMER_TYPE_BUSINESS, CUSTOMER_TYPE_INDIVIDUAL};
 
 #[html_form]
 pub struct CustomerForm {
+    #[form(label = "Type", required, widget = Select)]
+    pub customer_type: String,
+
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
@@ -37,6 +42,15 @@ pub struct CustomerForm {
 
     #[form(label = "Website", widget = Text)]
     pub website: String,
+}
+
+impl CustomerForm {
+    pub fn customer_type_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            (CUSTOMER_TYPE_BUSINESS, "Business"),
+            (CUSTOMER_TYPE_INDIVIDUAL, "Individual"),
+        ]
+    }
 }
 
 #[html_form]

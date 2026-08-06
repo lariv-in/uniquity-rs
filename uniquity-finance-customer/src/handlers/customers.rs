@@ -14,21 +14,26 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
 
 use crate::{
+    customer_type::CustomerType,
     entities::customer::{self, Entity as CustomerEntity},
     forms::CustomerForm,
-    keys::{CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey},
+    handlers::ModalNameQuery,
+    keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, CustomerTableKey},
     routes::{CustomerDetailRouteTag, CustomerEditGetRouteTag},
     scope::{apply_customer_filters, find_customer_scoped, scope_customers},
     state::CustomerState,
     templates::{
-        CustomerDetailPage, CustomerFormPage, CustomerListPage, CustomerRow,
-        CustomerSelectPage,
+        CustomerCreateModalPage, CustomerDetailPage, CustomerFormPage, CustomerListPage,
+        CustomerRow, CustomerSelectPage,
     },
 };
 
@@ -102,11 +107,16 @@ async fn query_customers(
 fn model_to_row(c: customer::Model) -> CustomerRow {
     CustomerRow {
         id: c.id,
+        customer_type: c.customer_type.label().to_string(),
         name: c.name,
         email: c.email.unwrap_or_default(),
         phone: c.phone.unwrap_or_default(),
         gstin: c.gstin.unwrap_or_default(),
     }
+}
+
+fn parse_customer_type(raw: &str) -> CustomerType {
+    CustomerType::parse(raw).unwrap_or_default()
 }
 
 async fn load_customer_rows(
@@ -162,6 +172,7 @@ pub async fn detail(
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
     let page = CustomerDetailPage {
         id: customer.id,
+        customer_type: customer.customer_type.label().to_string(),
         name: customer.name,
         address_line_1,
         address_line_2,
@@ -178,16 +189,43 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+fn customer_create_modal_page_from_form(
+    form: &CustomerForm,
+    form_name: String,
+    refresh_table: String,
+    error: String,
+) -> CustomerCreateModalPage {
+    CustomerCreateModalPage {
+        form_name,
+        refresh_table,
+        customer_type: form.customer_type.clone(),
+        name: form.name.clone(),
+        address_line_1: form.address_line_1.clone(),
+        address_line_2: form.address_line_2.clone(),
+        city: form.city.clone(),
+        pincode: form.pincode.clone(),
+        state: form.state.clone(),
+        gstin: form.gstin.clone(),
+        pan: form.pan.clone(),
+        phone: form.phone.clone(),
+        email: form.email.clone(),
+        website: form.website.clone(),
+        error,
+    }
+}
+
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-customers/").into_response();
+        return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let page = CustomerFormPage {
-        id: 0,
+    let page = CustomerCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        customer_type: CustomerType::default().as_str().to_string(),
         name: String::new(),
         address_line_1: String::new(),
         address_line_2: String::new(),
@@ -199,40 +237,57 @@ pub async fn create_get(
         phone: String::new(),
         email: String::new(),
         website: String::new(),
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn create_post(
     Cap(state): Cap<CustomerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<CustomerForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-customers/").into_response();
     }
     let now = Utc::now();
+    let customer_type = parse_customer_type(&form.customer_type);
     let model = customer::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         deleted_at: Set(None),
-        name: Set(form.name),
-        address_line_1: Set(opt_string(form.address_line_1)),
-        address_line_2: Set(opt_string(form.address_line_2)),
-        city: Set(opt_string(form.city)),
-        pincode: Set(opt_string(form.pincode)),
-        state: Set(opt_string(form.state)),
-        gstin: Set(opt_string(form.gstin)),
-        pan: Set(opt_string(form.pan)),
-        phone: Set(opt_string(form.phone)),
-        email: Set(opt_string(form.email)),
-        website: Set(opt_string(form.website)),
+        customer_type: Set(customer_type),
+        name: Set(form.name.clone()),
+        address_line_1: Set(opt_string(form.address_line_1.clone())),
+        address_line_2: Set(opt_string(form.address_line_2.clone())),
+        city: Set(opt_string(form.city.clone())),
+        pincode: Set(opt_string(form.pincode.clone())),
+        state: Set(opt_string(form.state.clone())),
+        gstin: Set(opt_string(form.gstin.clone())),
+        pan: Set(opt_string(form.pan.clone())),
+        phone: Set(opt_string(form.phone.clone())),
+        email: Set(opt_string(form.email.clone())),
+        website: Set(opt_string(form.website.clone())),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&CustomerDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance-customers/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<CustomerCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &CustomerDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = customer_create_modal_page_from_form(
+                &form,
+                q.form_name(),
+                q.refresh_table(),
+                e.to_string(),
+            );
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -252,6 +307,7 @@ pub async fn edit_get(
     let (address_line_1, address_line_2, city, pincode, state) = customer_address_fields(&customer);
     let page = CustomerFormPage {
         id: customer.id,
+        customer_type: customer.customer_type.as_str().to_string(),
         name: customer.name,
         address_line_1,
         address_line_2,
@@ -263,7 +319,6 @@ pub async fn edit_get(
         phone: customer.phone.unwrap_or_default(),
         email: customer.email.unwrap_or_default(),
         website: customer.website.unwrap_or_default(),
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -281,9 +336,11 @@ pub async fn edit_post(
         return Redirect::to("/finance-customers/").into_response();
     };
     let now = Utc::now();
+    let customer_type = parse_customer_type(&form.customer_type);
     let model = customer::ActiveModel {
         id: Set(existing.id),
         updated_at: Set(Some(now)),
+        customer_type: Set(customer_type),
         name: Set(form.name),
         address_line_1: Set(opt_string(form.address_line_1)),
         address_line_2: Set(opt_string(form.address_line_2)),
@@ -342,6 +399,7 @@ pub async fn select(
             .clone()
             .unwrap_or_else(|| "CustomerID".into()),
         path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
     };
     respond_picker_select::<CustomerSelectTableKey, CustomerSelectModalKey, _>(&htmx, &page)
 }

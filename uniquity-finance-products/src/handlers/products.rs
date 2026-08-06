@@ -17,7 +17,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -26,7 +29,8 @@ use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use crate::{
     entities::product::{self, Entity as ProductEntity, ProductType},
     forms::ProductForm,
-    keys::{ProductSelectModalKey, ProductSelectTableKey, ProductTableKey},
+    handlers::ModalNameQuery,
+    keys::{ProductCreateModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey},
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
     routes::{
         ProductDetailRouteTag,
@@ -34,7 +38,7 @@ use crate::{
     scope::{apply_product_filters, find_product_scoped, scope_products},
     state::ProductsState,
     templates::{
-        ProductDetailPage, ProductFormPage, ProductListPage, ProductRow,
+        ProductCreateModalPage, ProductDetailPage, ProductFormPage, ProductListPage, ProductRow,
         ProductSelectPage,
     },
 };
@@ -103,7 +107,7 @@ async fn query_products(
         rows.push(ProductRow {
             id: p.id,
             product_type: p.product_type.as_str().to_string(),
-            reference: p.reference,
+            reference: p.reference.unwrap_or_default(),
             name: p.name,
             base_cost: decimal::decimal_display(p.base_cost),
             sales_price: decimal::decimal_display(p.sales_price),
@@ -160,7 +164,7 @@ pub async fn detail(
         id: p.id,
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
-        reference: p.reference,
+        reference: p.reference.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         base_cost: decimal::decimal_display(p.base_cost),
         sales_price: decimal::decimal_display(p.sales_price),
@@ -175,15 +179,16 @@ pub async fn create_get(
     Cap(state): Cap<ProductsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-products/").into_response();
+        return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
     let default_tax_ids = load_default_product_tax_ids(&state.db).await;
     let tax_items = tax_items_from_ids(&state.db, &default_tax_ids).await;
-    let page = ProductFormPage {
-        id: 0,
+    let page = ProductCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         name: String::new(),
         product_type: product::PRODUCT_TYPE_GOODS.to_string(),
         reference: String::new(),
@@ -192,17 +197,15 @@ pub async fn create_get(
         sales_price: String::new(),
         hsn_code: 0,
         tax_items,
-        is_edit: false,
         error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 async fn product_form_page_from_form(
     db: &sea_orm::DatabaseConnection,
     form: &ProductForm,
     id: i64,
-    is_edit: bool,
     error: String,
 ) -> ProductFormPage {
     let tax_items = tax_items_from_ids(db, &form.tax_ids).await;
@@ -216,7 +219,29 @@ async fn product_form_page_from_form(
         sales_price: form.sales_price.clone(),
         hsn_code: form.hsn_code,
         tax_items,
-        is_edit,
+        error,
+    }
+}
+
+async fn product_create_modal_page_from_form(
+    db: &sea_orm::DatabaseConnection,
+    form: &ProductForm,
+    form_name: String,
+    refresh_table: String,
+    error: String,
+) -> ProductCreateModalPage {
+    let tax_items = tax_items_from_ids(db, &form.tax_ids).await;
+    ProductCreateModalPage {
+        form_name,
+        refresh_table,
+        name: form.name.clone(),
+        product_type: form.product_type.clone(),
+        reference: form.reference.clone(),
+        remarks: form.remarks.clone(),
+        base_cost: form.base_cost.clone(),
+        sales_price: form.sales_price.clone(),
+        hsn_code: form.hsn_code,
+        tax_items,
         error,
     }
 }
@@ -242,7 +267,11 @@ async fn save_product_from_form(
             .into();
         am.name = Set(form.name.clone());
         am.product_type = Set(product_type);
-        am.reference = Set(form.reference.clone());
+        am.reference = Set(if form.reference.trim().is_empty() {
+            None
+        } else {
+            Some(form.reference.trim().to_string())
+        });
         am.remarks = Set(if form.remarks.is_empty() {
             None
         } else {
@@ -261,7 +290,11 @@ async fn save_product_from_form(
         let am = product::ActiveModel {
             name: Set(form.name.clone()),
             product_type: Set(product_type),
-            reference: Set(form.reference.clone()),
+            reference: Set(if form.reference.trim().is_empty() {
+                None
+            } else {
+                Some(form.reference.trim().to_string())
+            }),
             remarks: Set(if form.remarks.is_empty() {
                 None
             } else {
@@ -287,17 +320,28 @@ pub async fn create_post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-products/").into_response();
     }
     match save_product_from_form(&state.db, &form, None).await {
-        Ok(id) => htmx.redirect(&ProductDetailRouteTag::new(id).url()),
+        Ok(id) => respond_create_modal_done::<ProductCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &ProductDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
-            let page = product_form_page_from_form(&state.db, &form, 0, false, e).await;
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response()
+            let page = product_create_modal_page_from_form(
+                &state.db,
+                &form,
+                q.form_name(),
+                q.refresh_table(),
+                e,
+            )
+            .await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
 }
@@ -321,13 +365,12 @@ pub async fn edit_get(
         id: p.id,
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
-        reference: p.reference,
+        reference: p.reference.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
         base_cost: decimal::decimal_display(p.base_cost),
         sales_price: decimal::decimal_display(p.sales_price),
         hsn_code: p.hsn_code,
         tax_items,
-        is_edit: true,
         error: String::new(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -347,7 +390,7 @@ pub async fn edit_post(
     match save_product_from_form(&state.db, &form, Some(id)).await {
         Ok(_) => htmx.redirect(&ProductDetailRouteTag::new(id).url()),
         Err(e) => {
-            let page = product_form_page_from_form(&state.db, &form, id, true, e).await;
+            let page = product_form_page_from_form(&state.db, &form, id, e).await;
             html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response()
         }
@@ -381,8 +424,11 @@ pub async fn select(
     let products = ObjectList::from_page(rows, page, PAGE_SIZE, total);
     let page = ProductSelectPage {
         products,
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_reference: q.filter.reference.clone().unwrap_or_default(),
         target_input: q.target_input.unwrap_or_else(|| "ProductID".to_string()),
         path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
     };
     respond_picker_select::<ProductSelectTableKey, ProductSelectModalKey, _>(&htmx, &page)
         .into_response()

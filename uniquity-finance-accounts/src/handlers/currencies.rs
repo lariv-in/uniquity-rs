@@ -14,7 +14,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -22,12 +25,15 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::currency::{self, Entity as CurrencyEntity},
     forms::CurrencyForm,
-    keys::{CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey},
+    handlers::ModalNameQuery,
+    keys::{
+        CurrencyCreateModalKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
+    },
     routes::{CurrencyDetailRouteTag, CurrencyEditGetRouteTag, CurrencyListRouteTag},
     scope::{apply_currency_filters, find_currency_scoped, scope_superuser},
     state::AccountsState,
     templates::{
-        CurrencyDetailPage, CurrencyFormPage, CurrencyListPage,
+        CurrencyCreateModalPage, CurrencyDetailPage, CurrencyFormPage, CurrencyListPage,
         CurrencyRow, CurrencySelectPage,
     },
 };
@@ -147,18 +153,29 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to(&CurrencyListRouteTag.url()).into_response();
+        return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let page = CurrencyFormPage::new(false);
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    let page = CurrencyCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        code: String::new(),
+        name: String::new(),
+        symbol: String::new(),
+        minor_unit: String::new(),
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn create_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<CurrencyForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -169,14 +186,29 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         code: Set(parse_i32(&form.code).unwrap_or(0)),
-        name: Set(form.name),
-        symbol: Set(form.symbol),
+        name: Set(form.name.clone()),
+        symbol: Set(form.symbol.clone()),
         minor_unit: Set(parse_i32(&form.minor_unit).unwrap_or(0)),
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&CurrencyDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance/currencies/create").into_response(),
+        Ok(saved) => respond_create_modal_done::<CurrencyCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &CurrencyDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = CurrencyCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                code: form.code,
+                name: form.name,
+                symbol: form.symbol,
+                minor_unit: form.minor_unit,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -193,7 +225,7 @@ pub async fn edit_get(
     let Some(c) = find_currency_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
-    let page = CurrencyFormPage::from_model(&c, true);
+    let page = CurrencyFormPage::from_model(&c);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

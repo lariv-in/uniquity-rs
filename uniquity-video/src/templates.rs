@@ -3,20 +3,20 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonLink, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
         LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuBack, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+        SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
         TableColumnHeader, TablePagination, TableRow, button_delete, button_link,
-        button_submit, container_column, container_row, data_table_list,
-        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        label_inline, layout_sidebar, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu,
-        sidebar_menu_item, table_pagination,
+        button_modal_form, button_submit, container_column, container_row, data_table_list,
+        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_sidebar, modal_keyed,
+        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        sidebar_menu, sidebar_menu_item, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
-    plugins::dashboard::routes::DashboardAppsRouteTag,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
+    web::modal_create_post_url,
 };
 use uniquity_employees::{
     routes::EmployeesDetailRouteTag,
@@ -29,9 +29,9 @@ use super::forms::{
     RawFootageForm, RawFootageFormField,
 };
 use super::keys::{
-    EditedVideoSelectTableKey, EditedVideoTableKey,
-    PublishedVideoSelectTableKey, PublishedVideoTableKey,
-    RawFootageSelectTableKey, RawFootageTableKey,
+    EditedCreateModalKey, EditedVideoSelectTableKey, EditedVideoTableKey,
+    PublishedCreateModalKey, PublishedVideoSelectTableKey, PublishedVideoTableKey,
+    RawCreateModalKey, RawFootageSelectTableKey, RawFootageTableKey,
     VideoEmployeeSelectTableKey,
 };
 use super::routes::{
@@ -60,15 +60,18 @@ lariv_rs::define_register_items! {
         RawListIdx: RawListPageTag => RawListPage,
         RawDetailIdx: RawDetailPageTag => RawDetailPage,
         RawFormIdx: RawFormPageTag => RawFormPage,
+        RawCreateModalIdx: RawCreateModalPageTag => RawCreateModalPage,
         RawSelectIdx: RawSelectPageTag => RawSelectPage,
         VideoEmployeeSelectIdx: VideoEmployeeSelectPageTag => VideoEmployeeSelectPage,
         EditedListIdx: EditedListPageTag => EditedListPage,
         EditedDetailIdx: EditedDetailPageTag => EditedDetailPage,
         EditedFormIdx: EditedFormPageTag => EditedFormPage,
+        EditedCreateModalIdx: EditedCreateModalPageTag => EditedCreateModalPage,
         EditedSelectIdx: EditedSelectPageTag => EditedSelectPage,
         PublishedListIdx: PublishedListPageTag => PublishedListPage,
         PublishedDetailIdx: PublishedDetailPageTag => PublishedDetailPage,
         PublishedFormIdx: PublishedFormPageTag => PublishedFormPage,
+        PublishedCreateModalIdx: PublishedCreateModalPageTag => PublishedCreateModalPage,
         PublishedSelectIdx: PublishedSelectPageTag => PublishedSelectPage,
         EditorPointsIdx: EditorPointsPageTag => EditorPointsPage,
     ]
@@ -97,13 +100,8 @@ fn app_scaffold(title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup
 }
 
 fn main_menu(active: &str) -> Markup {
-    let back_url = DashboardAppsRouteTag.url();
     sidebar_menu(SidebarMenu {
         title: "Video editors",
-        back: Some(SidebarMenuBack {
-            title: "Back to Home",
-            url: &back_url,
-        }),
         children: html! {
             (sidebar_menu_item(SidebarMenuItem {
                 title: "Overview",
@@ -231,9 +229,12 @@ impl RawListPage {
         });
         let actions = html! {
             (filter)
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_video.RawCreateForm",
                 href: &RawCreateGetRouteTag.url(),
-                label: "+",
+                form_post_url: &RawCreateGetRouteTag.path(),
+                modal_uid: RawCreateModalKey::ID,
+                icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
@@ -243,7 +244,14 @@ impl RawListPage {
             self.items.number,
             self.items.num_pages,
         );
-        data_table_list::<RawFootageTableKey>("Raw footage", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<RawFootageTableKey>(
+            "Raw footage",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 
     fn body(&self) -> Markup {
@@ -328,6 +336,7 @@ impl RenderTemplate for RawDetailPage {
     }
 }
 
+/// Edit raw footage form (full page). Create uses [`RawCreateModalPage`].
 #[derive(Generic)]
 pub struct RawFormPage {
     pub id: i64,
@@ -335,21 +344,15 @@ pub struct RawFormPage {
     pub assigned_to_id: i64,
     pub assigned_display: String,
     pub file_items: Vec<ManyToManyItem>,
-    pub is_edit: bool,
 }
 
 impl RawFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit { "Edit raw footage" } else { "New raw footage" };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit raw footage", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(RawEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(RawCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(RawEditPostRouteTag::new(self.id)),
                     inputs: RawFootageForm::render_inputs(
                         &FormCtx::form::<RawFootageForm>()
                             .value(RawFootageFormField::Title, &self.title)
@@ -360,17 +363,15 @@ impl RawFormPage {
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
-                                label: if self.is_edit { "Update" } else { "Save" },
+                                label: "Update",
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    RawDeletePostRouteTag::new(self.id),
-                                    "Delete",
-                                    "Permanently delete this raw footage?",
-                                ))
-                            }
+                            (button_delete(
+                                RawDeletePostRouteTag::new(self.id),
+                                "Delete",
+                                "Permanently delete this raw footage?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -394,7 +395,64 @@ impl RenderAppPane for RawFormPage {
 
 impl RenderTemplate for RawFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Raw form — Uniquity", chrome, main_menu("raw"), self.body())
+        app_scaffold("Edit raw footage — Uniquity", chrome, main_menu("raw"), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct RawCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub title: String,
+    pub assigned_to_id: i64,
+    pub assigned_display: String,
+    pub file_items: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for RawCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_video.RawCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<RawCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "New raw footage",
+                subtitle: "Create a raw footage record",
+                classes: "@container",
+                attrs: form_hx_post_url::<RawCreateModalKey>(
+                    &modal_create_post_url(
+                        RawCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: RawFootageForm::render_inputs(
+                    &FormCtx::form::<RawFootageForm>()
+                        .value(RawFootageFormField::Title, &self.title)
+                        .value(
+                            RawFootageFormField::AssignedToId,
+                            self.assigned_to_id.to_string(),
+                        )
+                        .display(RawFootageFormField::AssignedToId, &self.assigned_display)
+                        .m2m(RawFootageFormField::Files, &self.file_items),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -499,9 +557,12 @@ impl EditedListPage {
                 ],
             })
             .collect();
-        let actions = button_link(ButtonLink {
+        let actions = button_modal_form(ButtonModalForm {
+            name: "p_uniquity_video.EditedCreateForm",
             href: &EditedCreateGetRouteTag.url(),
-            label: "+",
+            form_post_url: &EditedCreateGetRouteTag.path(),
+            modal_uid: EditedCreateModalKey::ID,
+            icon_name: Some("plus"),
             classes: "btn-square btn-outline btn-sm",
             ..Default::default()
         });
@@ -510,12 +571,13 @@ impl EditedListPage {
             self.items.number,
             self.items.num_pages,
         );
-        data_table_list::<EditedVideoTableKey>(
+        data_table_list_refresh::<EditedVideoTableKey>(
             "Edited videos",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -609,6 +671,7 @@ impl RenderTemplate for EditedDetailPage {
     }
 }
 
+/// Edit edited video form (full page). Create uses [`EditedCreateModalPage`].
 #[derive(Generic)]
 pub struct EditedFormPage {
     pub id: i64,
@@ -616,25 +679,15 @@ pub struct EditedFormPage {
     pub raw_display: String,
     pub edited_v_node_id: i64,
     pub vnode_display: String,
-    pub is_edit: bool,
 }
 
 impl EditedFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit edited video"
-        } else {
-            "New edited video"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit edited video", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(EditedEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(EditedCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(EditedEditPostRouteTag::new(self.id)),
                     inputs: EditedVideoForm::render_inputs(
                         &FormCtx::form::<EditedVideoForm>()
                             .value(EditedVideoFormField::RawFootageId, self.raw_footage_id.to_string())
@@ -645,17 +698,15 @@ impl EditedFormPage {
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
-                                label: if self.is_edit { "Update" } else { "Save" },
+                                label: "Update",
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    EditedDeletePostRouteTag::new(self.id),
-                                    "Delete",
-                                    "Permanently delete this edited video?",
-                                ))
-                            }
+                            (button_delete(
+                                EditedDeletePostRouteTag::new(self.id),
+                                "Delete",
+                                "Permanently delete this edited video?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -679,7 +730,67 @@ impl RenderAppPane for EditedFormPage {
 
 impl RenderTemplate for EditedFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edited form — Uniquity", chrome, main_menu("edited"), self.body())
+        app_scaffold("Edit edited video — Uniquity", chrome, main_menu("edited"), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct EditedCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub raw_footage_id: i64,
+    pub raw_display: String,
+    pub edited_v_node_id: i64,
+    pub vnode_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for EditedCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_video.EditedCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<EditedCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "New edited video",
+                subtitle: "Link raw footage to an edited output file",
+                classes: "@container",
+                attrs: form_hx_post_url::<EditedCreateModalKey>(
+                    &modal_create_post_url(
+                        EditedCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: EditedVideoForm::render_inputs(
+                    &FormCtx::form::<EditedVideoForm>()
+                        .value(
+                            EditedVideoFormField::RawFootageId,
+                            self.raw_footage_id.to_string(),
+                        )
+                        .display(EditedVideoFormField::RawFootageId, &self.raw_display)
+                        .value(
+                            EditedVideoFormField::EditedVNodeId,
+                            self.edited_v_node_id.to_string(),
+                        )
+                        .display(EditedVideoFormField::EditedVNodeId, &self.vnode_display),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -745,9 +856,12 @@ impl PublishedListPage {
                 ],
             })
             .collect();
-        let actions = button_link(ButtonLink {
+        let actions = button_modal_form(ButtonModalForm {
+            name: "p_uniquity_video.PublishedCreateForm",
             href: &PublishedCreateGetRouteTag.url(),
-            label: "+",
+            form_post_url: &PublishedCreateGetRouteTag.path(),
+            modal_uid: PublishedCreateModalKey::ID,
+            icon_name: Some("plus"),
             classes: "btn-square btn-outline btn-sm",
             ..Default::default()
         });
@@ -756,12 +870,13 @@ impl PublishedListPage {
             self.items.number,
             self.items.num_pages,
         );
-        data_table_list::<PublishedVideoTableKey>(
+        data_table_list_refresh::<PublishedVideoTableKey>(
             "Published videos",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -913,31 +1028,22 @@ impl RenderTemplate for PublishedDetailPage {
     }
 }
 
+/// Edit published video form (full page). Create uses [`PublishedCreateModalPage`].
 #[derive(Generic)]
 pub struct PublishedFormPage {
     pub id: i64,
     pub edited_video_id: i64,
     pub edited_display: String,
     pub you_tube_video_id: String,
-    pub is_edit: bool,
 }
 
 impl PublishedFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit published video"
-        } else {
-            "New published video"
-        };
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit published video", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(PublishedEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(PublishedCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(PublishedEditPostRouteTag::new(self.id)),
                     inputs: PublishedVideoForm::render_inputs(
                         &FormCtx::form::<PublishedVideoForm>()
                             .value(PublishedVideoFormField::EditedVideoId, self.edited_video_id.to_string())
@@ -947,17 +1053,15 @@ impl PublishedFormPage {
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
-                                label: if self.is_edit { "Update" } else { "Save" },
+                                label: "Update",
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    PublishedDeletePostRouteTag::new(self.id),
-                                    "Delete",
-                                    "Permanently delete this published video?",
-                                ))
-                            }
+                            (button_delete(
+                                PublishedDeletePostRouteTag::new(self.id),
+                                "Delete",
+                                "Permanently delete this published video?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -981,7 +1085,70 @@ impl RenderAppPane for PublishedFormPage {
 
 impl RenderTemplate for PublishedFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Published form — Uniquity", chrome, main_menu("published"), self.body())
+        app_scaffold(
+            "Edit published video — Uniquity",
+            chrome,
+            main_menu("published"),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PublishedCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub edited_video_id: i64,
+    pub edited_display: String,
+    pub you_tube_video_id: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PublishedCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_video.PublishedCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PublishedCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "New published video",
+                subtitle: "Link an edited video to a YouTube publication",
+                classes: "@container",
+                attrs: form_hx_post_url::<PublishedCreateModalKey>(
+                    &modal_create_post_url(
+                        PublishedCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PublishedVideoForm::render_inputs(
+                    &FormCtx::form::<PublishedVideoForm>()
+                        .value(
+                            PublishedVideoFormField::EditedVideoId,
+                            self.edited_video_id.to_string(),
+                        )
+                        .display(PublishedVideoFormField::EditedVideoId, &self.edited_display)
+                        .value(
+                            PublishedVideoFormField::YouTubeVideoId,
+                            &self.you_tube_video_id,
+                        ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 

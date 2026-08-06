@@ -68,7 +68,7 @@ pub struct DraftInvoiceForm {
     #[form(label = "Bank account (optional)", widget = Text)]
     pub bank_account: String,
 
-    #[form(label = "Datetime", required, widget = Datetime)]
+    #[form(label = "Date", required, widget = Date)]
     pub datetime: String,
 
     #[form(

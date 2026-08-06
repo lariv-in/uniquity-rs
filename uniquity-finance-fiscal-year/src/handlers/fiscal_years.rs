@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use maud::html;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 
 use lariv_rs::{
@@ -13,7 +14,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -21,7 +25,11 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::fiscal_year::{self, Entity as FiscalYearEntity},
     forms::FiscalYearForm,
-    keys::{FiscalYearSelectModalKey, FiscalYearSelectTableKey, FiscalYearTableKey},
+    handlers::ModalNameQuery,
+    keys::{
+        FiscalYearCreateModalKey, FiscalYearSelectModalKey, FiscalYearSelectTableKey,
+        FiscalYearTableKey,
+    },
     routes::{FiscalYearDetailRouteTag, FiscalYearEditGetRouteTag},
     scope::{
         apply_fiscal_year_filters, find_fiscal_year_scoped, format_fiscal_date_input,
@@ -29,7 +37,7 @@ use crate::{
     },
     state::FiscalYearState,
     templates::{
-        FiscalYearDetailPage, FiscalYearFormPage, FiscalYearListPage,
+        FiscalYearCreateModalPage, FiscalYearDetailPage, FiscalYearFormPage, FiscalYearListPage,
         FiscalYearSelectPage,
     },
 };
@@ -138,26 +146,30 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to("/finance-fiscal-years/").into_response();
+        return html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let page = FiscalYearFormPage {
-        id: 0,
+    let page = FiscalYearCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         code: String::new(),
         name: String::new(),
         start: String::new(),
         end: String::new(),
         is_active: true,
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn create_post(
     Cap(state): Cap<FiscalYearState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<FiscalYearForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -169,15 +181,31 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         deleted_at: Set(None),
-        code: Set(form.code),
-        name: Set(form.name),
+        code: Set(form.code.clone()),
+        name: Set(form.name.clone()),
         starts_at: Set(parse_fiscal_date_start(&form.start)),
         ends_at: Set(parse_fiscal_date_end(&form.end)),
         is_active: Set(form.is_active),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => Redirect::to(&FiscalYearDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance-fiscal-years/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<FiscalYearCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &FiscalYearDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = FiscalYearCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                code: form.code,
+                name: form.name,
+                start: form.start,
+                end: form.end,
+                is_active: form.is_active,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -201,7 +229,6 @@ pub async fn edit_get(
         start: format_fiscal_date_input(fy.starts_at),
         end: format_fiscal_date_input(fy.ends_at),
         is_active: fy.is_active,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

@@ -1,11 +1,42 @@
 #![recursion_limit = "512"]
 
 use lariv_rs::app::App;
-use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, otp, pwa, users};
+use lariv_rs::plugins::{dashboard, filesystem, llm_assistant, no_signup, otp, pwa, users};
 use tracing_subscriber::EnvFilter;
 
-/// Deep HList install/mount chains for this deployment overflow the default ~8MB stack.
-const STACK_SIZE: usize = 16 * 1024 * 1024;
+/// Deep HList install/mount chains for this deployment overflow the default ~8 MiB stack.
+const STACK_SIZE: usize = 64 * 1024 * 1024;
+
+/// Raise the process stack soft limit so `thread::Builder::stack_size` is not clipped by
+/// `ulimit -s` (often 8192 KiB). Without this, requesting 32–64 MiB still leaves ~8 MiB.
+#[cfg(unix)]
+fn raise_process_stack_limit(bytes: usize) {
+    use std::mem::MaybeUninit;
+
+    unsafe {
+        let mut lim = MaybeUninit::<libc::rlimit>::uninit();
+        if libc::getrlimit(libc::RLIMIT_STACK, lim.as_mut_ptr()) != 0 {
+            return;
+        }
+        let mut lim = lim.assume_init();
+        let want = bytes as libc::rlim_t;
+        lim.rlim_cur = if lim.rlim_max == libc::RLIM_INFINITY {
+            want
+        } else {
+            want.min(lim.rlim_max)
+        };
+        if libc::setrlimit(libc::RLIMIT_STACK, &lim) != 0 {
+            eprintln!(
+                "warning: could not raise stack limit to {} MiB; \
+                 try `ulimit -s unlimited` before starting the server",
+                bytes / (1024 * 1024)
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn raise_process_stack_limit(_bytes: usize) {}
 
 async fn run() -> anyhow::Result<()> {
     let app = App::new_web_app();
@@ -23,6 +54,7 @@ async fn run() -> anyhow::Result<()> {
     let app = uniquity_employees::install(app);
     let app = uniquity_video::install(app);
     let app = otp::install(app);
+    let app = no_signup::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
 
@@ -33,6 +65,8 @@ async fn run() -> anyhow::Result<()> {
 }
 
 fn main() {
+    raise_process_stack_limit(STACK_SIZE);
+
     let result = std::thread::Builder::new()
         .name("uniquity-server".into())
         .stack_size(STACK_SIZE)

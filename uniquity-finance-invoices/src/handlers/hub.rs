@@ -27,7 +27,7 @@ use crate::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     keys::InvoiceHubTableKey,
-    logic::posted_invoice_open_balance,
+    logic::{format_invoice_date, posted_invoice_open_balance},
     scope::{
         list_fiscal_year_options, parse_environment_from_cookie_header, parse_filter_datetime,
         resolve_list_fiscal_year, selected_fiscal_year_id_for_ui, sql_draft_not_posted,
@@ -103,7 +103,7 @@ async fn query_draft_rows(
             InvoiceRow {
                 id: d.id,
                 number: d.number.unwrap_or_else(|| "—".to_string()),
-                datetime: lariv_rs::datetime::format_datetime_short(d.datetime, tz),
+                datetime: format_invoice_date(d.datetime, tz),
                 status: "Draft".to_string(),
                 detail_href: format!("/finance-invoices/i/{}/", d.id),
                 customer_name,
@@ -166,7 +166,7 @@ async fn query_posted_rows(
         rows.push(InvoiceRow {
             id: p.id,
             number: p.number,
-            datetime: lariv_rs::datetime::format_datetime_short(p.datetime, tz),
+            datetime: format_invoice_date(p.datetime, tz),
             status: "Posted".to_string(),
             detail_href: format!("/finance-invoices/posted/{}/", p.id),
             customer_name: customers
@@ -214,7 +214,7 @@ async fn query_cancelled_rows(
             InvoiceRow {
                 id: c.id,
                 number: c.number,
-                datetime: lariv_rs::datetime::format_datetime_short(c.datetime, tz),
+                datetime: format_invoice_date(c.datetime, tz),
                 status: "Cancelled".to_string(),
                 detail_href: format!("/finance-invoices/cancelled/{}/", c.id),
                 customer_name,

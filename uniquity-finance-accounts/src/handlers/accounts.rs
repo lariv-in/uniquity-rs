@@ -16,7 +16,10 @@ use lariv_rs::{
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
-    web::{Htmx, QueryI64, QueryPage, QueryStr, query_bool, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, QueryI64, QueryPage, QueryStr, query_bool, html_built_page_or_app_layout,
+        html_built_page_with_slots, respond_create_modal_done,
+    },
 };
 
 use uniquity_common::require_superuser;
@@ -29,6 +32,8 @@ use crate::{
     balance_type::BalanceType,
     entities::account::{self, Entity as AccountEntity},
     forms::{AccountForm, AccountFormField},
+    handlers::ModalNameQuery,
+    keys::AccountCreateModalKey,
     keys::AccountJournalEntriesTableKey,
     keys::AccountSelectModalKey,
     keys::AccountSelectTableKey,
@@ -43,7 +48,7 @@ use crate::{
     source_doc_label::source_doc_type_label,
     state::AccountsState,
     templates::{
-        AccountDetailPage, AccountFormPage, AccountListPage,
+        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountListPage,
         AccountRow, AccountSelectPage, JournalEntryRow,
     },
 };
@@ -320,21 +325,51 @@ pub async fn create_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    Query(q): Query<AccountCreateQuery>,
-) -> Response {
+    Query(q): Query<ModalNameQuery>,
+    Query(create_q): Query<AccountCreateQuery>,
+) -> maud::Markup {
     if !require_superuser(&ctx) {
-        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
+        return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
-    let mut page = AccountFormPage::new(false);
-    if let Some(pid) = q.parent_id.positive() {
+    let mut page = AccountCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        name: String::new(),
+        code: String::new(),
+        is_group: false,
+        balance_type: String::new(),
+        parent_id: String::new(),
+        parent_display: String::new(),
+        error: String::new(),
+    };
+    if let Some(pid) = create_q.parent_id.positive() {
         if let Some(parent) = find_account_scoped(&state.db, pid, &ctx).await {
             page.parent_id = pid.to_string();
             page.parent_display = format!("{} — {}", parent.code, parent.name);
             page.balance_type = parent.balance_type.to_string();
         }
     }
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+fn account_create_modal_page_from_form(
+    form: &AccountForm,
+    form_name: String,
+    refresh_table: String,
+    parent_display: String,
+    error: String,
+) -> AccountCreateModalPage {
+    AccountCreateModalPage {
+        form_name,
+        refresh_table,
+        name: form.name.clone(),
+        code: form.code.clone(),
+        is_group: checkbox_on(&form.is_group),
+        balance_type: form.balance_type.clone(),
+        parent_id: form.parent_id.clone(),
+        parent_display,
+        error,
+    }
 }
 
 async fn save_account_from_form(
@@ -381,15 +416,40 @@ async fn save_account_from_form(
 
 pub async fn create_post(
     Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<AccountForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
     match save_account_from_form(&state.db, &form, None).await {
-        Ok(saved) => Redirect::to(&AccountDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/finance/accounts/create").into_response(),
+        Ok(saved) => respond_create_modal_done::<AccountCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &AccountDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let parent_display = if !form.parent_id.is_empty() {
+                load_account_parent_label(
+                    &state.db,
+                    parse_i64(&form.parent_id),
+                )
+                .await
+            } else {
+                String::new()
+            };
+            let page = account_create_modal_page_from_form(
+                &form,
+                q.form_name(),
+                q.refresh_table(),
+                parent_display,
+                e,
+            );
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 
@@ -408,7 +468,7 @@ pub async fn edit_get(
     };
     let parent_display = load_account_parent_label(&state.db, a.parent_id).await;
     let child_items = load_child_items_for_account(&state.db, a.id).await;
-    let page = AccountFormPage::from_model(&a, parent_display, child_items, true);
+    let page = AccountFormPage::from_model(&a, parent_display, child_items);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

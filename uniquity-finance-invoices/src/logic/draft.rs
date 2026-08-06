@@ -1,6 +1,6 @@
 //! Draft invoice create/update with line editor.
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -34,10 +34,31 @@ pub struct DraftLinePending {
     pub tax_ids: Option<Vec<i64>>,
 }
 
+/// Format an invoice datetime as a calendar date (`YYYY-MM-DD`) in `tz`.
+pub fn format_invoice_date(dt: DateTime<Utc>, tz: &str) -> String {
+    dt.with_timezone(&lariv_rs::datetime::parse_timezone(tz))
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+/// Parse an invoice date/datetime string into UTC.
+///
+/// Prefers HTML `type="date"` (`YYYY-MM-DD`) as start-of-day in `tz`, then
+/// `datetime-local`, then a few legacy formats.
 pub fn parse_invoice_datetime(s: &str, tz: &str) -> DateTime<Utc> {
     let s = s.trim();
     if s.is_empty() {
         return Utc::now();
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        if let Some(naive) = date.and_hms_opt(0, 0, 0) {
+            if let Some(dt) = lariv_rs::datetime::parse_timezone(tz)
+                .from_local_datetime(&naive)
+                .single()
+            {
+                return dt.with_timezone(&Utc);
+            }
+        }
     }
     lariv_rs::datetime::parse_datetime_local_input(s, tz).unwrap_or_else(|| {
         NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")

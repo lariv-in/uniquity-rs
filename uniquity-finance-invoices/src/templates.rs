@@ -1,22 +1,26 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use uniquity_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_rs::{
     components::{
-        ButtonSubmit, FieldText, FieldTitle, FormOpts, ManyToManyItem,
+        ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts, ManyToManyItem,
         ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonCreate, TableColumnHeader, TablePagination, TableRow,
-        button_delete, button_download_route, button_link, button_submit, container_column, container_row, data_table_list, detail,
-        detail_header, field_link, field_text, field_title, form, form_hx_post_main, label_inline, pagination_pages,
-        row_attr_navigate, row_attr_select, table_button_create, table_pagination,
-        ButtonDeletePost, button_delete_post_route, ButtonLink, DetailHeader, FieldLink,
+        SwapKey, TableColumnHeader, TablePagination, TableRow,
+        button_delete, button_download_route, button_modal_form, button_submit,
+        container_column, container_row, data_table_list, data_table_list_refresh, detail,
+        detail_header, field_link, field_text, field_title, form, form_hx_post_main, form_hx_post_url,
+        label_inline, modal_keyed, pagination_pages,
+        HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
+        row_attr_navigate, row_attr_select, table_pagination,
+        ButtonDeletePost, button_delete_post_route, DetailHeader, FieldLink,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    web::modal_create_post_url,
 };
 
 use uniquity_finance_accounts::accounting_detail_menu::{
@@ -38,22 +42,23 @@ use super::forms::{
     PaymentPreferencesForm, PaymentPreferencesFormField, PaymentTermForm, PaymentTermFormField,
 };
 use super::keys::{
-    InvoiceHubTableKey, PaymentBatchTableKey, PaymentTableKey, PaymentTermSelectModalKey,
+    DraftInvoiceCreateModalKey, InvoiceHubTableKey, PaymentBatchCreateModalKey, PaymentBatchTableKey,
+    PaymentCreateModalKey, PaymentTableKey, PaymentTermCreateModalKey, PaymentTermSelectModalKey,
     PaymentTermSelectTableKey, PaymentTermTableKey, PostedInvoiceSelectModalKey,
     PostedInvoiceSelectTableKey,
 };
 use super::routes::{
-    CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag, DraftInvoiceCreateGetRouteTag,
+    CancelledInvoiceDetailRouteTag, CancelledInvoiceNewDraftRouteTag, CancelledInvoicePdfRouteTag,
+    DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
     DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoiceEditGetRouteTag,
     DraftInvoicePdfRouteTag, DraftInvoicePostRouteTag,
-    InvoiceDefaultRouteTag, PaymentBatchDetailRouteTag,
-    PaymentBatchListRouteTag,
-    PaymentCreateGetRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
+    InvoiceDefaultRouteTag, PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag,
+    PaymentCreateGetRouteTag, PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
     PaidInvoiceDetailRouteTag, PaidInvoicePdfRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfRouteTag,
     PaymentTermCreateGetRouteTag, PaymentTermCreatePostRouteTag, PaymentTermDeletePostRouteTag,
     PaymentTermDetailRouteTag, PaymentTermEditGetRouteTag, PaymentTermEditPostRouteTag,
-    PaymentTermListRouteTag, PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
+    PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
     PostedInvoicePdfRouteTag,
 };
 
@@ -68,19 +73,21 @@ lariv_rs::define_register_items! {
     items: [
         InvoiceHubIdx: InvoiceHubPageTag => InvoiceHubPage,
         DraftInvoiceFormIdx: DraftInvoiceFormPageTag => DraftInvoiceFormPage,
+        DraftInvoiceCreateModalIdx: DraftInvoiceCreateModalPageTag => DraftInvoiceCreateModalPage,
         DraftInvoiceDetailIdx: DraftInvoiceDetailPageTag => DraftInvoiceDetailPage,
         PostedInvoiceDetailIdx: PostedInvoiceDetailPageTag => PostedInvoiceDetailPage,
         PaidInvoiceDetailIdx: PaidInvoiceDetailPageTag => PaidInvoiceDetailPage,
         PartiallyPaidInvoiceDetailIdx: PartiallyPaidInvoiceDetailPageTag => PartiallyPaidInvoiceDetailPage,
         CancelledInvoiceDetailIdx: CancelledInvoiceDetailPageTag => CancelledInvoiceDetailPage,
         PaymentListIdx: PaymentListPageTag => PaymentListPage,
-        PaymentFormIdx: PaymentFormPageTag => PaymentFormPage,
+        PaymentCreateModalIdx: PaymentCreateModalPageTag => PaymentCreateModalPage,
         PaymentDetailIdx: PaymentDetailPageTag => PaymentDetailPage,
-        PaymentBatchFormIdx: PaymentBatchFormPageTag => PaymentBatchFormPage,
+        PaymentBatchCreateModalIdx: PaymentBatchCreateModalPageTag => PaymentBatchCreateModalPage,
         PaymentBatchListIdx: PaymentBatchListPageTag => PaymentBatchListPage,
         PaymentBatchDetailIdx: PaymentBatchDetailPageTag => PaymentBatchDetailPage,
         PaymentTermListIdx: PaymentTermListPageTag => PaymentTermListPage,
         PaymentTermFormIdx: PaymentTermFormPageTag => PaymentTermFormPage,
+        PaymentTermCreateModalIdx: PaymentTermCreateModalPageTag => PaymentTermCreateModalPage,
         PaymentTermDetailIdx: PaymentTermDetailPageTag => PaymentTermDetailPage,
         CancelInvoiceIdx: CancelInvoicePageTag => CancelInvoicePage,
         InvoicePreferencesIdx: InvoicePreferencesPageTag => InvoicePreferencesPage,
@@ -143,8 +150,6 @@ fn draft_invoice_detail_menu(id: i64, number: &str, active: &str, can_edit: bool
     }
     detail_sidebar_menu(
         format!("Invoice: {label}"),
-        "Back to Drafts",
-        tab_href("drafts"),
         &nav,
         None,
         html! {},
@@ -159,8 +164,6 @@ fn posted_invoice_detail_menu(id: i64, number: &str) -> Markup {
     };
     detail_sidebar_menu(
         format!("Posted invoice: {label}"),
-        "Back to Posted",
-        tab_href("posted"),
         &[DetailMenuNavItem {
             title: "Posted Invoice Detail",
             url: PostedInvoiceDetailRouteTag::new(id).url(),
@@ -179,8 +182,6 @@ fn cancelled_invoice_detail_menu(id: i64, number: &str) -> Markup {
     };
     detail_sidebar_menu(
         format!("Cancelled invoice: {label}"),
-        "Back to Cancelled",
-        tab_href("cancelled"),
         &[DetailMenuNavItem {
             title: "Cancelled Invoice Detail",
             url: CancelledInvoiceDetailRouteTag::new(id).url(),
@@ -199,8 +200,6 @@ fn paid_invoice_detail_menu(id: i64, number: &str) -> Markup {
     };
     detail_sidebar_menu(
         format!("Paid invoice: {label}"),
-        "Back to Paid",
-        tab_href("paid"),
         &[DetailMenuNavItem {
             title: "Paid Invoice Detail",
             url: PaidInvoiceDetailRouteTag::new(id).url(),
@@ -219,8 +218,6 @@ fn partially_paid_invoice_detail_menu(id: i64, number: &str) -> Markup {
     };
     detail_sidebar_menu(
         format!("Partially paid invoice: {label}"),
-        "Back to Partially paid",
-        tab_href("partial"),
         &[DetailMenuNavItem {
             title: "Partially Paid Invoice Detail",
             url: PartiallyPaidInvoiceDetailRouteTag::new(id).url(),
@@ -234,8 +231,6 @@ fn partially_paid_invoice_detail_menu(id: i64, number: &str) -> Markup {
 fn payment_detail_menu(id: i64) -> Markup {
     detail_sidebar_menu(
         format!("Payment #{id}"),
-        "Back to Payments",
-        PaymentListRouteTag.url(),
         &[DetailMenuNavItem {
             title: "Payment Detail",
             url: PaymentDetailRouteTag::new(id).url(),
@@ -249,24 +244,11 @@ fn payment_detail_menu(id: i64) -> Markup {
 fn payment_batch_detail_menu(id: i64) -> Markup {
     detail_sidebar_menu(
         format!("Batch #{id}"),
-        "Back to Batches",
-        PaymentBatchListRouteTag.url(),
         &[DetailMenuNavItem {
             title: "Batch Detail",
             url: PaymentBatchDetailRouteTag::new(id).url(),
             active: true,
         }],
-        None,
-        html! {},
-    )
-}
-
-fn payment_batch_form_menu() -> Markup {
-    detail_sidebar_menu(
-        "Batch payment".to_string(),
-        "Back to Batches",
-        PaymentBatchListRouteTag.url(),
-        &[],
         None,
         html! {},
     )
@@ -297,8 +279,6 @@ fn payment_term_detail_menu(id: i64, summary: &str, active: &str, can_edit: bool
     }
     detail_sidebar_menu(
         format!("Payment term: {label}"),
-        "Back to Payment Terms",
-        PaymentTermListRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -439,20 +419,46 @@ impl InvoiceHubPage {
         );
 
         let draft_create = if self.can_edit && self.tab == "drafts" {
-            table_button_create(TableButtonCreate {
+            button_modal_form(ButtonModalForm {
+                name: "p_uniquity_finance_invoices.DraftInvoiceCreateForm",
                 href: &DraftInvoiceCreateGetRouteTag.url(),
+                form_post_url: &DraftInvoiceCreatePostRouteTag.path(),
+                modal_uid: DraftInvoiceCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             })
         } else {
             html! {}
         };
 
-        let table = data_table_list::<InvoiceHubTableKey>(
+        let pay_selected = if show_select {
+            html! {
+                div class="fk-modal-host" {
+                    (PreEscaped(format!(
+                        r#"<button type="button" class="btn btn-primary btn-sm" x-bind:hx-get="paySelectedHref()" x-bind:class="selectedIds().length >= 2 ? '' : 'btn-disabled pointer-events-none opacity-50'" hx-target="{}" hx-swap="{}" hx-push-url="false">Pay selected</button>"#,
+                        HTMX_TARGET_BODY_MODAL,
+                        HTMX_SWAP_BODY_MODAL,
+                    )))
+                }
+            }
+        } else {
+            html! {}
+        };
+
+        // Keep create inside the table so refresh id resolves and hx-swap is not lost.
+        let actions = html! {
+            (draft_create)
+            (pay_selected)
+        };
+
+        let table = data_table_list_refresh::<InvoiceHubTableKey>(
             "Invoices",
-            html! {},
+            actions,
             &headers,
             &rows,
-            pagination.clone(),
+            pagination,
+            &self.path_and_query,
         );
 
         if show_select {
@@ -474,32 +480,11 @@ impl InvoiceHubPage {
                     }
                 }"#
                 {
-                    div class="flex flex-wrap items-center gap-2 mb-2" {
-                        (draft_create)
-                        a
-                            class="btn btn-primary btn-sm"
-                            x-bind:href="paySelectedHref()"
-                            x-bind:class="selectedIds().length >= 2 ? '' : 'btn-disabled pointer-events-none opacity-50'"
-                        {
-                            "Pay selected"
-                        }
-                    }
                     (table)
                 }
             }
         } else {
-            let actions = if self.can_edit && self.tab == "drafts" {
-                draft_create
-            } else {
-                html! {}
-            };
-            data_table_list::<InvoiceHubTableKey>(
-                "Invoices",
-                actions,
-                &headers,
-                &rows,
-                pagination,
-            )
+            table
         }
     }
 
@@ -522,7 +507,7 @@ impl InvoiceHubPage {
 
 impl RenderAppPane for InvoiceHubPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -531,10 +516,16 @@ impl RenderAppPane for InvoiceHubPage {
 
 impl RenderTemplate for InvoiceHubPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Finance Invoices — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Finance Invoices — Uniquity",
+            chrome,
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
+/// Edit draft invoice form (full page). Create uses [`DraftInvoiceCreateModalPage`].
 #[derive(Generic)]
 pub struct DraftInvoiceFormPage {
     pub id: i64,
@@ -592,7 +583,9 @@ impl DraftInvoiceFormPage {
         if self.id > 0 {
             draft_invoice_detail_menu(self.id, &self.form.number, "edit", self.can_edit)
         } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
+            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar(
+                &InvoiceDefaultRouteTag.url(),
+            )
         }
     }
 }
@@ -609,6 +602,72 @@ impl RenderAppPane for DraftInvoiceFormPage {
 impl RenderTemplate for DraftInvoiceFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         app_scaffold_with_sidebar(&self.title, chrome, self.sidebar(), self.body())
+    }
+}
+
+/// Create draft invoice form. Edit uses [`DraftInvoiceFormPage`].
+#[derive(Generic)]
+pub struct DraftInvoiceCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub form: DraftInvoiceForm,
+    pub customer_display: String,
+    pub payment_term_display: String,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub invoice_lines_preview: String,
+    pub error: String,
+}
+
+impl RenderTemplate for DraftInvoiceCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_invoices.DraftInvoiceCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let x_data = DraftInvoiceForm::alpine_x_data(&self.form.payment_term_mode);
+        modal_keyed::<DraftInvoiceCreateModalKey>(
+            "!max-w-6xl w-full",
+            form(FormOpts {
+                title: "Create draft invoice",
+                subtitle: "Create a new draft invoice",
+                classes: "@container",
+                attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(
+                    &modal_create_post_url(
+                        DraftInvoiceCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: DraftInvoiceForm::render_inputs(&FormCtx::form::<DraftInvoiceForm>()
+                    .x_data(&x_data)
+                    .value(DraftInvoiceFormField::Number, &self.form.number)
+                    .value(DraftInvoiceFormField::Reference, &self.form.reference)
+                    .value(DraftInvoiceFormField::PaymentReference, &self.form.payment_reference)
+                    .value(DraftInvoiceFormField::BankAccount, &self.form.bank_account)
+                    .value(DraftInvoiceFormField::Datetime, &self.form.datetime)
+                    .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
+                    .value(DraftInvoiceFormField::PaymentTermMode, &self.form.payment_term_mode)
+                    .value(DraftInvoiceFormField::PaymentTermId, &self.form.payment_term_id.to_string())
+                    .value(DraftInvoiceFormField::PaymentDueDate, &self.form.payment_due_date)
+                    .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
+                    .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
+                    .display(DraftInvoiceFormField::PaymentTermId, &self.payment_term_display)
+                    .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
+                    .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -657,7 +716,7 @@ impl DraftInvoiceDetailPage {
                     (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
                     (label_inline("Payment term", field_text(FieldText { value: &self.payment_term_summary, classes: "" })))
                     (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -713,9 +772,12 @@ impl PostedInvoiceDetailPage {
         let actions = html! {
             (button_download_route(PostedInvoicePdfRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_pay {
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_invoices.PaymentCreateForm",
                     label: "Pay",
                     href: &pay_href,
+                    form_post_url: &PaymentCreateGetRouteTag.path(),
+                    modal_uid: PaymentCreateModalKey::ID,
                     classes: "btn-primary",
                     ..Default::default()
                 }))
@@ -734,7 +796,7 @@ impl PostedInvoiceDetailPage {
                     (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
                     (label_inline("Payment term", field_text(FieldText { value: &self.payment_term_summary, classes: "" })))
                     (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -828,9 +890,12 @@ fn settlement_detail_body(
     let actions = html! {
         (button_download_route(pdf_route, "PDF", "btn-outline"))
         @if can_pay {
-            (button_link(ButtonLink {
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_finance_invoices.PaymentCreateForm",
                 label: "Pay",
                 href: &pay_href,
+                form_post_url: &PaymentCreateGetRouteTag.path(),
+                modal_uid: PaymentCreateModalKey::ID,
                 classes: "btn-primary",
                 ..Default::default()
             }))
@@ -1012,7 +1077,7 @@ impl CancelledInvoiceDetailPage {
                     (label_inline("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
                     (label_inline("Payment reference", field_text(FieldText { value: &self.payment_reference, classes: "" })))
                     (label_inline("Bank account", field_text(FieldText { value: &self.bank_account, classes: "" })))
-                    (label_inline("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label_inline("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
                     (label_inline("Customer", field_text(FieldText { value: &self.customer_name, classes: "" })))
                     (label_inline("Payment term", field_text(FieldText { value: &self.payment_term_summary, classes: "" })))
                     (label_inline("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -1111,14 +1176,26 @@ impl PaymentListPage {
             self.payments.num_pages,
         );
         let actions = if self.can_edit {
-            table_button_create(TableButtonCreate {
+            button_modal_form(ButtonModalForm {
+                name: "p_uniquity_finance_invoices.PaymentCreateForm",
                 href: &PaymentCreateGetRouteTag.url(),
+                form_post_url: &PaymentCreateGetRouteTag.path(),
+                modal_uid: PaymentCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             })
         } else {
             html! {}
         };
-        data_table_list::<PaymentTableKey>("Payments", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<PaymentTableKey>(
+            "Payments",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 
     fn body(&self) -> Markup {
@@ -1128,7 +1205,7 @@ impl PaymentListPage {
 
 impl RenderAppPane for PaymentListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -1137,50 +1214,70 @@ impl RenderAppPane for PaymentListPage {
 
 impl RenderTemplate for PaymentListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payments", chrome, self.body())
+        app_scaffold("Payments", chrome, self.body(), &self.path_and_query)
     }
 }
 
 #[derive(Generic)]
-pub struct PaymentFormPage {
+pub struct PaymentCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub form: PaymentForm,
     pub posted_invoice_display: String,
     pub account_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub can_edit: bool,
+    pub error: String,
 }
 
-impl PaymentFormPage {
-    fn body(&self) -> Markup {
-        html! {
-            (field_title(FieldTitle { value: "Record payment", classes: "" }))
-            form method="post" action="/finance-invoices/payments/create/" {
-                (PaymentForm::render_inputs(&FormCtx::form::<PaymentForm>()
-                    .value(PaymentFormField::PostedInvoiceId, &self.form.posted_invoice_id.to_string())
-                    .value(PaymentFormField::Amount, &self.form.amount)
-                    .value(PaymentFormField::AccountId, &self.form.account_id)
-                    .value(PaymentFormField::Datetime, &self.form.datetime)
-                    .display(PaymentFormField::PostedInvoiceId, &self.posted_invoice_display)
-                    .display(PaymentFormField::AccountId, &self.account_display)
-                    .m2m(PaymentFormField::Taxes, &self.tax_items)))
-                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-            }
-        }
-    }
-}
-
-impl RenderAppPane for PaymentFormPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
-    }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
-    }
-}
-
-impl RenderTemplate for PaymentFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Record Payment", chrome, self.body())
+impl RenderTemplate for PaymentCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_invoices.PaymentCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PaymentCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Record payment",
+                subtitle: "Create a payment against a posted invoice",
+                classes: "@container",
+                attrs: form_hx_post_url::<PaymentCreateModalKey>(
+                    &modal_create_post_url(
+                        PaymentCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PaymentForm::render_inputs(
+                    &FormCtx::form::<PaymentForm>()
+                        .value(
+                            PaymentFormField::PostedInvoiceId,
+                            &self.form.posted_invoice_id.to_string(),
+                        )
+                        .value(PaymentFormField::Amount, &self.form.amount)
+                        .value(PaymentFormField::AccountId, &self.form.account_id)
+                        .value(PaymentFormField::Datetime, &self.form.datetime)
+                        .display(
+                            PaymentFormField::PostedInvoiceId,
+                            &self.posted_invoice_display,
+                        )
+                        .display(PaymentFormField::AccountId, &self.account_display)
+                        .m2m(PaymentFormField::Taxes, &self.tax_items),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -1238,7 +1335,7 @@ impl PaymentBatchListPage {
 
 impl RenderAppPane for PaymentBatchListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -1247,7 +1344,7 @@ impl RenderAppPane for PaymentBatchListPage {
 
 impl RenderTemplate for PaymentBatchListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payment Batches", chrome, self.body())
+        app_scaffold("Payment Batches", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -1318,50 +1415,57 @@ pub struct PaymentBatchAllocationRow {
 }
 
 #[derive(Generic)]
-pub struct PaymentBatchFormPage {
+pub struct PaymentBatchCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
     pub form: PaymentBatchForm,
     pub account_display: String,
     pub batch_allocations_preview: String,
-    pub error: Option<String>,
-    pub can_edit: bool,
+    pub error: String,
 }
 
-impl PaymentBatchFormPage {
-    fn body(&self) -> Markup {
-        html! {
-            (field_title(FieldTitle { value: "Batch payment", classes: "" }))
-            @if let Some(e) = &self.error {
-                p class="text-error" { (e) }
-            }
-            form method="post" action="/finance-invoices/payments/batch/create/" {
-                (PaymentBatchForm::render_inputs(&FormCtx::form::<PaymentBatchForm>()
+impl RenderTemplate for PaymentBatchCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_invoices.PaymentBatchCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PaymentBatchCreateModalKey>(
+            "!max-w-6xl w-full",
+            form(FormOpts {
+                title: "Batch payment",
+                subtitle: "Record payments against multiple posted invoices",
+                classes: "@container",
+                attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(
+                    &modal_create_post_url(
+                        PaymentBatchCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PaymentBatchForm::render_inputs(&FormCtx::form::<PaymentBatchForm>()
                     .value(PaymentBatchFormField::Datetime, &self.form.datetime)
                     .value(PaymentBatchFormField::AccountId, &self.form.account_id)
                     .value(PaymentBatchFormField::AllocationsJson, &self.form.allocations_json)
                     .display(PaymentBatchFormField::AccountId, &self.account_display)
-                    .display(PaymentBatchFormField::AllocationsJson, &self.batch_allocations_preview)))
-                (button_submit(ButtonSubmit { label: "Record batch payment", ..Default::default() }))
-            }
-        }
-    }
-
-    fn menu(&self) -> Markup {
-        payment_batch_form_menu()
-    }
-}
-
-impl RenderAppPane for PaymentBatchFormPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
-    }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
-    }
-}
-
-impl RenderTemplate for PaymentBatchFormPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Batch Payment", chrome, self.menu(), self.body())
+                    .display(
+                        PaymentBatchFormField::AllocationsJson,
+                        &self.batch_allocations_preview,
+                    )),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Record batch payment",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -1493,19 +1597,25 @@ impl PaymentTermListPage {
             self.terms.num_pages,
         );
         let actions = if self.can_edit {
-            table_button_create(TableButtonCreate {
+            button_modal_form(ButtonModalForm {
+                name: "p_uniquity_finance_invoices.PaymentTermCreateForm",
                 href: &PaymentTermCreateGetRouteTag.url(),
+                form_post_url: &PaymentTermCreateGetRouteTag.path(),
+                modal_uid: PaymentTermCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             })
         } else {
             html! {}
         };
-        data_table_list::<PaymentTermTableKey>(
+        data_table_list_refresh::<PaymentTermTableKey>(
             "Payment Terms",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -1516,7 +1626,7 @@ impl PaymentTermListPage {
 
 impl RenderAppPane for PaymentTermListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -1525,7 +1635,7 @@ impl RenderAppPane for PaymentTermListPage {
 
 impl RenderTemplate for PaymentTermListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payment Terms", chrome, self.body())
+        app_scaffold("Payment Terms", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -1559,14 +1669,15 @@ impl RenderPickerSelect<PaymentTermSelectTableKey, PaymentTermSelectModalKey> fo
             })
             .collect();
         let actions = if self.can_edit {
-            html! {
-                (button_link(ButtonLink {
-                    href: &PaymentTermCreateGetRouteTag.url(),
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
-            }
+            button_modal_form(ButtonModalForm {
+                name: "p_uniquity_finance_invoices.PaymentTermCreateForm",
+                href: &PaymentTermCreateGetRouteTag.url(),
+                form_post_url: &PaymentTermCreateGetRouteTag.path(),
+                modal_uid: PaymentTermCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            })
         } else {
             html! {}
         };
@@ -1575,12 +1686,13 @@ impl RenderPickerSelect<PaymentTermSelectTableKey, PaymentTermSelectModalKey> fo
             self.terms.number,
             self.terms.num_pages,
         );
-        data_table_list::<PaymentTermSelectTableKey>(
+        data_table_list_refresh::<PaymentTermSelectTableKey>(
             "Select Payment Term",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -1653,12 +1765,12 @@ impl RenderTemplate for PostedInvoiceSelectPage {
     }
 }
 
+/// Edit payment term form (full page). Create uses [`PaymentTermCreateModalPage`].
 #[derive(Generic)]
 pub struct PaymentTermFormPage {
     pub id: i64,
     pub form: PaymentTermForm,
     pub summary: String,
-    pub is_edit: bool,
 }
 
 impl PaymentTermFormPage {
@@ -1670,22 +1782,13 @@ impl PaymentTermFormPage {
     }
 
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit payment term"
-        } else {
-            "Create payment term"
-        };
         let choices = Self::term_choices();
         let x_data = PaymentTermForm::alpine_x_data(&self.form.term_type);
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit payment term", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(PaymentTermEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(PaymentTermCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(PaymentTermEditPostRouteTag::new(self.id)),
                     inputs: PaymentTermForm::render_inputs(&FormCtx::form::<PaymentTermForm>()
                         .x_data(&x_data)
                         .value(PaymentTermFormField::TermType, &self.form.term_type)
@@ -1695,17 +1798,15 @@ impl PaymentTermFormPage {
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
                             (button_submit(ButtonSubmit {
-                                label: if self.is_edit { "Save" } else { "Save" },
+                                label: "Save",
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    PaymentTermDeletePostRouteTag::new(self.id),
-                                    "Delete Payment Term",
-                                    "Permanently delete this payment term?",
-                                ))
-                            }
+                            (button_delete(
+                                PaymentTermDeletePostRouteTag::new(self.id),
+                                "Delete Payment Term",
+                                "Permanently delete this payment term?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -1715,11 +1816,7 @@ impl PaymentTermFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            payment_term_detail_menu(self.id, &self.summary, "edit", true)
-        } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
-        }
+        payment_term_detail_menu(self.id, &self.summary, "edit", true)
     }
 }
 
@@ -1734,12 +1831,73 @@ impl RenderAppPane for PaymentTermFormPage {
 
 impl RenderTemplate for PaymentTermFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let title = if self.is_edit {
-            "Edit Payment Term"
+        app_scaffold_with_sidebar(
+            "Edit Payment Term",
+            chrome,
+            self.sidebar(),
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PaymentTermCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub form: PaymentTermForm,
+    pub error: String,
+}
+
+impl PaymentTermCreateModalPage {
+    fn term_choices() -> Vec<(String, String)> {
+        PaymentTermForm::term_type_choices()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+}
+
+impl RenderTemplate for PaymentTermCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_invoices.PaymentTermCreateForm"
         } else {
-            "Create Payment Term"
+            self.form_name.as_str()
         };
-        app_scaffold_with_sidebar(title, chrome, self.sidebar(), self.body())
+        let choices = Self::term_choices();
+        let x_data = PaymentTermForm::alpine_x_data(&self.form.term_type);
+        modal_keyed::<PaymentTermCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create payment term",
+                subtitle: "Define a new payment term",
+                classes: "@container",
+                attrs: form_hx_post_url::<PaymentTermCreateModalKey>(
+                    &modal_create_post_url(
+                        PaymentTermCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PaymentTermForm::render_inputs(&FormCtx::form::<PaymentTermForm>()
+                    .x_data(&x_data)
+                    .value(PaymentTermFormField::TermType, &self.form.term_type)
+                    .choices(PaymentTermFormField::TermType, &choices)
+                    .value(PaymentTermFormField::DueDatetime, &self.form.due_datetime)
+                    .value(PaymentTermFormField::Duration, &self.form.duration)),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -1862,7 +2020,7 @@ impl InvoicePreferencesPage {
 
 impl RenderAppPane for InvoicePreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&InvoiceDefaultRouteTag.url(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -1871,7 +2029,12 @@ impl RenderAppPane for InvoicePreferencesPage {
 
 impl RenderTemplate for InvoicePreferencesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Invoice Preferences", chrome, self.body())
+        app_scaffold(
+            "Invoice Preferences",
+            chrome,
+            self.body(),
+            &InvoiceDefaultRouteTag.url(),
+        )
     }
 }
 
@@ -1899,7 +2062,7 @@ impl PaymentPreferencesPage {
 
 impl RenderAppPane for PaymentPreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&PaymentListRouteTag.url(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -1908,6 +2071,11 @@ impl RenderAppPane for PaymentPreferencesPage {
 
 impl RenderTemplate for PaymentPreferencesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payment Preferences", chrome, self.body())
+        app_scaffold(
+            "Payment Preferences",
+            chrome,
+            self.body(),
+            &PaymentListRouteTag.url(),
+        )
     }
 }

@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 lariv-rs = { workspace = true }
+libc = "0.2"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

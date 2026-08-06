@@ -3,20 +3,21 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonSubmit, FieldText, FieldTitle, FormOpts,
         ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_delete, button_link,
-        button_submit, container_column, container_row, data_table_list,
-        detail, field_text, field_title, form, form_hx_get_route, form_hx_post_main,
-        label_inline, pagination_pages,
-        row_attr_navigate_route, row_attr_select,
+        TablePagination, TableRow, ButtonModalForm, button_clear, button_delete, button_modal_form,
+        button_submit, container_column, container_row, data_table_list_refresh,
+        detail, field_text, field_title, form, form_hx_get_route,
+        form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select_extra,
         table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    web::modal_create_post_url,
 };
 
 use uniquity_finance_accounts::accounting_detail_menu::{
@@ -30,11 +31,11 @@ use uniquity_finance_accounts::templates::{
 use super::forms::{
     ProductFilterForm, ProductFilterFormField, ProductForm, ProductFormField,
 };
-use super::keys::{ProductSelectModalKey, ProductSelectTableKey, ProductTableKey};
+use super::keys::{ProductCreateModalKey, ProductSelectModalKey, ProductSelectTableKey, ProductTableKey};
 use super::routes::{
     ProductCreateGetRouteTag, ProductCreatePostRouteTag, ProductDefaultRouteTag,
-    ProductDeletePostRouteTag, ProductDetailRouteTag,
-    ProductEditGetRouteTag, ProductEditPostRouteTag,
+    ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
+    ProductEditPostRouteTag, ProductFkSelectRouteTag,
 };
 
 fn product_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
@@ -54,8 +55,6 @@ fn product_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Products",
-        ProductDefaultRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -74,6 +73,7 @@ lariv_rs::define_register_items! {
         ProductListIdx: ProductListPageTag => ProductListPage,
         ProductDetailIdx: ProductDetailPageTag => ProductDetailPage,
         ProductFormIdx: ProductFormPageTag => ProductFormPage,
+        ProductCreateModalIdx: ProductCreateModalPageTag => ProductCreateModalPage,
         ProductSelectIdx: ProductSelectPageTag => ProductSelectPage,
     ]
 }
@@ -101,6 +101,30 @@ fn product_filter_form(name: &str, reference: &str) -> Markup {
         actions: html! {
             (container_row("flex gap-2", html! {
                 (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+            }))
+        },
+        ..Default::default()
+    })
+}
+
+fn product_select_filter_form(name: &str, reference: &str, target_input: &str) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
+            ProductFkSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        inputs: html! {
+            (ProductFilterForm::render_inputs(
+                &FormCtx::form::<ProductFilterForm>()
+                    .value(ProductFilterFormField::Name, name)
+                    .value(ProductFilterFormField::Reference, reference),
+            ))
+            input type="hidden" name="target_input" value=(target_input) {}
+        },
+        actions: html! {
+            (container_row("flex gap-2", html! {
+                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
                 (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
             }))
         },
@@ -187,8 +211,11 @@ impl ProductListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_products.ProductCreateForm",
                     href: &ProductCreateGetRouteTag.url(),
+                    form_post_url: &ProductCreateGetRouteTag.path(),
+                    modal_uid: ProductCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -200,12 +227,13 @@ impl ProductListPage {
             self.products.number,
             self.products.num_pages,
         );
-        data_table_list::<ProductTableKey>(
+        data_table_list_refresh::<ProductTableKey>(
             "Products",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -216,7 +244,7 @@ impl ProductListPage {
 
 impl RenderAppPane for ProductListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -225,7 +253,7 @@ impl RenderAppPane for ProductListPage {
 
 impl RenderTemplate for ProductListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Products — Uniquity", chrome, self.body())
+        app_scaffold("Products — Uniquity", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -292,27 +320,17 @@ pub struct ProductFormPage {
     pub sales_price: String,
     pub hsn_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
-    pub is_edit: bool,
     pub error: String,
 }
 
 impl ProductFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Product"
-        } else {
-            "Create Product"
-        };
         let choices = ProductForm::product_type_choices();
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Product", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(ProductEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(ProductCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(ProductEditPostRouteTag::new(self.id)),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>()
@@ -339,13 +357,11 @@ impl ProductFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    ProductDeletePostRouteTag::new(self.id),
-                                    "Delete Product",
-                                    "Permanently delete this product?",
-                                ))
-                            }
+                            (button_delete(
+                                ProductDeletePostRouteTag::new(self.id),
+                                "Delete Product",
+                                "Permanently delete this product?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -355,11 +371,7 @@ impl ProductFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            product_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
-        }
+        product_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -374,21 +386,93 @@ impl RenderAppPane for ProductFormPage {
 
 impl RenderTemplate for ProductFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Product Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Product — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct ProductCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub product_type: String,
+    pub reference: String,
+    pub remarks: String,
+    pub base_cost: String,
+    pub sales_price: String,
+    pub hsn_code: i64,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for ProductCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_products.ProductCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let choices = ProductForm::product_type_choices();
+        modal_keyed::<ProductCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Product",
+                subtitle: "Create a new product",
+                classes: "@container",
+                attrs: form_hx_post_url::<ProductCreateModalKey>(
+                    &modal_create_post_url(
+                        ProductCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: ProductForm::render_inputs(
+                    &FormCtx::form::<ProductForm>()
+                        .value(ProductFormField::Name, &self.name)
+                        .value(ProductFormField::ProductType, &self.product_type)
+                        .value(ProductFormField::Reference, &self.reference)
+                        .value(ProductFormField::Remarks, &self.remarks)
+                        .value(ProductFormField::BaseCost, &self.base_cost)
+                        .value(ProductFormField::SalesPrice, &self.sales_price)
+                        .value(ProductFormField::HsnCode, self.hsn_code.to_string())
+                        .m2m(ProductFormField::TaxIds, &self.tax_items)
+                        .choices(
+                            ProductFormField::ProductType,
+                            &choices
+                                .iter()
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                                .collect::<Vec<_>>(),
+                        ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Product",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
 #[derive(Generic)]
 pub struct ProductSelectPage {
     pub products: ObjectList<ProductRow>,
+    pub filter_name: String,
+    pub filter_reference: String,
     pub target_input: String,
     pub path_and_query: String,
+    pub can_edit: bool,
 }
 
 impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for ProductSelectPage {
     fn render_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "Reference", sort_url: None, push_url: false },
             TableColumnHeader { label: "Name", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
@@ -396,24 +480,53 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
             .items
             .iter()
             .map(|p| TableRow {
-                attrs: row_attr_select(&self.target_input, &p.id.to_string(), &p.name),
+                attrs: row_attr_select_extra(
+                    &self.target_input,
+                    &p.id.to_string(),
+                    &p.name,
+                    &[("sales_price", p.sales_price.as_str())],
+                ),
                 cells: vec![
-                    field_text(FieldText { value: &p.reference, classes: "" }),
                     field_text(FieldText { value: &p.name, classes: "" }),
                 ],
             })
             .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: product_select_filter_form(
+                    &self.filter_name,
+                    &self.filter_reference,
+                    &self.target_input,
+                ),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_products.ProductCreateForm",
+                    href: &ProductCreateGetRouteTag.url(),
+                    form_post_url: &ProductCreateGetRouteTag.path(),
+                    modal_uid: ProductCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
         let pagination = render_pagination::<ProductSelectTableKey>(
             &self.path_and_query,
             self.products.number,
             self.products.num_pages,
         );
-        data_table_list::<ProductSelectTableKey>(
+        data_table_list_refresh::<ProductSelectTableKey>(
             "Select Product",
-            html! {},
+            actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }

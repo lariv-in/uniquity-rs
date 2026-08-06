@@ -3,12 +3,13 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
         ObjectList, PaginationPage, ShellChrome, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_delete, button_link, button_submit, container_column,
-        container_row, data_table_list, detail, field_text, field_title,
-        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main,
+        button_clear, button_delete, button_modal_form, button_submit, container_column,
+        container_row, data_table_list_refresh, detail, field_text, field_title,
+        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select_multi,
         table_button_filter, table_pagination,
     },
@@ -16,6 +17,7 @@ use lariv_rs::{
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     picker::RenderPickerSelect,
+    web::modal_create_post_url,
 };
 
 use uniquity_finance_accounts::accounting_detail_menu::{
@@ -27,7 +29,7 @@ use uniquity_finance_accounts::templates::{
 };
 
 use super::forms::{TaxFilterForm, TaxFilterFormField, TaxForm, TaxFormField, tax_type_choices};
-use super::keys::{TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey};
+use super::keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey};
 use super::routes::{
     TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag,
     TaxDeletePostRouteTag, TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag,
@@ -51,8 +53,6 @@ fn tax_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup 
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Taxes",
-        TaxDefaultRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -71,6 +71,7 @@ lariv_rs::define_register_items! {
         TaxListIdx: TaxListPageTag => TaxListPage,
         TaxDetailIdx: TaxDetailPageTag => TaxDetailPage,
         TaxFormIdx: TaxFormPageTag => TaxFormPage,
+        TaxCreateModalIdx: TaxCreateModalPageTag => TaxCreateModalPage,
         TaxMultiSelectIdx: TaxMultiSelectPageTag => TaxMultiSelectPage,
     ]
 }
@@ -167,8 +168,11 @@ impl TaxListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_taxes.TaxCreateForm",
                     href: &TaxCreateGetRouteTag.url(),
+                    form_post_url: &TaxCreateGetRouteTag.path(),
+                    modal_uid: TaxCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -180,7 +184,14 @@ impl TaxListPage {
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_list::<TaxTableKey>("Taxes", actions, &headers, &rows, pagination)
+        data_table_list_refresh::<TaxTableKey>(
+            "Taxes",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
     }
 
     fn body(&self) -> Markup {
@@ -190,7 +201,7 @@ impl TaxListPage {
 
 impl RenderAppPane for TaxListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -199,7 +210,7 @@ impl RenderAppPane for TaxListPage {
 
 impl RenderTemplate for TaxListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Taxes — Uniquity", chrome, self.body())
+        app_scaffold("Taxes — Uniquity", chrome, self.body(), &self.path_and_query)
     }
 }
 
@@ -255,22 +266,16 @@ pub struct TaxFormPage {
     pub percentage: String,
     pub account_id: String,
     pub account_display: String,
-    pub is_edit: bool,
 }
 
 impl TaxFormPage {
     fn body(&self) -> Markup {
-        let title = if self.is_edit { "Edit Tax" } else { "Create Tax" };
         let choices = tax_type_choices();
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Tax", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(TaxEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(TaxCreatePostRouteTag)
-                    },
+                    attrs: form_hx_post_main(TaxEditPostRouteTag::new(self.id)),
                     inputs: TaxForm::render_inputs(
                         &FormCtx::form::<TaxForm>()
                             .value(TaxFormField::Name, &self.name)
@@ -287,13 +292,11 @@ impl TaxFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    TaxDeletePostRouteTag::new(self.id),
-                                    "Delete Tax",
-                                    "Permanently delete this tax?",
-                                ))
-                            }
+                            (button_delete(
+                                TaxDeletePostRouteTag::new(self.id),
+                                "Delete Tax",
+                                "Permanently delete this tax?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -303,11 +306,7 @@ impl TaxFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            tax_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            uniquity_finance_accounts::accounting_sidebar::accounting_sidebar()
-        }
+        tax_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -322,7 +321,65 @@ impl RenderAppPane for TaxFormPage {
 
 impl RenderTemplate for TaxFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Tax Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Tax — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct TaxCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub tax_type: String,
+    pub percentage: String,
+    pub account_id: String,
+    pub account_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for TaxCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_taxes.TaxCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let choices = tax_type_choices();
+        modal_keyed::<TaxCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Tax",
+                subtitle: "Create a new tax",
+                classes: "@container",
+                attrs: form_hx_post_url::<TaxCreateModalKey>(
+                    &modal_create_post_url(
+                        TaxCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: TaxForm::render_inputs(
+                    &FormCtx::form::<TaxForm>()
+                        .value(TaxFormField::Name, &self.name)
+                        .value(TaxFormField::TaxType, &self.tax_type)
+                        .value(TaxFormField::Percentage, &self.percentage)
+                        .value(TaxFormField::AccountId, &self.account_id)
+                        .display(TaxFormField::AccountId, &self.account_display)
+                        .choices(TaxFormField::TaxType, &choices),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Tax",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -332,6 +389,7 @@ pub struct TaxMultiSelectPage {
     pub filter_name: String,
     pub path_and_query: String,
     pub target_input: String,
+    pub can_edit: bool,
 }
 
 impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxMultiSelectPage {
@@ -359,7 +417,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ],
             })
             .collect();
-        let actions = html! {
+        let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
                     attrs: form_hx_get_picker_route::<
@@ -385,17 +443,32 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ..Default::default()
             }))
         };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_taxes.TaxCreateForm",
+                    href: &TaxCreateGetRouteTag.url(),
+                    form_post_url: &TaxCreateGetRouteTag.path(),
+                    modal_uid: TaxCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
         let pagination = render_picker_pagination::<TaxMultiSelectModalKey>(
             &self.path_and_query,
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_list::<TaxMultiSelectTableKey>(
+        data_table_list_refresh::<TaxMultiSelectTableKey>(
             "Select Taxes",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }

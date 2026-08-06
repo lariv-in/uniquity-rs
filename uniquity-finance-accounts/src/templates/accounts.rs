@@ -3,17 +3,19 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonSubmit, FieldText, FieldTitle, FormOpts,
         ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
         ManyToManyItem,
-        button_clear, button_delete, button_link, button_submit, container_column,
-        container_row, data_table_list, detail, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, label_inline,
-        row_attr_navigate_route, table_button_filter,
+        ButtonModalForm, button_clear, button_delete, button_modal_form, button_submit, container_column,
+        container_row, data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        label_inline, modal_keyed,
+        row_attr_navigate_route, table_button_filter, SwapKey,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
     template::{RenderAppPane, RenderTemplate},
+    web::modal_create_post_url,
 };
 
 use crate::{
@@ -24,7 +26,7 @@ use crate::{
         AccountFilterForm, AccountFilterFormField, AccountForm, AccountFormField, AccountFormFlag,
         AccountSelectionFilterForm, AccountSelectionFilterFormField,
     },
-    keys::{AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey, AccountTableKey},
+    keys::{AccountCreateModalKey, AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey, AccountTableKey},
     routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
         AccountDetailRouteTag, AccountEditGetRouteTag,
@@ -34,6 +36,26 @@ use crate::{
 };
 
 use super::journals::JournalEntryRow;
+
+fn account_form_inputs_with_balance_sync(balance_type: &str, inputs: Markup) -> Markup {
+    let x_data = AccountForm::balance_type_sync_x_data(balance_type);
+    let handler = AccountForm::balance_type_sync_fk_handler();
+    html! {
+        (PreEscaped(format!(
+            r#"<div x-data="{}" @fk-select.window="{}">"#,
+            html_escape_attr(&x_data),
+            html_escape_attr(&handler),
+        )))
+        (inputs)
+        (PreEscaped("</div>"))
+    }
+}
+
+fn html_escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+}
 
 use super::common::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
@@ -58,8 +80,6 @@ fn account_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
     }
     detail_sidebar_menu(
         menu_title,
-        "Back to Accounts",
-        FinanceDefaultRouteTag.url(),
         &nav,
         None,
         html! {},
@@ -186,8 +206,11 @@ impl AccountListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.AccountCreateForm",
                     href: &AccountCreateGetRouteTag.url(),
+                    form_post_url: &AccountCreateGetRouteTag.path(),
+                    modal_uid: AccountCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -199,12 +222,13 @@ impl AccountListPage {
             self.accounts.number,
             self.accounts.num_pages,
         );
-        data_table_list::<AccountTableKey>(
+        data_table_list_refresh::<AccountTableKey>(
             "Chart of Accounts",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
@@ -215,7 +239,7 @@ impl AccountListPage {
 
 impl RenderAppPane for AccountListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())
@@ -224,7 +248,12 @@ impl RenderAppPane for AccountListPage {
 
 impl RenderTemplate for AccountListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Chart of Accounts — Uniquity", chrome, self.body())
+        app_scaffold(
+            "Chart of Accounts — Uniquity",
+            chrome,
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -292,8 +321,11 @@ impl AccountDetailPage {
         let mut actions = html! {};
         if self.can_edit {
             actions = html! {
-                (button_link(ButtonLink {
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.AccountCreateForm",
                     href: &account_create_url(self.id),
+                    form_post_url: &AccountCreateGetRouteTag.path(),
+                    modal_uid: AccountCreateModalKey::ID,
                     label: "Add sub-account",
                     icon_name: Some("plus"),
                     classes: "btn-outline btn-sm",
@@ -301,12 +333,13 @@ impl AccountDetailPage {
                 }))
             };
         }
-        data_table_list::<AccountTableKey>(
+        data_table_list_refresh::<AccountTableKey>(
             "Sub-accounts",
             actions,
             &headers,
             &rows,
             html! {},
+            &self.path_and_query,
         )
     }
 
@@ -403,29 +436,14 @@ pub struct AccountFormPage {
     pub parent_id: String,
     pub parent_display: String,
     pub child_items: Vec<ManyToManyItem>,
-    pub is_edit: bool,
+    pub error: String,
 }
 
 impl AccountFormPage {
-    pub fn new(is_edit: bool) -> Self {
-        Self {
-            id: 0,
-            name: String::new(),
-            code: String::new(),
-            is_group: false,
-            balance_type: String::new(),
-            parent_id: String::new(),
-            parent_display: String::new(),
-            child_items: Vec::new(),
-            is_edit,
-        }
-    }
-
     pub fn from_model(
         a: &account::Model,
         parent_display: String,
         child_items: Vec<ManyToManyItem>,
-        is_edit: bool,
     ) -> Self {
         Self {
             id: a.id,
@@ -436,57 +454,46 @@ impl AccountFormPage {
             parent_id: a.parent_id.map(|p| p.to_string()).unwrap_or_default(),
             parent_display,
             child_items,
-            is_edit,
+            error: String::new(),
         }
     }
 
     fn body(&self) -> Markup {
-        let title = if self.is_edit {
-            "Edit Account"
-        } else {
-            "Create Account"
-        };
-        let child_picker_url = if self.is_edit {
-            format!(
-                "{}?exclude_account_id={}",
-                AccountSelectRouteTag.url(),
-                self.id
-            )
-        } else {
-            AccountSelectRouteTag.url()
-        };
+        let child_picker_url = format!(
+            "{}?exclude_account_id={}",
+            AccountSelectRouteTag.url(),
+            self.id
+        );
+        let bt_choices = crate::forms::balance_type_choices();
         html! {
             (container_column("@container", html! {
-                (field_title(FieldTitle { value: title, classes: "" }))
+                (field_title(FieldTitle { value: "Edit Account", classes: "" }))
                 (form(FormOpts {
-                    attrs: if self.is_edit {
-                        form_hx_post_main(AccountEditPostRouteTag::new(self.id))
-                    } else {
-                        form_hx_post_main(AccountCreatePostRouteTag)
-                    },
-                    inputs: AccountForm::render_inputs(
-                        &FormCtx::form::<AccountForm>()
-                            .value(AccountFormField::Name, &self.name)
-                            .value(AccountFormField::Code, &self.code)
-                            .value(AccountFormField::IsGroup, if self.is_group { "on" } else { "" })
-                            .value(AccountFormField::BalanceType, &self.balance_type)
-                            .value(AccountFormField::ParentId, &self.parent_id)
-                            .display(AccountFormField::ParentId, &self.parent_display)
-                            .url(
-                                AccountFormField::ParentId,
-                                &if self.is_edit {
-                                    format!(
+                    attrs: form_hx_post_main(AccountEditPostRouteTag::new(self.id)),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: account_form_inputs_with_balance_sync(
+                        &self.balance_type,
+                        AccountForm::render_inputs(
+                            &FormCtx::form::<AccountForm>()
+                                .value(AccountFormField::Name, &self.name)
+                                .value(AccountFormField::Code, &self.code)
+                                .value(AccountFormField::IsGroup, if self.is_group { "on" } else { "" })
+                                .value(AccountFormField::BalanceType, &self.balance_type)
+                                .choices(AccountFormField::BalanceType, &bt_choices)
+                                .value(AccountFormField::ParentId, &self.parent_id)
+                                .display(AccountFormField::ParentId, &self.parent_display)
+                                .url(
+                                    AccountFormField::ParentId,
+                                    &format!(
                                         "{}?exclude_account_id={}",
                                         AccountSelectRouteTag.url(),
                                         self.id
-                                    )
-                                } else {
-                                    AccountSelectRouteTag.url()
-                                },
-                            )
-                            .flag(AccountFormFlag::EditChildren, self.is_edit && self.is_group)
-                            .m2m(AccountFormField::ChildIds, &self.child_items)
-                            .url(AccountFormField::ChildIds, &child_picker_url),
+                                    ),
+                                )
+                                .flag(AccountFormFlag::EditChildren, self.is_group)
+                                .m2m(AccountFormField::ChildIds, &self.child_items)
+                                .url(AccountFormField::ChildIds, &child_picker_url),
+                        ),
                     ),
                     actions: html! {
                         (container_row("flex gap-2 mt-2", html! {
@@ -495,13 +502,11 @@ impl AccountFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            @if self.is_edit {
-                                (button_delete(
-                                    AccountDeletePostRouteTag::new(self.id),
-                                    "Delete Account",
-                                    "Permanently delete this account?",
-                                ))
-                            }
+                            (button_delete(
+                                AccountDeletePostRouteTag::new(self.id),
+                                "Delete Account",
+                                "Permanently delete this account?",
+                            ))
                         }))
                     },
                     ..Default::default()
@@ -511,11 +516,7 @@ impl AccountFormPage {
     }
 
     fn sidebar(&self) -> Markup {
-        if self.is_edit {
-            account_detail_menu(self.id, &self.name, "edit", true)
-        } else {
-            crate::accounting_sidebar::accounting_sidebar()
-        }
+        account_detail_menu(self.id, &self.name, "edit", true)
     }
 }
 
@@ -530,7 +531,71 @@ impl RenderAppPane for AccountFormPage {
 
 impl RenderTemplate for AccountFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Account Form — Uniquity", chrome, self.sidebar(), self.body())
+        app_scaffold_with_sidebar("Edit Account — Uniquity", chrome, self.sidebar(), self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct AccountCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub name: String,
+    pub code: String,
+    pub is_group: bool,
+    pub balance_type: String,
+    pub parent_id: String,
+    pub parent_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for AccountCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_uniquity_finance_accounts.AccountCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        let bt_choices = crate::forms::balance_type_choices();
+        modal_keyed::<AccountCreateModalKey>(
+            "",
+            form(FormOpts {
+                title: "Create Account",
+                subtitle: "Create a new account",
+                classes: "@container",
+                attrs: form_hx_post_url::<AccountCreateModalKey>(
+                    &modal_create_post_url(
+                        AccountCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                    ),
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: account_form_inputs_with_balance_sync(
+                    &self.balance_type,
+                    AccountForm::render_inputs(
+                        &FormCtx::form::<AccountForm>()
+                            .value(AccountFormField::Name, &self.name)
+                            .value(AccountFormField::Code, &self.code)
+                            .value(AccountFormField::IsGroup, if self.is_group { "on" } else { "" })
+                            .value(AccountFormField::BalanceType, &self.balance_type)
+                            .choices(AccountFormField::BalanceType, &bt_choices)
+                            .value(AccountFormField::ParentId, &self.parent_id)
+                            .display(AccountFormField::ParentId, &self.parent_display)
+                            .url(AccountFormField::ParentId, &AccountSelectRouteTag.url()),
+                    ),
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save Account",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
     }
 }
 
@@ -550,6 +615,7 @@ pub struct AccountSelectPage {
 
 impl AccountSelectPage {
     fn filter_form(&self) -> Markup {
+        let bt_choices = crate::forms::balance_type_filter_choices();
         form(FormOpts {
             attrs: form_hx_get_picker_route::<
                 AccountSelectTableKey,
@@ -562,6 +628,7 @@ impl AccountSelectPage {
                         .value(AccountSelectionFilterFormField::Name, &self.filter_name)
                         .value(AccountSelectionFilterFormField::Code, &self.filter_code)
                         .value(AccountSelectionFilterFormField::BalanceType, &self.filter_balance_type)
+                        .choices(AccountSelectionFilterFormField::BalanceType, &bt_choices)
                         .value(
                             AccountSelectionFilterFormField::ParentId,
                             if self.parent_id > 0 {
@@ -643,6 +710,7 @@ impl AccountSelectPage {
                     attrs: account_selection_row_attrs(
                         a.id,
                         a.is_group,
+                        &a.balance_type,
                         &self.target_input,
                         &display,
                         &self.path_and_query,
@@ -686,7 +754,7 @@ impl RenderPickerSelect<AccountSelectTableKey, AccountSelectModalKey> for Accoun
 
 impl RenderAppPane for AccountSelectPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(self.body())
+        layout_with_sidebar(&self.path_and_query, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         layout_main_content(self.body())

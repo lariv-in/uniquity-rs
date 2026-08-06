@@ -4,7 +4,7 @@ lariv_rs::define_plugin_routes! {
     plugin: UniquityFinanceProductsTag;
     routes: [
         get ProductDefaultRouteTag, "/finance-products", handlers::products::list, fragment(ProductTableKey);
-        get ProductCreateGetRouteTag, "/finance-products/create", handlers::products::create_get;
+        get ProductCreateGetRouteTag, "/finance-products/create", handlers::products::create_get, modal;
         post ProductCreatePostRouteTag, "/finance-products/create", handlers::products::create_post;
         get ProductDetailRouteTag, "/finance-products/p/{id}", handlers::products::detail;
         get ProductEditGetRouteTag, "/finance-products/p/{id}/edit", handlers::products::edit_get;

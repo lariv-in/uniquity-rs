@@ -8,8 +8,14 @@ pub fn app_scaffold(
     title: &str,
     chrome: &lariv_rs::components::ShellChrome,
     body: Markup,
+    current_path: &str,
 ) -> Markup {
-    app_scaffold_with_sidebar(title, chrome, accounting_sidebar::accounting_sidebar(), body)
+    app_scaffold_with_sidebar(
+        title,
+        chrome,
+        accounting_sidebar::accounting_sidebar(current_path),
+        body,
+    )
 }
 
 pub fn app_scaffold_with_sidebar(
@@ -84,8 +90,8 @@ pub fn layout_main_content(content: Markup) -> MainContentHtml {
     layout_main(content)
 }
 
-pub fn layout_with_sidebar(content: Markup) -> AppLayoutHtml {
-    layout_with_entity_sidebar(accounting_sidebar::accounting_sidebar(), content)
+pub fn layout_with_sidebar(current_path: &str, content: Markup) -> AppLayoutHtml {
+    layout_with_entity_sidebar(accounting_sidebar::accounting_sidebar(current_path), content)
 }
 
 pub fn layout_with_entity_sidebar(sidebar: Markup, content: Markup) -> AppLayoutHtml {

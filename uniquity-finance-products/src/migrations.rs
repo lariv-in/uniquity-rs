@@ -7,6 +7,7 @@ mod m00004_drop_product_input_tax_account;
 mod m00005_create_product_preferences;
 mod m00006_drop_product_gl_accounts;
 mod m00007_product_preferences_taxes;
+mod m00008_optional_product_reference;
 
 use crate::UniquityFinanceProductsTag;
 
@@ -24,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00005_create_product_preferences::Migration),
             Box::new(m00006_drop_product_gl_accounts::Migration),
             Box::new(m00007_product_preferences_taxes::Migration),
+            Box::new(m00008_optional_product_reference::Migration),
         ]
     }
 }

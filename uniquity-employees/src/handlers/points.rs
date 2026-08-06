@@ -17,7 +17,9 @@ use lariv_rs::{
         middleware::RequireAuth,
         state::AuthContext,
     },
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{
+        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+    },
     template::RenderAppPane,
 };
 
@@ -26,12 +28,14 @@ use uniquity_common::require_superuser;
 use crate::{
     entities::points_transaction,
     forms::PointsForm,
-    keys::PointsTableKey,
+    keys::{PointsCreateModalKey, PointsTableKey},
     routes::PointsDetailRouteTag,
-    scope::{PointsRow, find_points_scoped, query_points},
+    scope::{PointsRow, employee_display_name, find_points_scoped, query_points},
     state::EmployeesState,
-    templates::{PointsDetailPage, PointsFormPage, PointsListPage},
+    templates::{PointsCreateModalPage, PointsDetailPage, PointsListPage},
 };
+
+use super::ModalNameQuery;
 
 const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
 
@@ -123,22 +127,28 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/points/").into_response();
     }
-    let page = PointsFormPage {
+    let page = PointsCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         to_employee_id: 0,
         employee_display: String::new(),
         points: String::new(),
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<EmployeesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     Form(form): Form<PointsForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
@@ -146,11 +156,36 @@ pub async fn create_post(
     }
     let points = match Decimal::from_str(form.points.trim()) {
         Ok(d) => d,
-        Err(_) => return Redirect::to("/employees/points/create/").into_response(),
+        Err(_) => {
+            let page = PointsCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                to_employee_id: form.to_employee_id,
+                employee_display: employee_display_name(&state.db, form.to_employee_id).await,
+                points: form.points,
+                error: "Invalid points value".into(),
+            };
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
     };
     match create_for_employee(&state.db, &ctx, form.to_employee_id, points).await {
-        Ok(saved) => Redirect::to(&PointsDetailRouteTag::new(saved.id).url()).into_response(),
-        Err(_) => Redirect::to("/employees/points/create/").into_response(),
+        Ok(saved) => respond_create_modal_done::<PointsCreateModalKey>(
+            &htmx,
+            &q.refresh_table(),
+            &PointsDetailRouteTag::new(saved.id).url(),
+        ),
+        Err(e) => {
+            let page = PointsCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                to_employee_id: form.to_employee_id,
+                employee_display: employee_display_name(&state.db, form.to_employee_id).await,
+                points: form.points,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
     }
 }
 

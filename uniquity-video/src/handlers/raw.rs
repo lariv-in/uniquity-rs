@@ -12,30 +12,35 @@ use lariv_rs::{
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
     template::RenderAppPane,
 };
 use uniquity_employees::{
     handlers::employees::{EmployeeListQuery, EmployeeSelectQuery},
-    scope::query_employees,
+    scope::{employee_display_name, query_employees},
 };
 
 use crate::{
     entities::raw_footage::{self, Column as RawFootageColumn},
     forms::RawFootageForm,
-    keys::{RawFootageSelectTableKey, RawFootageTableKey, VideoEmployeeSelectTableKey},
+    keys::{
+        RawCreateModalKey, RawFootageSelectTableKey, RawFootageTableKey, VideoEmployeeSelectTableKey,
+    },
     routes::{
         RawDetailRouteTag, RawEditGetRouteTag,
     },
     scope::{
-        RawFootageRow, find_raw_footage, query_raw_footages, scope_raw_select, sync_raw_footage_files,
+        RawFootageRow, find_raw_footage, load_vnode_names, query_raw_footages, scope_raw_select,
+        sync_raw_footage_files,
     },
     state::VideoState,
     templates::{
-        RawDetailPage, RawFormPage, RawListPage, RawSelectPage,
+        RawCreateModalPage, RawDetailPage, RawFormPage, RawListPage, RawSelectPage,
         VideoEmployeeSelectPage,
     },
 };
+
+use super::ModalNameQuery;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RawListQuery {
@@ -59,6 +64,19 @@ fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
+}
+
+async fn raw_file_items(db: &sea_orm::DatabaseConnection, file_ids: &[i64]) -> Vec<ManyToManyItem> {
+    let names = load_vnode_names(db, file_ids).await;
+    file_ids
+        .iter()
+        .filter_map(|id| {
+            names.get(id).map(|name| ManyToManyItem {
+                key: id.to_string(),
+                value: name.clone(),
+            })
+        })
+        .collect()
 }
 
 async fn load_rows(
@@ -120,22 +138,26 @@ pub async fn detail(
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let page = RawFormPage {
-        id: 0,
+    let page = RawCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
         title: String::new(),
         assigned_to_id: 0,
         assigned_display: String::new(),
         file_items: vec![],
-        is_edit: false,
+        error: String::new(),
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_post(
     Cap(state): Cap<VideoState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(_ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<RawFootageForm>,
 ) -> Response {
     let now = Utc::now();
@@ -144,15 +166,45 @@ pub async fn create_post(
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         deleted_at: Set(None),
-        title: Set(form.title),
+        title: Set(form.title.clone()),
         assigned_to_id: Set(form.assigned_to_id),
     };
     match model.insert(&state.db).await {
         Ok(saved) => {
-            let _ = sync_raw_footage_files(&state.db, saved.id, &form.files).await;
-            Redirect::to(&RawDetailRouteTag::new(saved.id).url()).into_response()
+            if sync_raw_footage_files(&state.db, saved.id, &form.files)
+                .await
+                .is_err()
+            {
+                let page = RawCreateModalPage {
+                    form_name: q.form_name(),
+                    refresh_table: q.refresh_table(),
+                    title: form.title,
+                    assigned_to_id: form.assigned_to_id,
+                    assigned_display: employee_display_name(&state.db, form.assigned_to_id).await,
+                    file_items: raw_file_items(&state.db, &form.files).await,
+                    error: "Failed to attach files".into(),
+                };
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&_ctx))
+                    .into_response();
+            }
+            respond_create_modal_done::<RawCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &RawDetailRouteTag::new(saved.id).url(),
+            )
         }
-        Err(_) => Redirect::to("/video/raw/create/").into_response(),
+        Err(e) => {
+            let page = RawCreateModalPage {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                title: form.title,
+                assigned_to_id: form.assigned_to_id,
+                assigned_display: employee_display_name(&state.db, form.assigned_to_id).await,
+                file_items: raw_file_items(&state.db, &form.files).await,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&_ctx)).into_response()
+        }
     }
 }
 
@@ -181,7 +233,6 @@ pub async fn edit_get(
         assigned_to_id: raw.assigned_to_id,
         assigned_display: raw.assigned_to_name,
         file_items,
-        is_edit: true,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

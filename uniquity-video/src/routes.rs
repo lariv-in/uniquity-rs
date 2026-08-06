@@ -13,7 +13,7 @@ lariv_rs::define_plugin_routes! {
     routes: [
         get VideoHubRouteTag, "/video/", handlers::hub::hub;
         get RawListRouteTag, "/video/raw/", handlers::raw::list, fragment(RawFootageTableKey);
-        get RawCreateGetRouteTag, "/video/raw/create/", handlers::raw::create_get;
+        get RawCreateGetRouteTag, "/video/raw/create/", handlers::raw::create_get, modal;
         post RawCreatePostRouteTag, "/video/raw/create/", handlers::raw::create_post;
         get RawSelectRouteTag, "/video/raw/select/", handlers::raw::select, fragment(RawFootageSelectTableKey);
         get RawEmployeeSelectRouteTag, "/video/raw/select-employee/", handlers::raw::employee_select, fragment(VideoEmployeeSelectTableKey);
@@ -22,7 +22,7 @@ lariv_rs::define_plugin_routes! {
         post RawEditPostRouteTag, "/video/raw/r/{id}/edit/", handlers::raw::edit_post;
         post RawDeletePostRouteTag, "/video/raw/r/{id}/delete/", bare handlers::raw::delete_post, redirect;
         get EditedListRouteTag, "/video/edited/", handlers::edited::list, fragment(EditedVideoTableKey);
-        get EditedCreateGetRouteTag, "/video/edited/create/", handlers::edited::create_get;
+        get EditedCreateGetRouteTag, "/video/edited/create/", handlers::edited::create_get, modal;
         post EditedCreatePostRouteTag, "/video/edited/create/", handlers::edited::create_post;
         get EditedSelectRouteTag, "/video/edited/select/", handlers::edited::select, fragment(EditedVideoSelectTableKey);
         get EditedDetailRouteTag, "/video/edited/r/{id}/", handlers::edited::detail;
@@ -30,7 +30,7 @@ lariv_rs::define_plugin_routes! {
         post EditedEditPostRouteTag, "/video/edited/r/{id}/edit/", handlers::edited::edit_post;
         post EditedDeletePostRouteTag, "/video/edited/r/{id}/delete/", bare handlers::edited::delete_post, redirect;
         get PublishedListRouteTag, "/video/published/", handlers::published::list, fragment(PublishedVideoTableKey);
-        get PublishedCreateGetRouteTag, "/video/published/create/", handlers::published::create_get;
+        get PublishedCreateGetRouteTag, "/video/published/create/", handlers::published::create_get, modal;
         post PublishedCreatePostRouteTag, "/video/published/create/", handlers::published::create_post;
         get PublishedSelectRouteTag, "/video/published/select/", handlers::published::select, fragment(PublishedVideoSelectTableKey);
         get PublishedDetailRouteTag, "/video/published/r/{id}/", handlers::published::detail;
