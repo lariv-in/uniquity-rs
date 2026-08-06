@@ -28,7 +28,10 @@ use uniquity_finance_accounts::templates::{
     layout_with_sidebar, render_picker_pagination,
 };
 
-use super::forms::{TaxFilterForm, TaxFilterFormField, TaxForm, TaxFormField, tax_type_choices};
+use super::forms::{
+    TaxFilterForm, TaxFilterFormField, TaxForm, TaxFormField, tax_type_choices,
+    tax_type_filter_choices,
+};
 use super::keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey, TaxTableKey};
 use super::routes::{
     TaxCreateGetRouteTag, TaxCreatePostRouteTag, TaxDefaultRouteTag,
@@ -86,11 +89,15 @@ lariv_rs::define_register_items! {
     hook: SlotsHook;
 }
 
-fn tax_filter_form(name: &str) -> Markup {
+fn tax_filter_form(name: &str, tax_type: &str) -> Markup {
+    let type_choices = tax_type_filter_choices();
     form(FormOpts {
         attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
         inputs: TaxFilterForm::render_inputs(
-            &FormCtx::form::<TaxFilterForm>().value(TaxFilterFormField::Name, name),
+            &FormCtx::form::<TaxFilterForm>()
+                .value(TaxFilterFormField::Name, name)
+                .value(TaxFilterFormField::TaxType, tax_type)
+                .choices(TaxFilterFormField::TaxType, &type_choices),
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
@@ -133,6 +140,7 @@ pub struct TaxRow {
 pub struct TaxListPage {
     pub taxes: ObjectList<TaxRow>,
     pub filter_name: String,
+    pub filter_tax_type: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -161,7 +169,7 @@ impl TaxListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: tax_filter_form(&self.filter_name),
+                panel: tax_filter_form(&self.filter_name, &self.filter_tax_type),
                 ..Default::default()
             }))
         };
@@ -387,6 +395,7 @@ impl RenderTemplate for TaxCreateModalPage {
 pub struct TaxMultiSelectPage {
     pub taxes: ObjectList<TaxRow>,
     pub filter_name: String,
+    pub filter_tax_type: String,
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
@@ -417,6 +426,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                 ],
             })
             .collect();
+        let type_choices = tax_type_filter_choices();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
@@ -428,7 +438,9 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                     inputs: html! {
                         (TaxFilterForm::render_inputs(
                             &FormCtx::form::<TaxFilterForm>()
-                                .value(TaxFilterFormField::Name, &self.filter_name),
+                                .value(TaxFilterFormField::Name, &self.filter_name)
+                                .value(TaxFilterFormField::TaxType, &self.filter_tax_type)
+                                .choices(TaxFilterFormField::TaxType, &type_choices),
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },

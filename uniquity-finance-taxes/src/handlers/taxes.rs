@@ -43,6 +43,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 pub struct TaxListQuery {
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
+    #[serde(default, rename = "TaxType", alias = "tax_type")]
+    pub tax_type: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
 }
@@ -89,7 +91,7 @@ async fn query_taxes(
     page_size: u32,
 ) -> ObjectList<crate::templates::TaxRow> {
     let mut query = TaxEntity::find();
-    query = apply_tax_filters(query, q.name.as_deref());
+    query = apply_tax_filters(query, q.name.as_deref(), q.tax_type.as_deref());
     query = scope_taxes(query, auth);
     query = query
         .order_by_desc(tax::Column::CreatedAt)
@@ -120,6 +122,7 @@ pub async fn list(
     let page = TaxListPage {
         taxes,
         filter_name: q.name.clone().unwrap_or_default(),
+        filter_tax_type: q.tax_type.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -328,6 +331,7 @@ pub async fn multi_select(
     let page = TaxMultiSelectPage {
         taxes,
         filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_tax_type: q.filter.tax_type.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q
             .target_input

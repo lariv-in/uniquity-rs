@@ -72,10 +72,20 @@ pub fn scope_taxes(query: Select<TaxEntity>, auth: &AuthContext) -> Select<TaxEn
     query.filter(Expr::cust("1 = 0"))
 }
 
-pub fn apply_tax_filters(mut query: Select<TaxEntity>, name: Option<&str>) -> Select<TaxEntity> {
+pub fn apply_tax_filters(
+    mut query: Select<TaxEntity>,
+    name: Option<&str>,
+    tax_type: Option<&str>,
+) -> Select<TaxEntity> {
     query = query.filter(tax::Column::DeletedAt.is_null());
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(tax::Column::Name.contains(n));
+    }
+    if let Some(kind) = tax_type
+        .filter(|s| !s.is_empty())
+        .and_then(crate::entities::TaxKind::parse)
+    {
+        query = query.filter(tax::Column::TaxType.eq(kind));
     }
     query
 }
