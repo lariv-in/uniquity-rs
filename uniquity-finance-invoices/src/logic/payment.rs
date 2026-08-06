@@ -30,8 +30,8 @@ use crate::logic::preferences::{load_payment_preferences, validate_payment_prefe
 use crate::logic::tax_assoc::set_payment_taxes;
 use crate::logic::tax_calculations::{
     invoice_line_amount_breakdown, invoice_receivable_grand_total, merge_invoice_line_tax_ids,
-    payment_bank_amount, validate_payment_taxes, withholding_tax_account_id, InvoiceLinesTotals,
-    taxes_withholding,
+    payment_bank_amount, payment_withholding_base, validate_payment_taxes,
+    withholding_tax_account_id, InvoiceLinesTotals, taxes_withholding,
 };
 
 pub struct CreatePaymentInput {
@@ -60,10 +60,15 @@ async fn sum_posted_invoice_payments<C: ConnectionTrait>(
     Ok(decimal::normalize(s))
 }
 
-async fn posted_invoice_receivable_total(
+struct PostedInvoiceAmounts {
+    untaxed_subtotal: Decimal,
+    receivable_total: Decimal,
+}
+
+async fn posted_invoice_amounts(
     db: &DatabaseConnection,
     posted_id: i64,
-) -> Result<Decimal, String> {
+) -> Result<PostedInvoiceAmounts, String> {
     let _posted = posted_invoice::Entity::find_by_id(posted_id)
         .one(db)
         .await
@@ -101,11 +106,21 @@ async fn posted_invoice_receivable_total(
         totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
     }
-    Ok(invoice_receivable_grand_total(
-        &totals,
-        &header_taxes,
-        &line_tax_ids,
-    ))
+    Ok(PostedInvoiceAmounts {
+        untaxed_subtotal: totals.untaxed_subtotal,
+        receivable_total: invoice_receivable_grand_total(
+            &totals,
+            &header_taxes,
+            &line_tax_ids,
+        ),
+    })
+}
+
+async fn posted_invoice_receivable_total(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<Decimal, String> {
+    Ok(posted_invoice_amounts(db, posted_id).await?.receivable_total)
 }
 
 /// Remaining receivable after existing payments on a posted invoice.
@@ -148,12 +163,13 @@ pub async fn posted_invoice_can_accept_payment(
 }
 
 /// Validate a payment allocation against invoice state and open balance.
-/// Returns the posted invoice, invoice total, and whether this allocation fully pays it.
+/// Returns the posted invoice, receivable total, untaxed subtotal, and whether this
+/// allocation fully pays it.
 pub async fn validate_payment_allocation(
     db: &DatabaseConnection,
     posted_id: i64,
     amount: Decimal,
-) -> Result<(posted_invoice::Model, Decimal, bool), String> {
+) -> Result<(posted_invoice::Model, Decimal, Decimal, bool), String> {
     if posted_id == 0 {
         return Err("posted invoice is required".to_string());
     }
@@ -187,24 +203,30 @@ pub async fn validate_payment_allocation(
         return Err("invoice is already fully paid".to_string());
     }
 
-    let inv_total = posted_invoice_receivable_total(db, posted.id).await?;
+    let amounts = posted_invoice_amounts(db, posted.id).await?;
+    let inv_total = amounts.receivable_total;
     let applied_sum = sum_posted_invoice_payments(db, posted.id).await?;
     let total_after = decimal::dec_sum(applied_sum, amount);
     if decimal::dec_cmp(total_after, inv_total) == std::cmp::Ordering::Greater {
         return Err("payment exceeds open balance".to_string());
     }
     let is_full = decimal::dec_cmp(total_after, inv_total) == std::cmp::Ordering::Equal;
-    Ok((posted, inv_total, is_full))
+    Ok((posted, inv_total, amounts.untaxed_subtotal, is_full))
 }
 
 /// AR credit and withholding debit lines for one invoice allocation (excludes bank debit).
+///
+/// `withholding_base` is the untaxed amount the withholding percent applies to (not the
+/// GST-inclusive settlement).
 pub fn build_payment_lines_for_allocation(
     posted: &posted_invoice::Model,
     settlement: Decimal,
+    withholding_base: Decimal,
     taxes: &[tax::Model],
 ) -> Result<(Decimal, Vec<JournalLineSpec>), String> {
     let settlement = decimal::normalize(settlement);
-    let bank_amt = payment_bank_amount(settlement, taxes);
+    let withholding_base = decimal::normalize(withholding_base);
+    let bank_amt = payment_bank_amount(settlement, withholding_base, taxes);
     if bank_amt < Decimal::ZERO {
         return Err("withholding exceeds settlement amount".to_string());
     }
@@ -214,7 +236,7 @@ pub fn build_payment_lines_for_allocation(
         amount: decimal::dec_neg(settlement),
     }];
     for tax in taxes_withholding(taxes) {
-        let wh_amt = crate::logic::tax_calculations::tax_amount_for_tax(settlement, tax);
+        let wh_amt = crate::logic::tax_calculations::tax_amount_for_tax(withholding_base, tax);
         if wh_amt.is_zero() {
             continue;
         }
@@ -296,7 +318,7 @@ pub async fn create_payment(
         .await
         .map_err(|e| e.to_string())?;
 
-    let (posted, _inv_total, is_full) =
+    let (posted, inv_total, untaxed_subtotal, is_full) =
         validate_payment_allocation(db, input.posted_invoice_id, input.amount).await?;
 
     let taxes = load_taxes_by_ids(db, &input.withholding_tax_ids)
@@ -317,8 +339,10 @@ pub async fn create_payment(
         .map_err(|e| e.to_string())?;
 
     let settlement = decimal::normalize(input.amount);
+    let withholding_base =
+        payment_withholding_base(settlement, inv_total, untaxed_subtotal);
     let (bank_amt, alloc_lines) =
-        build_payment_lines_for_allocation(&posted, settlement, &taxes)?;
+        build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
 
     let mut lines = vec![JournalLineSpec {
         account_id,

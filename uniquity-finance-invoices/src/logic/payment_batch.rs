@@ -28,7 +28,7 @@ use crate::logic::payment::{
 };
 use crate::logic::preferences::{load_payment_preferences, validate_payment_preferences_for_create};
 use crate::logic::tax_assoc::set_payment_taxes;
-use crate::logic::tax_calculations::validate_payment_taxes;
+use crate::logic::tax_calculations::{payment_withholding_base, validate_payment_taxes};
 
 #[derive(Debug)]
 pub struct BatchAllocation {
@@ -181,7 +181,7 @@ pub async fn create_payment_batch(
     let mut total_settlement = Decimal::ZERO;
 
     for alloc in &input.allocations {
-        let (posted, _inv_total, is_full) =
+        let (posted, inv_total, untaxed_subtotal, is_full) =
             validate_payment_allocation(db, alloc.posted_invoice_id, alloc.amount).await?;
         let taxes = load_taxes_by_ids(db, &alloc.withholding_tax_ids)
             .await
@@ -189,8 +189,10 @@ pub async fn create_payment_batch(
         validate_payment_taxes(&taxes)?;
 
         let settlement = decimal::normalize(alloc.amount);
+        let withholding_base =
+            payment_withholding_base(settlement, inv_total, untaxed_subtotal);
         let (bank_amt, journal_lines) =
-            build_payment_lines_for_allocation(&posted, settlement, &taxes)?;
+            build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
 
         total_bank = decimal::dec_sum(total_bank, bank_amt);
         total_settlement = decimal::dec_sum(total_settlement, settlement);
@@ -365,10 +367,11 @@ mod tests {
         let posted2 = sample_posted(2, 200);
         let taxes = vec![withholding_tax(10, d("10"), 300)];
 
+        // Withholding base is untaxed (100), not GST-inclusive settlement (118).
         let (bank1, lines1) =
-            build_payment_lines_for_allocation(&posted1, d("100"), &taxes).unwrap();
+            build_payment_lines_for_allocation(&posted1, d("118"), d("100"), &taxes).unwrap();
         let (bank2, lines2) =
-            build_payment_lines_for_allocation(&posted2, d("200"), &[]).unwrap();
+            build_payment_lines_for_allocation(&posted2, d("200"), d("200"), &[]).unwrap();
 
         let mut lines = vec![JournalLineSpec {
             account_id: 50,
@@ -379,7 +382,8 @@ mod tests {
 
         let balance: Decimal = lines.iter().map(|l| l.amount).sum();
         assert!(decimal::dec_is_zero(balance));
-        assert_eq!(bank1, d("90"));
+        // 10% of untaxed 100 = 10; bank = 118 - 10 = 108
+        assert_eq!(bank1, d("108"));
         assert_eq!(bank2, d("200"));
     }
 

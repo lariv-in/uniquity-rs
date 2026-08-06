@@ -132,12 +132,46 @@ pub fn validate_withholding_tax_accounts(taxes: &[tax::Model]) -> Result<(), Str
     Ok(())
 }
 
-pub fn payment_withholding_total(settlement: Decimal, taxes: &[tax::Model]) -> Decimal {
-    tax_amount_on_base(settlement, sum_tax_percents(&taxes_withholding(taxes)))
+/// Untaxed portion of a payment settlement used as the withholding base.
+///
+/// Collection-time withholding (e.g. TDS) applies to taxable value excluding levied tax,
+/// pro-rated by `settlement / invoice_total` for partial payments.
+pub fn payment_withholding_base(
+    settlement: Decimal,
+    invoice_total: Decimal,
+    untaxed_subtotal: Decimal,
+) -> Decimal {
+    let settlement = decimal::normalize(settlement);
+    let invoice_total = decimal::normalize(invoice_total);
+    let untaxed_subtotal = decimal::normalize(untaxed_subtotal);
+    if decimal::dec_is_zero(settlement)
+        || decimal::dec_is_zero(invoice_total)
+        || decimal::dec_is_zero(untaxed_subtotal)
+    {
+        return Decimal::ZERO;
+    }
+    if decimal::dec_cmp(settlement, invoice_total) == std::cmp::Ordering::Equal {
+        return untaxed_subtotal;
+    }
+    decimal::normalize(decimal::dec_mul(untaxed_subtotal, settlement) / invoice_total)
 }
 
-pub fn payment_bank_amount(settlement: Decimal, taxes: &[tax::Model]) -> Decimal {
-    decimal::dec_sub(settlement, payment_withholding_total(settlement, taxes))
+pub fn payment_withholding_total(withholding_base: Decimal, taxes: &[tax::Model]) -> Decimal {
+    tax_amount_on_base(
+        withholding_base,
+        sum_tax_percents(&taxes_withholding(taxes)),
+    )
+}
+
+pub fn payment_bank_amount(
+    settlement: Decimal,
+    withholding_base: Decimal,
+    taxes: &[tax::Model],
+) -> Decimal {
+    decimal::dec_sub(
+        settlement,
+        payment_withholding_total(withholding_base, taxes),
+    )
 }
 
 pub fn validate_payment_taxes(taxes: &[tax::Model]) -> Result<(), String> {
@@ -155,4 +189,47 @@ pub fn validate_payment_taxes(taxes: &[tax::Model]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn payment_withholding_base_uses_untaxed_not_gross() {
+        // Full pay of 118 receivable on 100 untaxed → base 100
+        assert_eq!(
+            payment_withholding_base(d("118"), d("118"), d("100")),
+            d("100")
+        );
+        // Half pay → half untaxed
+        assert_eq!(
+            payment_withholding_base(d("59"), d("118"), d("100")),
+            d("50")
+        );
+    }
+
+    #[test]
+    fn payment_bank_amount_withholds_from_untaxed_base() {
+        let tax = tax::Model {
+            id: 1,
+            created_at: None,
+            updated_at: None,
+            deleted_at: None,
+            name: "TDS".into(),
+            percentage: d("10"),
+            tax_type: TaxKind::Withholding,
+            account_id: Some(1),
+        };
+        // 10% of 100 untaxed = 10; bank = 118 - 10
+        assert_eq!(
+            payment_bank_amount(d("118"), d("100"), &[tax]),
+            d("108")
+        );
+    }
 }

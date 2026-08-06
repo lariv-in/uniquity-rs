@@ -278,6 +278,10 @@ impl AccountDetailPage {
         self.entries_table()
     }
 
+    pub fn render_children_table(&self) -> Markup {
+        self.children_table()
+    }
+
     fn children_table(&self) -> Markup {
         let headers = [
             TableColumnHeader { label: "Code", sort_url: None, push_url: false },
@@ -326,9 +330,8 @@ impl AccountDetailPage {
                     href: &account_create_url(self.id),
                     form_post_url: &AccountCreateGetRouteTag.path(),
                     modal_uid: AccountCreateModalKey::ID,
-                    label: "Add sub-account",
                     icon_name: Some("plus"),
-                    classes: "btn-outline btn-sm",
+                    classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
@@ -611,6 +614,7 @@ pub struct AccountSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub exclude_account_id: i64,
+    pub can_edit: bool,
 }
 
 impl AccountSelectPage {
@@ -721,23 +725,39 @@ impl AccountSelectPage {
                 }
             })
             .collect();
-        let actions = html! {
+        let create_href = account_create_url(self.parent_id);
+        let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: self.filter_form(),
                 ..Default::default()
             }))
         };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (button_modal_form(ButtonModalForm {
+                    name: "p_uniquity_finance_accounts.AccountCreateForm",
+                    href: &create_href,
+                    form_post_url: &AccountCreateGetRouteTag.path(),
+                    modal_uid: AccountCreateModalKey::ID,
+                    icon_name: Some("plus"),
+                    classes: "btn-square btn-outline btn-sm",
+                    ..Default::default()
+                }))
+            };
+        }
         let pagination = render_picker_pagination::<AccountSelectModalKey>(
             &self.path_and_query,
             self.accounts.number,
             self.accounts.num_pages,
         );
-        data_table_list::<AccountSelectTableKey>(
+        data_table_list_refresh::<AccountSelectTableKey>(
             "Select Account",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 

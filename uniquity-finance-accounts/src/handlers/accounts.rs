@@ -315,6 +315,9 @@ pub async fn detail(
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
+    if htmx.targets::<AccountTableKey>() {
+        return page.render_children_table().into_response();
+    }
     if htmx.targets::<AccountJournalEntriesTableKey>() {
         return page.render_entries_table().into_response();
     }
@@ -585,6 +588,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         target_input,
         exclude_account_id: q.exclude_account_id.or_zero(),
+        can_edit: require_superuser(&ctx),
     };
     if htmx.wants_main_content() {
         return page.render_main().into();
