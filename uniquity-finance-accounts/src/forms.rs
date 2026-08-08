@@ -186,10 +186,10 @@ pub struct JournalForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
-    #[form(label = "Active", widget = Checkbox)]
+    #[form(label = "Active", widget = Checkbox, row = "flags")]
     pub is_active: String,
 
-    #[form(label = "Mutable", widget = Checkbox)]
+    #[form(label = "Mutable", widget = Checkbox, row = "flags")]
     pub is_mutable: String,
 
     #[form(
