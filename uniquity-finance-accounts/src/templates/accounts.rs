@@ -3,11 +3,11 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
         ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
         ManyToManyItem,
-        ButtonModalForm, button_clear, button_delete, button_modal_form, button_submit, container_column,
-        container_row, data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        ButtonModalForm, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
+        container_row, data_table_list_refresh, detail, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed,
         row_attr_navigate_route, table_button_filter, SwapKey,
@@ -29,8 +29,8 @@ use crate::{
     keys::{AccountCreateModalKey, AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey, AccountTableKey},
     routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
-        AccountDetailRouteTag, AccountEditGetRouteTag,
-        AccountEditPostRouteTag, AccountSelectRouteTag, FinanceDefaultRouteTag,
+        AccountDetailRouteTag, AccountEditGetRouteTag, AccountEditPostRouteTag,
+        AccountJournalEntriesRouteTag, AccountSelectRouteTag, FinanceDefaultRouteTag,
         JournalEntryDetailRouteTag,
     },
 };
@@ -58,19 +58,77 @@ fn html_escape_attr(s: &str) -> String {
 }
 
 use super::common::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar, render_pagination, render_picker_pagination,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar, layout_with_sidebar_crumbs,
+    render_pagination, render_picker_pagination,
 };
 use crate::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+
+fn accounts_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Accounts",
+        href: None,
+    }])
+}
+
+/// `ancestors` is root → … → parent (not including the current account).
+fn account_crumbs(
+    ancestors: &[(i64, String)],
+    id: i64,
+    name: &str,
+    action: Option<&str>,
+) -> Markup {
+    let list_url = FinanceDefaultRouteTag.url();
+    let detail_url = AccountDetailRouteTag::new(id).url();
+    let ancestor_urls: Vec<String> = ancestors
+        .iter()
+        .map(|(aid, _)| AccountDetailRouteTag::new(*aid).url())
+        .collect();
+    let mut items: Vec<Crumb<'_>> = Vec::with_capacity(ancestors.len() + 3);
+    items.push(Crumb {
+        label: "Accounts",
+        href: Some(&list_url),
+    });
+    for (i, (_, aname)) in ancestors.iter().enumerate() {
+        items.push(Crumb {
+            label: aname.as_str(),
+            href: Some(&ancestor_urls[i]),
+        });
+    }
+    match action {
+        None => items.push(Crumb {
+            label: name,
+            href: None,
+        }),
+        Some(act) => {
+            items.push(Crumb {
+                label: name,
+                href: Some(&detail_url),
+            });
+            items.push(Crumb {
+                label: act,
+                href: None,
+            });
+        }
+    }
+    breadcrumbs(&items)
+}
 
 fn account_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
     let menu_title = format!("Account: {name}");
     let detail_url = AccountDetailRouteTag::new(id).url();
-    let mut nav = vec![DetailMenuNavItem {
-        title: "Account Detail",
-        url: detail_url,
-        active: active == "detail",
-    }];
+    let mut nav = vec![
+        DetailMenuNavItem {
+            title: "Account Detail",
+            url: detail_url,
+            active: active == "detail",
+        },
+        DetailMenuNavItem {
+            title: "Journal Entries",
+            url: AccountJournalEntriesRouteTag::new(id).url(),
+            active: active == "journal-entries",
+        },
+    ];
     if can_edit {
         nav.push(DetailMenuNavItem {
             title: "Edit Account",
@@ -239,10 +297,10 @@ impl AccountListPage {
 
 impl RenderAppPane for AccountListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, accounts_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(accounts_list_crumbs(), self.body())
     }
 }
 
@@ -251,6 +309,7 @@ impl RenderTemplate for AccountListPage {
         app_scaffold(
             "Chart of Accounts — Uniquity",
             chrome,
+            accounts_list_crumbs(),
             self.body(),
             &self.path_and_query,
         )
@@ -266,18 +325,15 @@ pub struct AccountDetailPage {
     pub balance_type: String,
     pub parent_label: String,
     pub parent_id: i64,
+    /// Root → … → parent (excludes this account).
+    pub ancestors: Vec<(i64, String)>,
     pub balance_total: String,
     pub children: ObjectList<AccountRow>,
-    pub entries: ObjectList<JournalEntryRow>,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl AccountDetailPage {
-    pub fn render_entries_table(&self) -> Markup {
-        self.entries_table()
-    }
-
     pub fn render_children_table(&self) -> Markup {
         self.children_table()
     }
@@ -346,6 +402,72 @@ impl AccountDetailPage {
         )
     }
 
+    fn body(&self) -> Markup {
+        let kind = if self.is_group { "Group account" } else { "Leaf account" };
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (field_text(FieldText {
+                        value: &format!("Code {} · {}", self.code, kind),
+                        classes: "text-base-content/70",
+                    }))
+                    (label_inline("Balance type", field_text(FieldText { value: &self.balance_type, classes: "" })))
+                    (label_inline("Subtree balance", field_text(FieldText { value: &self.balance_total, classes: "" })))
+                    @if !self.parent_label.is_empty() {
+                        (label_inline("Parent", field_text(FieldText { value: &self.parent_label, classes: "" })))
+                    }
+                    @if self.is_group {
+                        div class="mt-6" {
+                            (self.children_table())
+                        }
+                    }
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        account_detail_menu(self.id, &self.name, "detail", self.can_edit)
+    }
+}
+
+impl RenderAppPane for AccountDetailPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_with_crumbs(
+            account_crumbs(&self.ancestors, self.id, &self.name, None),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for AccountDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, None);
+        app_scaffold_with_sidebar("Account — Uniquity", chrome, self.menu(), crumbs, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct AccountJournalEntriesPage {
+    pub id: i64,
+    pub name: String,
+    /// Root → … → parent (excludes this account).
+    pub ancestors: Vec<(i64, String)>,
+    pub entries: ObjectList<JournalEntryRow>,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl AccountJournalEntriesPage {
+    pub fn render_entries_table(&self) -> Markup {
+        self.entries_table()
+    }
+
     fn entries_table(&self) -> Markup {
         let headers = [
             TableColumnHeader { label: "ID", sort_url: None, push_url: false },
@@ -372,60 +494,63 @@ impl AccountDetailPage {
             self.entries.number,
             self.entries.num_pages,
         );
-        data_table_list::<AccountJournalEntriesTableKey>(
+        data_table_list_refresh::<AccountJournalEntriesTableKey>(
             "Journal entries",
             html! {},
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 
     fn body(&self) -> Markup {
-        let kind = if self.is_group { "Group account" } else { "Leaf account" };
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (field_text(FieldText {
-                        value: &format!("Code {} · {}", self.code, kind),
-                        classes: "text-base-content/70",
-                    }))
-                    (label_inline("Balance type", field_text(FieldText { value: &self.balance_type, classes: "" })))
-                    (label_inline("Subtree balance", field_text(FieldText { value: &self.balance_total, classes: "" })))
-                    @if !self.parent_label.is_empty() {
-                        (label_inline("Parent", field_text(FieldText { value: &self.parent_label, classes: "" })))
-                    }
-                    @if self.is_group {
-                        div class="mt-6" {
-                            (self.children_table())
-                        }
-                    }
-                    div class="mt-6" {
-                        (self.entries_table())
-                    }
-                }))
-            }))
-        }
+        self.entries_table()
     }
 
     fn menu(&self) -> Markup {
-        account_detail_menu(self.id, &self.name, "detail", self.can_edit)
+        account_detail_menu(self.id, &self.name, "journal-entries", self.can_edit)
     }
 }
 
-impl RenderAppPane for AccountDetailPage {
+impl RenderAppPane for AccountJournalEntriesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let crumbs = account_crumbs(
+            &self.ancestors,
+            self.id,
+            &self.name,
+            Some("Journal entries"),
+        );
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(
+            account_crumbs(
+                &self.ancestors,
+                self.id,
+                &self.name,
+                Some("Journal entries"),
+            ),
+            self.body(),
+        )
     }
 }
 
-impl RenderTemplate for AccountDetailPage {
+impl RenderTemplate for AccountJournalEntriesPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Account — Uniquity", chrome, self.menu(), self.body())
+        let crumbs = account_crumbs(
+            &self.ancestors,
+            self.id,
+            &self.name,
+            Some("Journal entries"),
+        );
+        app_scaffold_with_sidebar(
+            "Account Journal Entries — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -438,6 +563,8 @@ pub struct AccountFormPage {
     pub balance_type: String,
     pub parent_id: String,
     pub parent_display: String,
+    /// Root → … → parent (excludes this account).
+    pub ancestors: Vec<(i64, String)>,
     pub child_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -446,6 +573,7 @@ impl AccountFormPage {
     pub fn from_model(
         a: &account::Model,
         parent_display: String,
+        ancestors: Vec<(i64, String)>,
         child_items: Vec<ManyToManyItem>,
     ) -> Self {
         Self {
@@ -456,6 +584,7 @@ impl AccountFormPage {
             balance_type: a.balance_type.to_string(),
             parent_id: a.parent_id.map(|p| p.to_string()).unwrap_or_default(),
             parent_display,
+            ancestors,
             child_items,
             error: String::new(),
         }
@@ -525,16 +654,27 @@ impl AccountFormPage {
 
 impl RenderAppPane for AccountFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(
+            account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for AccountFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Edit Account — Uniquity", chrome, self.sidebar(), self.body())
+        let crumbs = account_crumbs(&self.ancestors, self.id, &self.name, Some("Edit"));
+        app_scaffold_with_sidebar(
+            "Edit Account — Uniquity",
+            chrome,
+            self.sidebar(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 

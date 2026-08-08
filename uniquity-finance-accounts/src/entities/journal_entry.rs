@@ -9,7 +9,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub datetime: DateTime<Utc>,
     pub source_doc_id: i64,
     pub journal_id: i64,

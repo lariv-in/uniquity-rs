@@ -34,7 +34,6 @@ pub async fn validate_leaf_account_balance_type(
         return Err(format!("{label} is required"));
     }
     let acct = AccountEntity::find_by_id(account_id)
-        .filter(account::Column::DeletedAt.is_null())
         .select_only()
         .column(account::Column::Id)
         .column(account::Column::BalanceType)
@@ -83,7 +82,6 @@ pub async fn validate_parent_balance_type_on_save(
         return Ok(());
     };
     let parent = AccountEntity::find_by_id(pid)
-        .filter(account::Column::DeletedAt.is_null())
         .select_only()
         .column(account::Column::Id)
         .column(account::Column::BalanceType)
@@ -134,7 +132,6 @@ pub async fn validate_balance_type_change(
     }
     let n = AccountEntity::find()
         .filter(account::Column::ParentId.eq(account_id))
-        .filter(account::Column::DeletedAt.is_null())
         .filter(account::Column::BalanceType.ne(new))
         .paginate(db, 1)
         .num_items()
@@ -162,7 +159,6 @@ pub async fn account_descendant_ids(
         out.push(cur);
         let kids: Vec<i64> = AccountEntity::find()
             .filter(account::Column::ParentId.eq(cur))
-            .filter(account::Column::DeletedAt.is_null())
             .select_only()
             .column(account::Column::Id)
             .into_tuple()
@@ -192,7 +188,6 @@ pub async fn sync_account_children(
 
     let current: Vec<i64> = AccountEntity::find()
         .filter(account::Column::ParentId.eq(parent_id))
-        .filter(account::Column::DeletedAt.is_null())
         .select_only()
         .column(account::Column::Id)
         .into_tuple()
@@ -202,7 +197,6 @@ pub async fn sync_account_children(
 
     for cid in current.iter().filter(|id| !want.contains(id)) {
         let Some(child) = AccountEntity::find_by_id(*cid)
-            .filter(account::Column::DeletedAt.is_null())
             .one(db)
             .await
             .map_err(|e| e.to_string())?
@@ -220,7 +214,6 @@ pub async fn sync_account_children(
     for cid in want.drain() {
         validate_parent_not_cycle(db, Some(cid), Some(parent_id)).await?;
         let Some(child) = AccountEntity::find_by_id(cid)
-            .filter(account::Column::DeletedAt.is_null())
             .one(db)
             .await
             .map_err(|e| e.to_string())?

@@ -266,17 +266,10 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     }
-    let Some(existing) = find_currency_scoped(&state.db, id, &ctx).await else {
+    if find_currency_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
-    };
-    let now = Utc::now();
-    let model = currency::ActiveModel {
-        id: Set(existing.id),
-        deleted_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    };
-    let _ = model.update(&state.db).await;
+    }
+    let _ = currency::Entity::delete_by_id(id).exec(&state.db).await;
     Redirect::to(&CurrencyListRouteTag.url()).into_response()
 }
 

@@ -17,7 +17,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Quer
 use tower::ServiceExt;
 use uniquity_finance_customer::entities::customer;
 use uniquity_finance_invoices::entities::{
-    draft_invoice, draft_invoice_line, DraftInvoiceEntity, DraftInvoiceLineEntity,
+    draft_invoice_line, DraftInvoiceEntity, DraftInvoiceLineEntity,
 };
 use uniquity_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use uniquity_finance_invoices::logic::{
@@ -116,7 +116,7 @@ async fn create_draft_invoice_via_http() {
     let prod = product::ActiveModel {
         name: Set("Test Product".into()),
         product_type: Set(product::ProductType::Goods),
-        reference: Set("REF-001".into()),
+        reference: Set(Some("REF-001".into())),
         base_cost: Set(Decimal::from(40)),
         sales_price: Set(Decimal::from(100)),
         hsn_code: Set(1234),
@@ -168,7 +168,6 @@ async fn create_draft_invoice_via_http() {
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
     let drafts = DraftInvoiceEntity::find()
-        .filter(draft_invoice::Column::DeletedAt.is_null())
         .all(&db)
         .await
         .expect("drafts");
@@ -177,7 +176,6 @@ async fn create_draft_invoice_via_http() {
 
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(drafts[0].id))
-        .filter(draft_invoice_line::Column::DeletedAt.is_null())
         .all(&db)
         .await
         .expect("lines");

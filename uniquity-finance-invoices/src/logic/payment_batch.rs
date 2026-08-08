@@ -140,7 +140,6 @@ pub async fn create_payment_batch(
         .collect();
     let posted_models = posted_invoice::Entity::find()
         .filter(posted_invoice::Column::Id.is_in(posted_ids.clone()))
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -299,7 +298,6 @@ mod tests {
             id,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             draft_invoice_id: 0,
             posted_at: None,
             number: format!("INV-{id}"),
@@ -323,7 +321,6 @@ mod tests {
             id,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             name: format!("WH {id}"),
             percentage: pct,
             tax_type: TaxKind::Withholding,

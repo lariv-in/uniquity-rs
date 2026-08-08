@@ -18,7 +18,6 @@ pub fn apply_product_filters(
     name: Option<&str>,
     reference: Option<&str>,
 ) -> Select<ProductEntity> {
-    query = query.filter(product::Column::DeletedAt.is_null());
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(product::Column::Name.contains(n));
     }
@@ -33,7 +32,7 @@ pub async fn find_product_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<product::Model> {
-    let query = ProductEntity::find_by_id(id).filter(product::Column::DeletedAt.is_null());
+    let query = ProductEntity::find_by_id(id);
     scope_products(query, auth).one(db).await.ok().flatten()
 }
 

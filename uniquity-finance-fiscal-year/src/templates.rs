@@ -3,10 +3,10 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, FieldCheckbox, FieldDate,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldCheckbox, FieldDate,
         FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_delete, button_modal_form,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_delete, button_modal_form,
         button_submit, container_column, container_row, data_table_list,
         data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title,
         form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
@@ -24,8 +24,8 @@ use uniquity_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use uniquity_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
 use super::forms::{
@@ -39,6 +39,44 @@ use super::routes::{
     FiscalYearDeletePostRouteTag, FiscalYearDetailRouteTag,
     FiscalYearEditGetRouteTag, FiscalYearEditPostRouteTag, FiscalYearSelectRouteTag,
 };
+
+fn fiscal_years_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Fiscal Years",
+        href: None,
+    }])
+}
+
+fn fiscal_year_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = FiscalYearDefaultRouteTag.url();
+    let detail_url = FiscalYearDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Fiscal Years",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Fiscal Years",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
 
 fn fiscal_year_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
     let menu_title = format!("Fiscal year: {name}");
@@ -216,10 +254,10 @@ impl FiscalYearListPage {
 
 impl RenderAppPane for FiscalYearListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, fiscal_years_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(fiscal_years_list_crumbs(), self.body())
     }
 }
 
@@ -228,6 +266,7 @@ impl RenderTemplate for FiscalYearListPage {
         app_scaffold(
             "Fiscal Years — Uniquity",
             chrome,
+            fiscal_years_list_crumbs(),
             self.body(),
             &self.path_and_query,
         )
@@ -270,16 +309,24 @@ impl FiscalYearDetailPage {
 
 impl RenderAppPane for FiscalYearDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let crumbs = fiscal_year_crumbs(self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(fiscal_year_crumbs(self.id, &self.name, None), self.body())
     }
 }
 
 impl RenderTemplate for FiscalYearDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Fiscal Year — Uniquity", chrome, self.menu(), self.body())
+        let crumbs = fiscal_year_crumbs(self.id, &self.name, None);
+        app_scaffold_with_sidebar(
+            "Fiscal Year — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -338,16 +385,24 @@ impl FiscalYearFormPage {
 
 impl RenderAppPane for FiscalYearFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let crumbs = fiscal_year_crumbs(self.id, &self.name, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(fiscal_year_crumbs(self.id, &self.name, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for FiscalYearFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Edit Fiscal Year — Uniquity", chrome, self.sidebar(), self.body())
+        let crumbs = fiscal_year_crumbs(self.id, &self.name, Some("Edit"));
+        app_scaffold_with_sidebar(
+            "Edit Fiscal Year — Uniquity",
+            chrome,
+            self.sidebar(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 

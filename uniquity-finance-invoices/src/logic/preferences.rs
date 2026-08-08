@@ -31,7 +31,6 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        deleted_at: None,
         account_receivable_id: None,
         account_revenue_id: None,
         account_tax_payable_id: None,
@@ -88,7 +87,6 @@ pub async fn load_payment_preferences(db: &DatabaseConnection) -> payment_prefer
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        deleted_at: None,
         payment_account_id: None,
     })
 }

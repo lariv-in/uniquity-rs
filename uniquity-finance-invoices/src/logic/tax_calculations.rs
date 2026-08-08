@@ -220,7 +220,6 @@ mod tests {
             id: 1,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             name: "TDS".into(),
             percentage: d("10"),
             tax_type: TaxKind::Withholding,

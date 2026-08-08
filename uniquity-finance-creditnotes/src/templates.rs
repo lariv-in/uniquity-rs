@@ -3,9 +3,9 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        FieldText, FieldTitle, ObjectList,
+        Crumb, FieldText, FieldTitle, ObjectList,
         PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-        TableColumnHeader, TablePagination, TableRow, container_column,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, container_column,
         data_table_list, detail, field_text, field_title,
         label_inline, pagination_pages,
         row_attr_navigate_route, table_pagination,
@@ -17,12 +17,33 @@ use lariv_rs::{
 use uniquity_finance_accounts::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
 use uniquity_finance_accounts::routes::JournalEntryDetailRouteTag;
 use uniquity_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
 use super::keys::CreditNoteTableKey;
-use super::routes::CreditNoteDetailRouteTag;
+use super::routes::{CreditNoteDefaultRouteTag, CreditNoteDetailRouteTag};
+
+fn credit_notes_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Credit Notes",
+        href: None,
+    }])
+}
+
+fn credit_note_crumbs(label: &str) -> Markup {
+    let list_url = CreditNoteDefaultRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Credit Notes",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: label,
+            href: None,
+        },
+    ])
+}
 
 fn credit_note_detail_menu(id: i64) -> Markup {
     detail_sidebar_menu(
@@ -143,10 +164,10 @@ impl CreditNoteListPage {
 
 impl RenderAppPane for CreditNoteListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, credit_notes_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(credit_notes_list_crumbs(), self.body())
     }
 }
 
@@ -155,6 +176,7 @@ impl RenderTemplate for CreditNoteListPage {
         app_scaffold(
             "Credit Notes — Uniquity",
             chrome,
+            credit_notes_list_crumbs(),
             self.body(),
             &self.path_and_query,
         )
@@ -203,15 +225,26 @@ impl CreditNoteDetailPage {
 
 impl RenderAppPane for CreditNoteDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = format!("#{}", self.id);
+        let crumbs = credit_note_crumbs(&label);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = format!("#{}", self.id);
+        layout_main_with_crumbs(credit_note_crumbs(&label), self.body())
     }
 }
 
 impl RenderTemplate for CreditNoteDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Credit Note — Uniquity", chrome, self.menu(), self.body())
+        let label = format!("#{}", self.id);
+        let crumbs = credit_note_crumbs(&label);
+        app_scaffold_with_sidebar(
+            "Credit Note — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }

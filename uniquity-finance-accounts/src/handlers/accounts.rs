@@ -42,14 +42,16 @@ use crate::{
         AccountDetailRouteTag, AccountEditPostRouteTag, FinanceDefaultRouteTag,
     },
     scope::{
-        apply_account_filters, find_account_scoped, load_account_parent_label,
-        query_journal_entries_for_account_subtree, sum_account_subtree_balance,
+        apply_account_filters, find_account_scoped, load_account_ancestors,
+        load_account_parent_label, query_journal_entries_for_account_subtree,
+        sum_account_subtree_balance,
     },
     source_doc_label::source_doc_type_label,
     state::AccountsState,
     templates::{
-        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountListPage,
-        AccountRow, AccountSelectPage, JournalEntryRow,
+        AccountCreateModalPage, AccountDetailPage, AccountFormPage,
+        AccountJournalEntriesPage, AccountListPage, AccountRow, AccountSelectPage,
+        JournalEntryRow,
     },
 };
 
@@ -218,7 +220,6 @@ async fn load_child_items_for_account(
 ) -> Vec<ManyToManyItem> {
     let children = AccountEntity::find()
         .filter(account::Column::ParentId.eq(parent_id))
-        .filter(account::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -270,12 +271,12 @@ pub async fn detail(
     htmx: Htmx,
     uri: Uri,
     Path(id): Path<i64>,
-    Query(q): Query<AccountDetailQuery>,
 ) -> Response {
     let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let parent_label = load_account_parent_label(&state.db, a.parent_id).await;
+    let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let balance_total = sum_account_subtree_balance(&state.db, a.id).await;
     let mut children = ObjectList::from_page(vec![], 1, PAGE_SIZE, 0);
     if a.is_group {
@@ -283,6 +284,39 @@ pub async fn detail(
         children = load_account_rows(&state.db, &child_q, &ctx, Some(a.id), None, false, 100).await;
         children = prepend_parent_up_row(children);
     }
+    let page = AccountDetailPage {
+        id: a.id,
+        name: a.name,
+        code: a.code,
+        is_group: a.is_group,
+        balance_type: a.balance_type.to_string(),
+        parent_label,
+        parent_id: a.parent_id.unwrap_or(0),
+        ancestors,
+        balance_total,
+        children,
+        path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
+    };
+    if htmx.targets::<AccountTableKey>() {
+        return page.render_children_table().into_response();
+    }
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn journal_entries(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Path(id): Path<i64>,
+    Query(q): Query<AccountDetailQuery>,
+) -> Response {
+    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
+    };
+    let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let page_num = q.page.get();
     let (entry_models, entry_total) =
         query_journal_entries_for_account_subtree(&state.db, &ctx, a.id, page_num, PAGE_SIZE).await;
@@ -301,23 +335,14 @@ pub async fn detail(
         });
     }
     let entries = ObjectList::from_page(entry_rows, page_num, PAGE_SIZE, entry_total);
-    let page = AccountDetailPage {
+    let page = AccountJournalEntriesPage {
         id: a.id,
         name: a.name,
-        code: a.code,
-        is_group: a.is_group,
-        balance_type: a.balance_type.to_string(),
-        parent_label,
-        parent_id: a.parent_id.unwrap_or(0),
-        balance_total,
-        children,
+        ancestors,
         entries,
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
-    if htmx.targets::<AccountTableKey>() {
-        return page.render_children_table().into_response();
-    }
     if htmx.targets::<AccountJournalEntriesTableKey>() {
         return page.render_entries_table().into_response();
     }
@@ -470,8 +495,9 @@ pub async fn edit_get(
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     };
     let parent_display = load_account_parent_label(&state.db, a.parent_id).await;
+    let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let child_items = load_child_items_for_account(&state.db, a.id).await;
-    let page = AccountFormPage::from_model(&a, parent_display, child_items);
+    let page = AccountFormPage::from_model(&a, parent_display, ancestors, child_items);
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -515,17 +541,10 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
     }
-    let Some(existing) = find_account_scoped(&state.db, id, &ctx).await else {
+    if find_account_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
-    };
-    let now = Utc::now();
-    let model = account::ActiveModel {
-        id: Set(existing.id),
-        deleted_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    };
-    let _ = model.update(&state.db).await;
+    }
+    let _ = account::Entity::delete_by_id(id).exec(&state.db).await;
     Redirect::to(&FinanceDefaultRouteTag.url()).into_response()
 }
 
@@ -550,7 +569,6 @@ pub async fn select(
     accounts = filter_excluded_account_rows(&state.db, q.exclude_account_id.get(), accounts).await;
     let grandparent_id = if let Some(pid) = parent_id {
         AccountEntity::find_by_id(pid)
-            .filter(account::Column::DeletedAt.is_null())
             .one(&state.db)
             .await
             .ok()

@@ -11,7 +11,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub customer_type: CustomerType,
     pub name: String,
     pub address_line_1: Option<String>,
@@ -92,7 +91,6 @@ mod tests {
             id: 1,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             customer_type: CustomerType::Business,
             name: "WIPRO PARI PRIVATE LIMITED".into(),
             address_line_1: Some(
@@ -128,7 +126,6 @@ mod tests {
             id: 1,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             customer_type: CustomerType::Business,
             name: "Acme".into(),
             address_line_1: Some("Line one".into()),

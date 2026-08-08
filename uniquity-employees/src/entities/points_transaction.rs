@@ -10,7 +10,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     #[sea_orm(column_type = "Decimal(Some((19, 2)))")]
     pub points: Decimal,
     pub from_user_id: i64,

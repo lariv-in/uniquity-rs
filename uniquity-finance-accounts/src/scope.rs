@@ -40,7 +40,6 @@ pub fn apply_account_filters(
     balance_type_scope: Option<&str>,
     root_only: bool,
 ) -> Select<AccountEntity> {
-    query = query.filter(account::Column::DeletedAt.is_null());
     if root_only {
         query = query.filter(account::Column::ParentId.is_null());
     }
@@ -80,7 +79,6 @@ pub fn apply_currency_filters(
     symbol: Option<&str>,
     minor_unit: Option<&str>,
 ) -> Select<CurrencyEntity> {
-    query = query.filter(currency::Column::DeletedAt.is_null());
     if let Some(c) = code.filter(|s| !s.is_empty()) {
         if let Ok(n) = c.parse::<i32>() {
             query = query.filter(currency::Column::Code.eq(n));
@@ -107,7 +105,6 @@ pub fn apply_journal_filters(
     currency_id: Option<&str>,
     journal_type: Option<&str>,
 ) -> Select<JournalEntity> {
-    query = query.filter(journal::Column::DeletedAt.is_null());
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(journal::Column::Name.contains(n));
     }
@@ -133,7 +130,7 @@ pub async fn find_account_scoped(
     auth: &AuthContext,
 ) -> Option<account::Model> {
     scope_superuser(
-        AccountEntity::find_by_id(id).filter(account::Column::DeletedAt.is_null()),
+        AccountEntity::find_by_id(id),
         auth,
     )
     .one(db)
@@ -148,7 +145,7 @@ pub async fn find_currency_scoped(
     auth: &AuthContext,
 ) -> Option<currency::Model> {
     scope_superuser(
-        CurrencyEntity::find_by_id(id).filter(currency::Column::DeletedAt.is_null()),
+        CurrencyEntity::find_by_id(id),
         auth,
     )
     .one(db)
@@ -163,7 +160,7 @@ pub async fn find_journal_scoped(
     auth: &AuthContext,
 ) -> Option<journal::Model> {
     scope_superuser(
-        JournalEntity::find_by_id(id).filter(journal::Column::DeletedAt.is_null()),
+        JournalEntity::find_by_id(id),
         auth,
     )
     .one(db)
@@ -178,7 +175,7 @@ pub async fn find_journal_entry_scoped(
     auth: &AuthContext,
 ) -> Option<journal_entry::Model> {
     scope_superuser(
-        JournalEntryEntity::find_by_id(id).filter(journal_entry::Column::DeletedAt.is_null()),
+        JournalEntryEntity::find_by_id(id),
         auth,
     )
     .one(db)
@@ -188,12 +185,11 @@ pub async fn find_journal_entry_scoped(
 }
 
 pub async fn load_journal_display_label(db: &DatabaseConnection, journal_id: Option<i64>) -> String {
-    use crate::entities::journal::{self, Entity as JournalEntity};
+    use crate::entities::journal::Entity as JournalEntity;
     let Some(jid) = journal_id.filter(|&id| id > 0) else {
         return "—".into();
     };
     JournalEntity::find_by_id(jid)
-        .filter(journal::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -207,7 +203,6 @@ pub async fn load_account_parent_label(db: &DatabaseConnection, parent_id: Optio
         return "—".into();
     };
     AccountEntity::find_by_id(pid)
-        .filter(account::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -216,9 +211,35 @@ pub async fn load_account_parent_label(db: &DatabaseConnection, parent_id: Optio
         .unwrap_or_else(|| "—".into())
 }
 
+/// Walk `parent_id` toward the root; returns `(id, name)` from root → immediate parent.
+///
+/// Does not include the current account. Cycle-guarded.
+pub async fn load_account_ancestors(
+    db: &DatabaseConnection,
+    mut parent_id: Option<i64>,
+) -> Vec<(i64, String)> {
+    let mut chain = Vec::new();
+    for _ in 0..64 {
+        let Some(pid) = parent_id.filter(|&id| id > 0) else {
+            break;
+        };
+        let Some(a) = AccountEntity::find_by_id(pid)
+            .one(db)
+            .await
+            .ok()
+            .flatten()
+        else {
+            break;
+        };
+        parent_id = a.parent_id;
+        chain.push((a.id, a.name));
+    }
+    chain.reverse();
+    chain
+}
+
 pub async fn load_currency_by_id(db: &DatabaseConnection, id: i64) -> Option<currency::Model> {
     CurrencyEntity::find_by_id(id)
-        .filter(currency::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -235,7 +256,6 @@ pub async fn load_journal_entries_for_journal(
 ) -> Vec<journal_entry::Model> {
     JournalEntryEntity::find()
         .filter(journal_entry::Column::JournalId.eq(journal_id))
-        .filter(journal_entry::Column::DeletedAt.is_null())
         .order_by_desc(journal_entry::Column::Datetime)
         .order_by_desc(journal_entry::Column::Id)
         .all(db)
@@ -245,7 +265,6 @@ pub async fn load_journal_entries_for_journal(
 
 pub async fn load_source_doc_by_id(db: &DatabaseConnection, id: i64) -> Option<source_doc::Model> {
     SourceDocEntity::find_by_id(id)
-        .filter(source_doc::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -258,7 +277,6 @@ pub async fn load_journal_entry_items(
 ) -> Vec<(journal_entry_item::Model, account::Model)> {
     let items = JournalEntryItemEntity::find()
         .filter(journal_entry_item::Column::JournalEntryId.eq(entry_id))
-        .filter(journal_entry_item::Column::DeletedAt.is_null())
         .order_by_asc(journal_entry_item::Column::Id)
         .all(db)
         .await
@@ -266,7 +284,6 @@ pub async fn load_journal_entry_items(
     let mut out = Vec::with_capacity(items.len());
     for item in items {
         if let Some(acct) = AccountEntity::find_by_id(item.account_id)
-            .filter(account::Column::DeletedAt.is_null())
             .one(db)
             .await
             .ok()
@@ -285,7 +302,6 @@ pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i6
     }
     let sum: Option<rust_decimal::Decimal> = JournalEntryItemEntity::find()
         .filter(journal_entry_item::Column::AccountId.is_in(ids))
-        .filter(journal_entry_item::Column::DeletedAt.is_null())
         .select_only()
         .column_as(
             sea_orm::sea_query::Expr::cust("COALESCE(SUM(amount), 0)"),
@@ -324,7 +340,6 @@ pub async fn query_journal_entries_for_account_subtree(
 
     let entry_ids: std::collections::HashSet<i64> = JournalEntryItemEntity::find()
         .filter(journal_entry_item::Column::AccountId.is_in(account_ids))
-        .filter(journal_entry_item::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default()
@@ -337,7 +352,6 @@ pub async fn query_journal_entries_for_account_subtree(
     }
 
     let query = scope_journal_entries(JournalEntryEntity::find(), auth)
-        .filter(journal_entry::Column::DeletedAt.is_null())
         .filter(journal_entry::Column::Id.is_in(entry_ids.into_iter().collect::<Vec<_>>()))
         .order_by_desc(journal_entry::Column::Datetime)
         .order_by_desc(journal_entry::Column::Id);
@@ -368,7 +382,6 @@ pub async fn query_journal_entries_for_select(
     page_size: u32,
 ) -> (Vec<(journal_entry::Model, String)>, u64) {
     let query = scope_journal_entries(JournalEntryEntity::find(), auth)
-        .filter(journal_entry::Column::DeletedAt.is_null())
         .order_by_desc(journal_entry::Column::Datetime)
         .order_by_desc(journal_entry::Column::Id);
     let paginator = query.paginate(db, page_size as u64);

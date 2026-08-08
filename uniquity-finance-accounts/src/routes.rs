@@ -1,11 +1,10 @@
 use super::{
     handlers,
     keys::{
-        AccountSelectModalKey, AccountSelectTableKey, AccountTableKey,
-        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
-        JournalEntrySelectModalKey, JournalEntrySelectTableKey,
-        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey,
-        SourceDocSelectTableKey,
+        AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey,
+        AccountTableKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
+        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
+        JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey, SourceDocSelectTableKey,
     },
 };
 
@@ -17,6 +16,7 @@ lariv_rs::define_plugin_routes! {
         post AccountCreatePostRouteTag, "/finance/accounts/create", handlers::accounts::create_post;
         get AccountSelectRouteTag, "/finance/accounts/select", handlers::accounts::select, fk_select(AccountSelectTableKey, AccountSelectModalKey);
         get AccountDetailRouteTag, "/finance/accounts/{id}", handlers::accounts::detail;
+        get AccountJournalEntriesRouteTag, "/finance/accounts/{id}/journal-entries", handlers::accounts::journal_entries, fragment(AccountJournalEntriesTableKey);
         get AccountEditGetRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_get;
         post AccountEditPostRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_post;
         post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, redirect;
@@ -42,6 +42,8 @@ lariv_rs::define_plugin_routes! {
         get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal;
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64;
         get JournalEntryDetailRouteTag, "/finance/journal-entries/{id}", handlers::journal_entries::detail;
+        get JournalEntryDeleteGetRouteTag, "/finance/journal-entries/{id}/delete", handlers::journal_entries::delete_get;
+        post JournalEntryDeletePostRouteTag, "/finance/journal-entries/{id}/delete", bare handlers::journal_entries::delete_post, redirect;
         get JournalEntrySelectRouteTag, "/finance/journal-entries/select", handlers::journal_entries::select, fk_select(JournalEntrySelectTableKey, JournalEntrySelectModalKey);
         get SourceDocSelectRouteTag, "/finance/source-docs/select", handlers::source_docs::select, fk_select(SourceDocSelectTableKey, SourceDocSelectModalKey);
 

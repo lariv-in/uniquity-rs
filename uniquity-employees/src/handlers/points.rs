@@ -206,7 +206,6 @@ pub async fn create_for_employee(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         points: Set(points),
         from_user_id: Set(auth.user.id),
         to_employee_id: Set(to_employee_id),

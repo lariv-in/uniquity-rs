@@ -1,12 +1,15 @@
 use maud::Markup;
 
-use lariv_rs::components::{AppLayoutHtml, LayoutSidebar, MainContentHtml, layout_main, layout_sidebar};
+use lariv_rs::components::{
+    AppLayoutHtml, LayoutMain, LayoutSidebar, MainContentHtml, layout_main, layout_sidebar,
+};
 
 use crate::accounting_sidebar;
 
 pub fn app_scaffold(
     title: &str,
     chrome: &lariv_rs::components::ShellChrome,
+    crumbs: Markup,
     body: Markup,
     current_path: &str,
 ) -> Markup {
@@ -14,6 +17,7 @@ pub fn app_scaffold(
         title,
         chrome,
         accounting_sidebar::accounting_sidebar(current_path),
+        crumbs,
         body,
     )
 }
@@ -22,6 +26,7 @@ pub fn app_scaffold_with_sidebar(
     title: &str,
     chrome: &lariv_rs::components::ShellChrome,
     sidebar: Markup,
+    crumbs: Markup,
     body: Markup,
 ) -> Markup {
     lariv_rs::components::shell_scaffold(lariv_rs::components::ShellScaffold {
@@ -30,6 +35,7 @@ pub fn app_scaffold_with_sidebar(
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
@@ -87,13 +93,44 @@ pub fn render_picker_pagination<M: lariv_rs::components::SwapKey>(
 }
 
 pub fn layout_main_content(content: Markup) -> MainContentHtml {
-    layout_main(content)
+    layout_main_with_crumbs(Markup::default(), content)
+}
+
+pub fn layout_main_with_crumbs(crumbs: Markup, content: Markup) -> MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content,
+    })
 }
 
 pub fn layout_with_sidebar(current_path: &str, content: Markup) -> AppLayoutHtml {
-    layout_with_entity_sidebar(accounting_sidebar::accounting_sidebar(current_path), content)
+    layout_with_sidebar_crumbs(current_path, Markup::default(), content)
+}
+
+pub fn layout_with_sidebar_crumbs(
+    current_path: &str,
+    crumbs: Markup,
+    content: Markup,
+) -> AppLayoutHtml {
+    layout_with_entity_sidebar_crumbs(
+        accounting_sidebar::accounting_sidebar(current_path),
+        crumbs,
+        content,
+    )
 }
 
 pub fn layout_with_entity_sidebar(sidebar: Markup, content: Markup) -> AppLayoutHtml {
-    layout_sidebar(LayoutSidebar { sidebar, content })
+    layout_with_entity_sidebar_crumbs(sidebar, Markup::default(), content)
+}
+
+pub fn layout_with_entity_sidebar_crumbs(
+    sidebar: Markup,
+    crumbs: Markup,
+    content: Markup,
+) -> AppLayoutHtml {
+    layout_sidebar(LayoutSidebar {
+        sidebar,
+        breadcrumbs: crumbs,
+        content,
+    })
 }

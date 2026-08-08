@@ -9,7 +9,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     pub payment_id: i64,
     pub posted_invoice_id: i64,
     pub prior_partially_paid_invoice_id: Option<i64>,

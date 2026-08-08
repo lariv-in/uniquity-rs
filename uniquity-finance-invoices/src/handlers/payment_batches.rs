@@ -95,7 +95,6 @@ async fn build_allocations_json(
 
     let models = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::Id.is_in(posted_ids.to_vec()))
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .filter(crate::scope::sql_posted_not_fully_paid())
         .filter(crate::scope::sql_posted_not_partially_paid())
         .filter(sql_posted_not_cancelled())
@@ -208,7 +207,6 @@ async fn enrich_allocations_json(
     let posted_ids: Vec<i64> = rows.iter().map(|r| r.posted_invoice_id).collect();
     let models = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::Id.is_in(posted_ids))
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -300,7 +298,6 @@ pub async fn list(
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PaymentBatchEntity::find()
-        .filter(payment_batch::Column::DeletedAt.is_null())
         .order_by_desc(payment_batch::Column::Datetime);
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -315,7 +312,6 @@ pub async fn list(
     } else {
         PaymentEntity::find()
             .filter(payment::Column::PaymentBatchId.is_in(batch_ids))
-            .filter(payment::Column::DeletedAt.is_null())
             .all(&state.db)
             .await
             .unwrap_or_default()
@@ -448,7 +444,6 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let batch = PaymentBatchEntity::find_by_id(id)
-        .filter(payment_batch::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -458,7 +453,6 @@ pub async fn detail(
         let account_label = load_account_parent_label(&state.db, Some(b.account_id)).await;
         let payments = PaymentEntity::find()
             .filter(payment::Column::PaymentBatchId.eq(b.id))
-            .filter(payment::Column::DeletedAt.is_null())
             .all(&state.db)
             .await
             .unwrap_or_default();

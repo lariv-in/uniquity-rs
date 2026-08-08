@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -154,7 +154,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         raw_footage_id: Set(form.raw_footage_id),
         edited_v_node_id: Set(form.edited_v_node_id),
     };
@@ -220,15 +219,8 @@ pub async fn delete_post(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(existing) = find_edited_video(&state.db, id).await {
-        let now = Utc::now();
-        let model = edited_video::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_edited_video(&state.db, id).await.is_some() {
+        let _ = edited_video::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/video/edited/").into_response()
 }

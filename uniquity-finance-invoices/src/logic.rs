@@ -12,7 +12,7 @@ pub mod tax_calculations;
 
 pub use draft::{
     create_draft_invoice, format_invoice_date, optional_display, optional_trimmed_text,
-    parse_header_tax_ids, parse_invoice_datetime, parse_lines_json, soft_delete_draft,
+    parse_header_tax_ids, parse_invoice_datetime, parse_lines_json, delete_draft,
     update_draft_invoice, CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
 };
 pub use invoice_posting::{cancelled_new_draft, draft_new_posted, posted_new_cancelled};

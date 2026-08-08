@@ -4,8 +4,7 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -74,7 +73,6 @@ pub async fn list(
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PaymentTermEntity::find()
-        .filter(payment_term::Column::DeletedAt.is_null())
         .order_by_desc(payment_term::Column::Id);
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -213,7 +211,6 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(pt) = PaymentTermEntity::find_by_id(id)
-        .filter(payment_term::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -242,7 +239,6 @@ pub async fn edit_get(
         return Redirect::to("/finance-invoices/payment-terms/").into_response();
     }
     let Some(pt) = PaymentTermEntity::find_by_id(id)
-        .filter(payment_term::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -306,12 +302,14 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-invoices/payment-terms/").into_response();
     }
-    if let Ok(Some(pt)) = PaymentTermEntity::find_by_id(id).one(&state.db).await {
-        let now = Utc::now();
-        let mut am: payment_term::ActiveModel = pt.into();
-        am.deleted_at = Set(Some(now));
-        am.updated_at = Set(Some(now));
-        let _ = am.update(&state.db).await;
+    if PaymentTermEntity::find_by_id(id)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        let _ = PaymentTermEntity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/finance-invoices/payment-terms/").into_response()
 }
@@ -325,7 +323,6 @@ pub async fn fk_select(
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PaymentTermEntity::find()
-        .filter(payment_term::Column::DeletedAt.is_null())
         .order_by_desc(payment_term::Column::Id);
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);

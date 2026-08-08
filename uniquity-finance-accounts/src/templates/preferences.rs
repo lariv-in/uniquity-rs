@@ -3,7 +3,8 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_rs::{
     components::{
-        ButtonSubmit, FieldTitle, FormOpts, ShellChrome, button_submit, container_column,
+        ButtonSubmit, Crumb, FieldTitle, FormOpts, ShellChrome, breadcrumbs, button_submit,
+        container_column,
         container_row, field_title, form, form_hx_post_main, label_newline_hint,
         attrs::escape_attr,
         htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
@@ -15,11 +16,20 @@ use lariv_rs::{
 use crate::{
     forms::AccountingPreferencesFormField,
     invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
-    routes::AccountingPreferencesPostRouteTag,
+    routes::{AccountingPreferencesPostRouteTag, AccountingPreferencesRouteTag},
 };
 
-use super::common::{app_scaffold, layout_main_content, layout_with_sidebar};
+use super::common::{
+    app_scaffold, layout_main_with_crumbs, layout_with_sidebar_crumbs,
+};
 use super::preferences_hints::{INVOICE_NUMBER_FORMAT_HINT, INVOICE_PDF_TEMPLATE_HINT};
+
+fn accounting_preferences_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Accounting preferences",
+        href: None,
+    }])
+}
 
 #[derive(Generic)]
 pub struct AccountingPreferencesPage {
@@ -95,10 +105,14 @@ impl AccountingPreferencesPage {
 
 impl RenderAppPane for AccountingPreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&crate::routes::AccountingPreferencesRouteTag.url(), self.body())
+        layout_with_sidebar_crumbs(
+            &AccountingPreferencesRouteTag.url(),
+            accounting_preferences_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(accounting_preferences_crumbs(), self.body())
     }
 }
 
@@ -107,8 +121,9 @@ impl RenderTemplate for AccountingPreferencesPage {
         app_scaffold(
             "Accounting Preferences — Uniquity",
             chrome,
+            accounting_preferences_crumbs(),
             self.body(),
-            &crate::routes::AccountingPreferencesRouteTag.url(),
+            &AccountingPreferencesRouteTag.url(),
         )
     }
 }

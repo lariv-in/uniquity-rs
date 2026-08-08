@@ -160,12 +160,37 @@ pub struct CurrencySelectionFilterForm {
 }
 
 #[html_form]
+pub struct JournalCreateForm {
+    #[form(label = "Name", required, widget = Text)]
+    pub name: String,
+
+    #[form(label = "Active", widget = Checkbox)]
+    pub is_active: String,
+
+    #[form(
+        label = "Currency",
+        required,
+        widget = ForeignKey,
+        route = CurrencySelectRouteTag,
+        display = "currency_display",
+        placeholder = "Select currency…"
+    )]
+    pub currency_id: String,
+
+    #[form(label = "Type", required, widget = Select, choices = "journal_type")]
+    pub journal_type: String,
+}
+
+#[html_form]
 pub struct JournalForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
     #[form(label = "Active", widget = Checkbox)]
     pub is_active: String,
+
+    #[form(label = "Mutable", widget = Checkbox)]
+    pub is_mutable: String,
 
     #[form(
         label = "Currency",

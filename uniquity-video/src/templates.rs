@@ -3,14 +3,14 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
-        LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-        SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableColumnHeader, TablePagination, TableRow, button_delete, button_link,
+        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
+        LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
+        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete, button_link,
         button_modal_form, button_submit, container_column, container_row, data_table_list,
         data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_sidebar, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
         sidebar_menu, sidebar_menu_item, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
@@ -87,16 +87,207 @@ lariv_rs::define_register_items! {
     hook: SlotsHook;
 }
 
-fn app_scaffold(title: &str, chrome: &ShellChrome, sidebar: Markup, body: Markup) -> Markup {
+fn app_scaffold(
+    title: &str,
+    chrome: &ShellChrome,
+    sidebar: Markup,
+    crumbs: Markup,
+    body: Markup,
+) -> Markup {
     shell_scaffold(ShellScaffold {
         title,
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
         sidebar,
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
+}
+
+fn scaffold_pane(sidebar: Markup, crumbs: Markup, body: Markup) -> lariv_rs::components::AppLayoutHtml {
+    layout_sidebar(LayoutSidebar {
+        sidebar,
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_rs::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn video_hub_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Video",
+        href: None,
+    }])
+}
+
+fn raw_list_crumbs() -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Video",
+            href: Some(&hub_url),
+        },
+        Crumb {
+            label: "Raw footage",
+            href: None,
+        },
+    ])
+}
+
+fn raw_crumbs(id: i64, title: &str, action: Option<&str>) -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    let list_url = RawListRouteTag.url();
+    let detail_url = RawDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Raw footage",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Raw footage",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn edited_list_crumbs() -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Video",
+            href: Some(&hub_url),
+        },
+        Crumb {
+            label: "Edited videos",
+            href: None,
+        },
+    ])
+}
+
+fn edited_crumbs(id: i64, title: &str, action: Option<&str>) -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    let list_url = EditedListRouteTag.url();
+    let detail_url = EditedDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Edited videos",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Edited videos",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: title,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn published_list_crumbs() -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Video",
+            href: Some(&hub_url),
+        },
+        Crumb {
+            label: "Published",
+            href: None,
+        },
+    ])
+}
+
+fn published_crumbs(id: i64, label: &str, action: Option<&str>) -> Markup {
+    let hub_url = VideoHubRouteTag.url();
+    let list_url = PublishedListRouteTag.url();
+    let detail_url = PublishedDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Published",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Video",
+                href: Some(&hub_url),
+            },
+            Crumb {
+                label: "Published",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 fn main_menu(active: &str) -> Markup {
@@ -172,13 +363,10 @@ impl HubPage {
 
 impl RenderAppPane for HubPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("hub"),
-            content: self.hub_body(),
-        })
+        scaffold_pane(main_menu("hub"), video_hub_crumbs(), self.hub_body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.hub_body())
+        scaffold_main(video_hub_crumbs(), self.hub_body())
     }
 }
 
@@ -188,6 +376,7 @@ impl RenderTemplate for HubPage {
             "Video — Uniquity",
             chrome,
             main_menu("hub"),
+            video_hub_crumbs(),
             self.hub_body(),
         )
     }
@@ -266,19 +455,22 @@ impl RawListPage {
 
 impl RenderAppPane for RawListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("raw"),
-            content: self.body(),
-        })
+        scaffold_pane(main_menu("raw"), raw_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(raw_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for RawListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Raw footage — Uniquity", chrome, main_menu("raw"), self.body())
+        app_scaffold(
+            "Raw footage — Uniquity",
+            chrome,
+            main_menu("raw"),
+            raw_list_crumbs(),
+            self.body(),
+        )
     }
 }
 
@@ -320,19 +512,24 @@ impl RawDetailPage {
 
 impl RenderAppPane for RawDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("raw"),
-            content: self.body(),
-        })
+        let crumbs = raw_crumbs(self.id, &self.title, None);
+        scaffold_pane(main_menu("raw"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(raw_crumbs(self.id, &self.title, None), self.body())
     }
 }
 
 impl RenderTemplate for RawDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Raw footage — Uniquity", chrome, main_menu("raw"), self.body())
+        let crumbs = raw_crumbs(self.id, &self.title, None);
+        app_scaffold(
+            "Raw footage — Uniquity",
+            chrome,
+            main_menu("raw"),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -383,19 +580,24 @@ impl RawFormPage {
 
 impl RenderAppPane for RawFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("raw"),
-            content: self.body(),
-        })
+        let crumbs = raw_crumbs(self.id, &self.title, Some("Edit"));
+        scaffold_pane(main_menu("raw"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(raw_crumbs(self.id, &self.title, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for RawFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit raw footage — Uniquity", chrome, main_menu("raw"), self.body())
+        let crumbs = raw_crumbs(self.id, &self.title, Some("Edit"));
+        app_scaffold(
+            "Edit raw footage — Uniquity",
+            chrome,
+            main_menu("raw"),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -593,19 +795,22 @@ impl EditedListPage {
 
 impl RenderAppPane for EditedListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("edited"),
-            content: self.body(),
-        })
+        scaffold_pane(main_menu("edited"), edited_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(edited_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for EditedListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edited — Uniquity", chrome, main_menu("edited"), self.body())
+        app_scaffold(
+            "Edited — Uniquity",
+            chrome,
+            main_menu("edited"),
+            edited_list_crumbs(),
+            self.body(),
+        )
     }
 }
 
@@ -655,19 +860,24 @@ impl EditedDetailPage {
 
 impl RenderAppPane for EditedDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("edited"),
-            content: self.body(),
-        })
+        let crumbs = edited_crumbs(self.id, &self.raw_title, None);
+        scaffold_pane(main_menu("edited"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(edited_crumbs(self.id, &self.raw_title, None), self.body())
     }
 }
 
 impl RenderTemplate for EditedDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edited video — Uniquity", chrome, main_menu("edited"), self.body())
+        let crumbs = edited_crumbs(self.id, &self.raw_title, None);
+        app_scaffold(
+            "Edited video — Uniquity",
+            chrome,
+            main_menu("edited"),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -718,19 +928,24 @@ impl EditedFormPage {
 
 impl RenderAppPane for EditedFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("edited"),
-            content: self.body(),
-        })
+        let crumbs = edited_crumbs(self.id, &self.raw_display, Some("Edit"));
+        scaffold_pane(main_menu("edited"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(edited_crumbs(self.id, &self.raw_display, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for EditedFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit edited video — Uniquity", chrome, main_menu("edited"), self.body())
+        let crumbs = edited_crumbs(self.id, &self.raw_display, Some("Edit"));
+        app_scaffold(
+            "Edit edited video — Uniquity",
+            chrome,
+            main_menu("edited"),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -892,19 +1107,22 @@ impl PublishedListPage {
 
 impl RenderAppPane for PublishedListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("published"),
-            content: self.body(),
-        })
+        scaffold_pane(main_menu("published"), published_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(published_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for PublishedListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Published — Uniquity", chrome, main_menu("published"), self.body())
+        app_scaffold(
+            "Published — Uniquity",
+            chrome,
+            main_menu("published"),
+            published_list_crumbs(),
+            self.body(),
+        )
     }
 }
 
@@ -1007,22 +1225,22 @@ impl PublishedDetailPage {
 
 impl RenderAppPane for PublishedDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("published"),
-            content: self.body(),
-        })
+        let crumbs = published_crumbs(self.id, &self.youtube_id, None);
+        scaffold_pane(main_menu("published"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(published_crumbs(self.id, &self.youtube_id, None), self.body())
     }
 }
 
 impl RenderTemplate for PublishedDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = published_crumbs(self.id, &self.youtube_id, None);
         app_scaffold(
             "Published video — Uniquity",
             chrome,
             main_menu("published"),
+            crumbs,
             self.body(),
         )
     }
@@ -1073,22 +1291,25 @@ impl PublishedFormPage {
 
 impl RenderAppPane for PublishedFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("published"),
-            content: self.body(),
-        })
+        let crumbs = published_crumbs(self.id, &self.you_tube_video_id, Some("Edit"));
+        scaffold_pane(main_menu("published"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(
+            published_crumbs(self.id, &self.you_tube_video_id, Some("Edit")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for PublishedFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = published_crumbs(self.id, &self.you_tube_video_id, Some("Edit"));
         app_scaffold(
             "Edit published video — Uniquity",
             chrome,
             main_menu("published"),
+            crumbs,
             self.body(),
         )
     }
@@ -1230,22 +1451,25 @@ impl EditorPointsPage {
 
 impl RenderAppPane for EditorPointsPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: main_menu("published"),
-            content: self.body(),
-        })
+        let crumbs = published_crumbs(self.published_id, "Published video", Some("Give points"));
+        scaffold_pane(main_menu("published"), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(
+            published_crumbs(self.published_id, "Published video", Some("Give points")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for EditorPointsPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = published_crumbs(self.published_id, "Published video", Some("Give points"));
         app_scaffold(
             "Editor points — Uniquity",
             chrome,
             main_menu("published"),
+            crumbs,
             self.body(),
         )
     }

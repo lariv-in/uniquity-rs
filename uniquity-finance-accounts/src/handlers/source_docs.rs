@@ -2,7 +2,7 @@ use axum::{
     extract::Query,
     http::Uri,
 };
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -43,7 +43,6 @@ pub async fn select(
 ) -> maud::Markup {
     let page_num = q.page.get();
     let query = scope_superuser(SourceDocEntity::find(), &ctx)
-        .filter(source_doc::Column::DeletedAt.is_null())
         .order_by_desc(source_doc::Column::Id);
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);

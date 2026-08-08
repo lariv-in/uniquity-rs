@@ -5,6 +5,7 @@ use super::UniquityFinanceCustomerTag;
 mod m00001_create_customers;
 mod m00002_split_customer_address;
 mod m00003_add_customer_type;
+mod m00004_customer_drop_deleted_at;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -16,6 +17,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00001_create_customers::Migration),
             Box::new(m00002_split_customer_address::Migration),
             Box::new(m00003_add_customer_type::Migration),
+            Box::new(m00004_customer_drop_deleted_at::Migration),
         ]
     }
 }

@@ -180,7 +180,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         code: Set(form.code.clone()),
         name: Set(form.name.clone()),
         starts_at: Set(parse_fiscal_date_start(&form.start)),
@@ -271,15 +270,8 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-fiscal-years/").into_response();
     }
-    if let Some(existing) = find_fiscal_year_scoped(&state.db, id, &ctx).await {
-        let now = Utc::now();
-        let model = fiscal_year::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_fiscal_year_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = fiscal_year::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/finance-fiscal-years/").into_response()
 }

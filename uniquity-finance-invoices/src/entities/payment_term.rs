@@ -12,7 +12,6 @@ pub struct Model {
     pub id: i64,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    pub deleted_at: Option<DateTime<Utc>>,
     #[sea_orm(column_name = "type")]
     pub term_type: String,
     pub backing_id: i64,

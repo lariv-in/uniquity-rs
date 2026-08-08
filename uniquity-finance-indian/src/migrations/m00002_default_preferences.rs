@@ -9,7 +9,6 @@ enum Journals {
     Id,
     CreatedAt,
     UpdatedAt,
-    DeletedAt,
     Name,
     IsActive,
     CurrencyId,
@@ -80,7 +79,6 @@ fn default_journal_id() -> SelectStatement {
     Query::select()
         .column(Journals::Id)
         .from(Journals::Table)
-        .and_where(Expr::col(Journals::DeletedAt).is_null())
         .limit(1)
         .to_owned()
 }
@@ -120,7 +118,6 @@ impl MigrationTrait for Migration {
                             Query::select()
                                 .expr(Expr::val(1))
                                 .from(Journals::Table)
-                                .and_where(Expr::col(Journals::DeletedAt).is_null())
                                 .to_owned(),
                         )
                         .not(),

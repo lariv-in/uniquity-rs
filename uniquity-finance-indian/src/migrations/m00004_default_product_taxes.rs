@@ -14,7 +14,6 @@ enum ProductPreferencesTaxes {
 enum Taxes {
     Table,
     Id,
-    DeletedAt,
     Name,
 }
 
@@ -57,7 +56,6 @@ impl MigrationTrait for Migration {
                         .expr(Expr::val(1))
                         .column(Taxes::Id)
                         .from(Taxes::Table)
-                        .and_where(Expr::col(Taxes::DeletedAt).is_null())
                         .and_where(Expr::col(Taxes::Name).eq(*name))
                         .and_where(preference_tax_link_exists())
                         .to_owned(),

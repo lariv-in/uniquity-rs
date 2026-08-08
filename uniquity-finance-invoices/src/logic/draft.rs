@@ -75,7 +75,6 @@ pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Resu
     }
     let n = PostedInvoiceEntity::find()
         .filter(crate::entities::posted_invoice::Column::DraftInvoiceId.eq(draft_id))
-        .filter(crate::entities::posted_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -330,18 +329,12 @@ pub async fn update_draft_invoice(
     Ok(draft)
 }
 
-pub async fn soft_delete_draft(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
+pub async fn delete_draft(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {
     err_if_draft_sealed(db, draft_id).await?;
-    let now = Utc::now();
-    let mut am: draft_invoice::ActiveModel = draft_invoice::Entity::find_by_id(draft_id)
-        .one(db)
+    draft_invoice::Entity::delete_by_id(draft_id)
+        .exec(db)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "draft not found".to_string())?
-        .into();
-    am.deleted_at = Set(Some(now));
-    am.updated_at = Set(Some(now));
-    am.update(db).await.map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -49,7 +49,7 @@ async fn sum_posted_invoice_payments<C: ConnectionTrait>(
     let row = db
         .query_one(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE posted_invoice_id = $1 AND deleted_at IS NULL",
+            "SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE posted_invoice_id = $1",
             [posted_invoice_id.into()],
         ))
         .await
@@ -84,7 +84,6 @@ async fn posted_invoice_amounts(
 
     let lines = posted_invoice_line::Entity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
-        .filter(posted_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -140,7 +139,6 @@ pub async fn posted_invoice_can_accept_payment(
 ) -> bool {
     let cancelled_count = cancelled_invoice::Entity::find()
         .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted_id))
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .unwrap_or(0);
@@ -149,7 +147,6 @@ pub async fn posted_invoice_can_accept_payment(
     }
     let paid_count = paid_invoice::Entity::find()
         .filter(paid_invoice::Column::PostedInvoiceId.eq(posted_id))
-        .filter(paid_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .unwrap_or(0);
@@ -185,7 +182,6 @@ pub async fn validate_payment_allocation(
 
     let cancelled_count = cancelled_invoice::Entity::find()
         .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted.id))
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -195,7 +191,6 @@ pub async fn validate_payment_allocation(
 
     let paid_count = paid_invoice::Entity::find()
         .filter(paid_invoice::Column::PostedInvoiceId.eq(posted.id))
-        .filter(paid_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -259,7 +254,6 @@ pub async fn record_payment_settlement<C: ConnectionTrait>(
 ) -> Result<i64, String> {
     let prior = partially_paid_invoice::Entity::find()
         .filter(partially_paid_invoice::Column::PostedInvoiceId.eq(posted_id))
-        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
         .order_by_desc(partially_paid_invoice::Column::Id)
         .one(db)
         .await

@@ -30,7 +30,8 @@ use crate::{
         posted_new_cancelled,
         tax_assoc::load_posted_invoice_tax_ids,
     },
-    scope::{find_active_posted, hub_tab_url},
+    routes::PostedInvoiceCancelGetRouteTag,
+    scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
     templates::{CancelInvoicePage, PostedInvoiceDetailPage},
 };
@@ -85,7 +86,7 @@ pub async fn cancel_get(
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if find_active_posted(&state.db, id).await.is_none() {
+    if find_cancellable_posted(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     let page = CancelInvoicePage {
@@ -104,7 +105,7 @@ pub async fn cancel_invoice(
     Path(id): Path<i64>,
     Form(form): Form<CancelInvoiceForm>,
 ) -> Response {
-    if find_active_posted(&state.db, id).await.is_none() {
+    if find_cancellable_posted(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     if !require_superuser(&ctx) {
@@ -112,6 +113,6 @@ pub async fn cancel_invoice(
     }
     match posted_new_cancelled(&state.db, id, form.reason, Utc::now()).await {
         Ok(c) => Redirect::to(&format!("/finance-invoices/cancelled/{}/", c.id)).into_response(),
-        Err(_) => Redirect::to(&format!("/finance-invoices/posted/{id}/")).into_response(),
+        Err(_) => Redirect::to(&PostedInvoiceCancelGetRouteTag::new(id).url()).into_response(),
     }
 }

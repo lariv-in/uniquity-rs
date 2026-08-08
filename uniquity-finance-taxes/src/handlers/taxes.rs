@@ -307,15 +307,8 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-taxes/").into_response();
     }
-    if let Some(existing) = find_tax_scoped(&state.db, id, &ctx).await {
-        let now = Utc::now();
-        let model = tax::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_tax_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = tax::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/finance-taxes/").into_response()
 }

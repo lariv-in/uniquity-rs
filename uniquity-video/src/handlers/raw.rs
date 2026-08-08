@@ -165,7 +165,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         title: Set(form.title.clone()),
         assigned_to_id: Set(form.assigned_to_id),
     };
@@ -267,15 +266,8 @@ pub async fn delete_post(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(existing) = find_raw_footage(&state.db, id).await {
-        let now = Utc::now();
-        let model = raw_footage::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_raw_footage(&state.db, id).await.is_some() {
+        let _ = raw_footage::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/video/raw/").into_response()
 }

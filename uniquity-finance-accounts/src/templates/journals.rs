@@ -3,12 +3,13 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
-        ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow, button_clear,
-        button_delete, button_modal_form, button_submit, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+        FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
+        breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
+        container_row, data_table_list, data_table_list_refresh, delete_confirmation, detail,
+        field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_main, form_hx_post_redirect, form_hx_post_url, label_inline, modal_keyed,
+        row_attr_navigate_route, row_attr_select, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -20,7 +21,7 @@ use crate::{
     entities::journal,
     forms::{
         JournalEntryForm, JournalEntryFormField, JournalFilterForm, JournalFilterFormField,
-        JournalForm, JournalFormField,
+        JournalCreateForm, JournalCreateFormField, JournalForm, JournalFormField,
     },
     keys::{
         JournalCreateModalKey, JournalEntryCreateModalKey, JournalEntrySelectModalKey,
@@ -28,18 +29,78 @@ use crate::{
     },
     routes::{
         JournalCreateGetRouteTag, JournalCreatePostRouteTag, JournalDeletePostRouteTag,
-        JournalDetailRouteTag, JournalEditGetRouteTag,
-        JournalEditPostRouteTag, JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
-        JournalEntryDetailRouteTag, JournalListRouteTag,
-        JournalSelectRouteTag,
+        JournalDetailRouteTag, JournalEditGetRouteTag, JournalEditPostRouteTag,
+        JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
+        JournalEntryDeleteGetRouteTag, JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
+        JournalListRouteTag, JournalSelectRouteTag,
     },
 };
 
 use super::common::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar, render_pagination, render_picker_pagination,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_pagination,
+    render_picker_pagination,
 };
-use crate::accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu};
+use crate::accounting_detail_menu::{
+    DetailMenuDeleteLink, DetailMenuNavItem, detail_sidebar_menu,
+};
+
+fn journals_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Journals",
+        href: None,
+    }])
+}
+
+fn journal_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = JournalListRouteTag.url();
+    let detail_url = JournalDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Journals",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Journals",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn journal_entry_crumbs(journal_id: i64, journal_label: &str, entry_label: &str) -> Markup {
+    let list_url = JournalListRouteTag.url();
+    let journal_url = JournalDetailRouteTag::new(journal_id).url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Journals",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: journal_label,
+            href: Some(&journal_url),
+        },
+        Crumb {
+            label: entry_label,
+            href: None,
+        },
+    ])
+}
 
 fn journal_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
     let menu_title = format!("Journal: {name}");
@@ -64,15 +125,24 @@ fn journal_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
     )
 }
 
-fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64) -> Markup {
+fn journal_entry_detail_menu(entry_id: i64, _journal_id: i64, active: &str, can_delete: bool) -> Markup {
+    let delete_link = if can_delete {
+        Some(DetailMenuDeleteLink {
+            title: "Delete",
+            url: JournalEntryDeleteGetRouteTag::new(entry_id).url(),
+            active: active == "delete",
+        })
+    } else {
+        None
+    };
     detail_sidebar_menu(
         format!("Journal entry #{entry_id}"),
         &[DetailMenuNavItem {
             title: "Entry Detail",
             url: JournalEntryDetailRouteTag::new(entry_id).url(),
-            active: true,
+            active: active == "detail",
         }],
-        None,
+        delete_link,
         html! {},
     )
 }
@@ -212,16 +282,22 @@ impl JournalListPage {
 
 impl RenderAppPane for JournalListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, journals_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(journals_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for JournalListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Journals — Uniquity", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Journals — Uniquity",
+            chrome,
+            journals_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -230,6 +306,7 @@ pub struct JournalDetailPage {
     pub id: i64,
     pub name: String,
     pub is_active: bool,
+    pub is_mutable: bool,
     pub currency_id: i64,
     pub currency_label: String,
     pub journal_type: String,
@@ -284,12 +361,13 @@ impl JournalDetailPage {
 
     fn body(&self) -> Markup {
         let active = if self.is_active { "Active" } else { "Inactive" };
+        let mutable = if self.is_mutable { "Mutable" } else { "Immutable" };
         html! {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (field_text(FieldText {
-                        value: &format!("{active} · {}", self.journal_type),
+                        value: &format!("{active} · {mutable} · {}", self.journal_type),
                         classes: "text-base-content/70",
                     }))
                     (label_inline("Currency", field_text(FieldText { value: &self.currency_label, classes: "" })))
@@ -308,16 +386,18 @@ impl JournalDetailPage {
 
 impl RenderAppPane for JournalDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let crumbs = journal_crumbs(self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(journal_crumbs(self.id, &self.name, None), self.body())
     }
 }
 
 impl RenderTemplate for JournalDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Journal — Uniquity", chrome, self.menu(), self.body())
+        let crumbs = journal_crumbs(self.id, &self.name, None);
+        app_scaffold_with_sidebar("Journal — Uniquity", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -326,6 +406,7 @@ pub struct JournalFormPage {
     pub id: i64,
     pub name: String,
     pub is_active: bool,
+    pub is_mutable: bool,
     pub currency_id: String,
     pub currency_display: String,
     pub journal_type: String,
@@ -337,6 +418,7 @@ impl JournalFormPage {
             id: j.id,
             name: j.name.clone(),
             is_active: j.is_active,
+            is_mutable: j.is_mutable,
             currency_id: j.currency_id.to_string(),
             currency_display,
             journal_type: j.journal_type.to_string(),
@@ -353,6 +435,7 @@ impl JournalFormPage {
                         &FormCtx::form::<JournalForm>()
                             .value(JournalFormField::Name, &self.name)
                             .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
+                            .value(JournalFormField::IsMutable, if self.is_mutable { "on" } else { "" })
                             .value(JournalFormField::CurrencyId, &self.currency_id)
                             .display(JournalFormField::CurrencyId, &self.currency_display)
                             .value(JournalFormField::JournalType, &self.journal_type)
@@ -388,16 +471,24 @@ impl JournalFormPage {
 
 impl RenderAppPane for JournalFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let crumbs = journal_crumbs(self.id, &self.name, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(journal_crumbs(self.id, &self.name, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for JournalFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Edit Journal — Uniquity", chrome, self.sidebar(), self.body())
+        let crumbs = journal_crumbs(self.id, &self.name, Some("Edit"));
+        app_scaffold_with_sidebar(
+            "Edit Journal — Uniquity",
+            chrome,
+            self.sidebar(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -433,15 +524,15 @@ impl RenderTemplate for JournalCreateModalPage {
                     ),
                 ),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: JournalForm::render_inputs(
-                    &FormCtx::form::<JournalForm>()
-                        .value(JournalFormField::Name, &self.name)
-                        .value(JournalFormField::IsActive, if self.is_active { "on" } else { "" })
-                        .value(JournalFormField::CurrencyId, &self.currency_id)
-                        .display(JournalFormField::CurrencyId, &self.currency_display)
-                        .value(JournalFormField::JournalType, &self.journal_type)
+                inputs: JournalCreateForm::render_inputs(
+                    &FormCtx::form::<JournalCreateForm>()
+                        .value(JournalCreateFormField::Name, &self.name)
+                        .value(JournalCreateFormField::IsActive, if self.is_active { "on" } else { "" })
+                        .value(JournalCreateFormField::CurrencyId, &self.currency_id)
+                        .display(JournalCreateFormField::CurrencyId, &self.currency_display)
+                        .value(JournalCreateFormField::JournalType, &self.journal_type)
                         .choices(
-                            JournalFormField::JournalType,
+                            JournalCreateFormField::JournalType,
                             &crate::forms::journal_type_choices(),
                         ),
                 ),
@@ -630,6 +721,7 @@ pub struct JournalEntryDetailPage {
     pub journal_label: String,
     pub source_doc_label: String,
     pub items: Vec<JournalEntryItemRow>,
+    pub can_delete: bool,
 }
 
 impl JournalEntryDetailPage {
@@ -680,22 +772,106 @@ impl JournalEntryDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id, self.journal_id)
+        journal_entry_detail_menu(self.id, self.journal_id, "detail", self.can_delete)
     }
 }
 
 impl RenderAppPane for JournalEntryDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let entry_label = format!("#{}", self.id);
+        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let entry_label = format!("#{}", self.id);
+        layout_main_with_crumbs(
+            journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for JournalEntryDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Journal Entry — Uniquity", chrome, self.menu(), self.body())
+        let entry_label = format!("#{}", self.id);
+        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
+        app_scaffold_with_sidebar(
+            "Journal Entry — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct JournalEntryDeletePage {
+    pub id: i64,
+    pub journal_id: i64,
+    pub journal_label: String,
+    pub can_delete: bool,
+    pub error: Option<String>,
+}
+
+impl JournalEntryDeletePage {
+    fn body(&self) -> Markup {
+        if let Some(err) = &self.error {
+            return html! {
+                div class="container mx-auto my-4" {
+                    h2 class="text-xl font-bold text-error" { "Delete unavailable" }
+                    div class="alert alert-error my-2 text-sm" { (err) }
+                }
+            };
+        }
+        let message = format!(
+            "Are you sure you want to delete journal entry #{}? Related invoices, payments, \
+             credit notes, and any linked journal entries will also be deleted.",
+            self.id
+        );
+        delete_confirmation(DeleteConfirmation {
+            title: "Delete journal entry",
+            message: &message,
+            attrs: form_hx_post_redirect(JournalEntryDeletePostRouteTag::new(self.id)).set(
+                "hx-confirm",
+                "This permanently deletes the journal entry and all related invoices, payments, \
+                 credit notes, and linked journal entries. This cannot be undone. Continue?",
+            ),
+            ..Default::default()
+        })
+    }
+
+    fn menu(&self) -> Markup {
+        journal_entry_detail_menu(self.id, self.journal_id, "delete", self.can_delete)
+    }
+}
+
+impl RenderAppPane for JournalEntryDeletePage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        let entry_label = format!("#{}", self.id);
+        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        let entry_label = format!("#{}", self.id);
+        layout_main_with_crumbs(
+            journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for JournalEntryDeletePage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        let entry_label = format!("#{}", self.id);
+        let crumbs = journal_entry_crumbs(self.journal_id, &self.journal_label, &entry_label);
+        app_scaffold_with_sidebar(
+            "Delete Journal Entry — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 

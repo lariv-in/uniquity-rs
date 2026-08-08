@@ -9,7 +9,6 @@ enum Journals {
     Id,
     CreatedAt,
     UpdatedAt,
-    DeletedAt,
     Name,
     IsActive,
     CurrencyId,
@@ -72,7 +71,6 @@ impl MigrationTrait for Migration {
                             Query::select()
                                 .expr(Expr::val(1))
                                 .from(Journals::Table)
-                                .and_where(Expr::col(Journals::DeletedAt).is_null())
                                 .to_owned(),
                         )
                         .not(),
@@ -86,7 +84,6 @@ impl MigrationTrait for Migration {
         let journal_id = Query::select()
             .column(Journals::Id)
             .from(Journals::Table)
-            .and_where(Expr::col(Journals::DeletedAt).is_null())
             .order_by(Journals::Id, Order::Asc)
             .limit(1)
             .to_owned();

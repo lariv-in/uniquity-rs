@@ -4,6 +4,7 @@ use super::UniquityEmployeesTag;
 
 mod m20260803_000001_create_employees;
 mod m20260803_000002_points_superuser_trigger;
+mod m20260803_000003_employees_drop_deleted_at;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260803_000001_create_employees::Migration),
             Box::new(m20260803_000002_points_superuser_trigger::Migration),
+            Box::new(m20260803_000003_employees_drop_deleted_at::Migration),
         ]
     }
 }

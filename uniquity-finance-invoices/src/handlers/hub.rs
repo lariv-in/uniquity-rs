@@ -76,7 +76,6 @@ async fn query_draft_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = DraftInvoiceEntity::find()
-        .filter(draft_invoice::Column::DeletedAt.is_null())
         .filter(sql_draft_not_posted());
     if let Some(t) = q.datetime_from.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(draft_invoice::Column::Datetime.gte(t));
@@ -123,7 +122,6 @@ async fn query_posted_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let mut query = PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .filter(sql_posted_not_cancelled())
         .filter(sql_posted_not_fully_paid())
         .filter(sql_posted_not_partially_paid());
@@ -187,8 +185,7 @@ async fn query_cancelled_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let mut query = CancelledInvoiceEntity::find()
-        .filter(cancelled_invoice::Column::DeletedAt.is_null());
+    let mut query = CancelledInvoiceEntity::find();
     if let Some(t) = q.datetime_from.as_deref().and_then(parse_filter_datetime) {
         query = query.filter(cancelled_invoice::Column::Datetime.gte(t));
     }
@@ -257,7 +254,6 @@ async fn query_paid_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PaidInvoiceEntity::find()
-        .filter(paid_invoice::Column::DeletedAt.is_null())
         .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
         .order_by_desc(paid_invoice::Column::Id);
     let paginator = query.paginate(db, PAGE_SIZE as u64);
@@ -318,7 +314,6 @@ async fn query_partial_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PartiallyPaidInvoiceEntity::find()
-        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
         .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"))
         .order_by_desc(partially_paid_invoice::Column::Id);
     let paginator = query.paginate(db, PAGE_SIZE as u64);

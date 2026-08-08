@@ -3,10 +3,10 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
         ObjectList, PaginationPage, ShellChrome, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        button_clear, button_delete, button_modal_form, button_submit, container_column,
+        breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
         container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         modal_keyed,
@@ -24,8 +24,8 @@ use uniquity_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use uniquity_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar, render_picker_pagination,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_picker_pagination,
 };
 
 use super::forms::{
@@ -38,6 +38,44 @@ use super::routes::{
     TaxDeletePostRouteTag, TaxDetailRouteTag, TaxEditGetRouteTag, TaxEditPostRouteTag,
     TaxMultiSelectRouteTag,
 };
+
+fn taxes_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Taxes",
+        href: None,
+    }])
+}
+
+fn tax_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = TaxDefaultRouteTag.url();
+    let detail_url = TaxDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Taxes",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Taxes",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
 
 fn tax_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
     let menu_title = format!("Tax: {name}");
@@ -209,16 +247,22 @@ impl TaxListPage {
 
 impl RenderAppPane for TaxListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, taxes_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(taxes_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for TaxListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Taxes — Uniquity", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Taxes — Uniquity",
+            chrome,
+            taxes_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -253,16 +297,18 @@ impl TaxDetailPage {
 
 impl RenderAppPane for TaxDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let crumbs = tax_crumbs(self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(tax_crumbs(self.id, &self.name, None), self.body())
     }
 }
 
 impl RenderTemplate for TaxDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Tax — Uniquity", chrome, self.menu(), self.body())
+        let crumbs = tax_crumbs(self.id, &self.name, None);
+        app_scaffold_with_sidebar("Tax — Uniquity", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -320,16 +366,18 @@ impl TaxFormPage {
 
 impl RenderAppPane for TaxFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let crumbs = tax_crumbs(self.id, &self.name, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(tax_crumbs(self.id, &self.name, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for TaxFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Edit Tax — Uniquity", chrome, self.sidebar(), self.body())
+        let crumbs = tax_crumbs(self.id, &self.name, Some("Edit"));
+        app_scaffold_with_sidebar("Edit Tax — Uniquity", chrome, self.sidebar(), crumbs, self.body())
     }
 }
 

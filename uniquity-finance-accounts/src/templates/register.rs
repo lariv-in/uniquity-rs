@@ -7,8 +7,8 @@ use lariv_rs::{
 
 use super::{
     accounts::{
-        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountListPage,
-        AccountSelectPage,
+        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountJournalEntriesPage,
+        AccountListPage, AccountSelectPage,
     },
     currencies::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyFormPage, CurrencyListPage,
@@ -16,8 +16,8 @@ use super::{
     },
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEntryCreateModalPage,
-        JournalEntryDetailPage, JournalEntrySelectPage, JournalFormPage, JournalListPage,
-        JournalSelectPage,
+        JournalEntryDeletePage, JournalEntryDetailPage, JournalEntrySelectPage, JournalFormPage,
+        JournalListPage, JournalSelectPage,
     },
     preferences::AccountingPreferencesPage,
     source_docs::SourceDocSelectPage,
@@ -34,6 +34,7 @@ lariv_rs::define_register_items! {
     items: [
         AccountListIdx: AccountListPageTag => AccountListPage,
         AccountDetailIdx: AccountDetailPageTag => AccountDetailPage,
+        AccountJournalEntriesIdx: AccountJournalEntriesPageTag => AccountJournalEntriesPage,
         AccountFormIdx: AccountFormPageTag => AccountFormPage,
         AccountCreateModalIdx: AccountCreateModalPageTag => AccountCreateModalPage,
         AccountSelectIdx: AccountSelectPageTag => AccountSelectPage,
@@ -49,6 +50,7 @@ lariv_rs::define_register_items! {
         JournalSelectIdx: JournalSelectPageTag => JournalSelectPage,
         JournalEntryCreateModalIdx: JournalEntryCreateModalPageTag => JournalEntryCreateModalPage,
         JournalEntryDetailIdx: JournalEntryDetailPageTag => JournalEntryDetailPage,
+        JournalEntryDeleteIdx: JournalEntryDeletePageTag => JournalEntryDeletePage,
         JournalEntrySelectIdx: JournalEntrySelectPageTag => JournalEntrySelectPage,
         SourceDocSelectIdx: SourceDocSelectPageTag => SourceDocSelectPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,

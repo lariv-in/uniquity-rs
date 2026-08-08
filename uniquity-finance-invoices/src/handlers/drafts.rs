@@ -3,7 +3,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 
 use lariv_rs::{
     components::{ManyToManyItem, SharedChromeFolder, SlotCtx},
@@ -16,7 +16,7 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
-use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
+use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
 use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
     forms::{DraftInvoiceForm, PAYMENT_TERM_MODE_DATE, PAYMENT_TERM_MODE_TERM},
     logic::{
         create_draft_invoice, format_invoice_date, optional_display, optional_trimmed_text,
-        parse_due_date, parse_invoice_datetime, parse_lines_json, soft_delete_draft,
+        parse_due_date, parse_invoice_datetime, parse_lines_json, delete_draft,
         update_draft_invoice, CreateDraftInput, PaymentTermSelection, UpdateDraftInput,
     },
     logic::invoice_line_editor::{
@@ -102,7 +102,6 @@ async fn load_draft_form_context(
 ) -> DraftFormContext {
     let customer_display = if customer_id > 0 {
         CustomerEntity::find_by_id(customer_id)
-            .filter(customer::Column::DeletedAt.is_null())
             .one(db)
             .await
             .ok()
@@ -258,7 +257,6 @@ pub async fn detail(
     };
 
     let customer_name = CustomerEntity::find_by_id(d.customer_id)
-        .filter(customer::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -391,7 +389,7 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    let _ = soft_delete_draft(&state.db, id).await;
+    let _ = delete_draft(&state.db, id).await;
     Redirect::to(&hub_tab_url("drafts")).into_response()
 }
 

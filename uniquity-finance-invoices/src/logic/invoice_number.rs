@@ -12,7 +12,7 @@ pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
-            "SELECT COALESCE(MAX(id), 0) AS seq FROM posted_invoices WHERE deleted_at IS NULL"
+            "SELECT COALESCE(MAX(id), 0) AS seq FROM posted_invoices"
                 .to_string(),
         ))
         .await?;

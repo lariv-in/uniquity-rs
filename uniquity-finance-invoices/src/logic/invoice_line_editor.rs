@@ -5,9 +5,9 @@ use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Que
 use serde::Serialize;
 
 use uniquity_common::decimal;
-use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
+use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
 use uniquity_finance_products::{
-    entities::product::{self, Entity as ProductEntity},
+    entities::product::Entity as ProductEntity,
     preferences::load_product_tax_ids,
 };
 use uniquity_finance_taxes::{
@@ -55,7 +55,6 @@ struct InvoiceLineEditorPreview {
 
 pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String {
     let products = ProductEntity::find()
-        .filter(product::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -120,7 +119,6 @@ struct DraftLineFormRow {
 pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> String {
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
-        .filter(draft_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -132,7 +130,6 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let product = ProductEntity::find_by_id(ln.product_id)
-            .filter(product::Column::DeletedAt.is_null())
             .one(db)
             .await
             .ok()
@@ -174,7 +171,6 @@ fn format_withholding(d: Decimal) -> String {
 
 pub async fn invoice_customer_name(db: &DatabaseConnection, customer_id: i64) -> String {
     CustomerEntity::find_by_id(customer_id)
-        .filter(customer::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -197,7 +193,6 @@ pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64])
 
 async fn product_display_name(db: &DatabaseConnection, product_id: i64) -> String {
     ProductEntity::find_by_id(product_id)
-        .filter(product::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -240,7 +235,6 @@ pub async fn draft_invoice_line_display_rows(
 ) -> Vec<InvoiceLineDisplayRow> {
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
-        .filter(draft_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -261,7 +255,6 @@ pub async fn posted_invoice_line_display_rows(
 ) -> Vec<InvoiceLineDisplayRow> {
     let lines = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
-        .filter(posted_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default();
@@ -291,7 +284,7 @@ async fn load_cancelled_invoice_lines(
         .query_all(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
-             WHERE cancelled_invoice_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
         .await

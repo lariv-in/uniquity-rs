@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -185,7 +185,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         user_id: Set(form.user_id),
     };
     match model.insert(&state.db).await {
@@ -263,15 +262,8 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/").into_response();
     }
-    if let Some(existing) = find_employee_scoped(&state.db, id, &ctx).await {
-        let now = Utc::now();
-        let model = employee::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_employee_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = employee::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/employees/").into_response()
 }

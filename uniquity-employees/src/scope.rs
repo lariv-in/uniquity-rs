@@ -37,7 +37,7 @@ pub struct PointsRow {
 
 pub fn scope_employees(query: Select<EmployeeEntity>, auth: &AuthContext) -> Select<EmployeeEntity> {
     if require_superuser(auth) {
-        query.filter(employee::Column::DeletedAt.is_null())
+        query
     } else {
         query.filter(Expr::cust("1 = 0"))
     }
@@ -48,7 +48,7 @@ pub fn scope_points(
     auth: &AuthContext,
 ) -> Select<PointsTransactionEntity> {
     if require_superuser(auth) {
-        query.filter(points_transaction::Column::DeletedAt.is_null())
+        query
     } else {
         query.filter(Expr::cust("1 = 0"))
     }
@@ -63,7 +63,6 @@ pub async fn load_user_map(
     }
     UserEntity::find()
         .filter(user::Column::Id.is_in(user_ids.to_vec()))
-        .filter(user::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default()
@@ -77,7 +76,7 @@ pub async fn find_employee_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<employee::Model> {
-    let query = EmployeeEntity::find_by_id(id).filter(employee::Column::DeletedAt.is_null());
+    let query = EmployeeEntity::find_by_id(id);
     scope_employees(query, auth).one(db).await.ok().flatten()
 }
 
@@ -87,7 +86,7 @@ pub async fn find_points_scoped(
     auth: &AuthContext,
 ) -> Option<points_transaction::Model> {
     let query =
-        PointsTransactionEntity::find_by_id(id).filter(points_transaction::Column::DeletedAt.is_null());
+        PointsTransactionEntity::find_by_id(id);
     scope_points(query, auth).one(db).await.ok().flatten()
 }
 
@@ -99,7 +98,7 @@ pub async fn employee_points_total(db: &DatabaseConnection, employee_id: i64) ->
     }
     let sql = format!(
         "SELECT COALESCE(SUM(points), 0) AS sum FROM points_transactions \
-         WHERE to_employee_id = {employee_id} AND deleted_at IS NULL"
+         WHERE to_employee_id = {employee_id}"
     );
     SumRow::find_by_statement(Statement::from_string(
         sea_orm::DatabaseBackend::Postgres,
@@ -228,7 +227,6 @@ pub async fn query_points(
 
 pub async fn employee_display_name(db: &DatabaseConnection, employee_id: i64) -> String {
     let Some(emp) = EmployeeEntity::find_by_id(employee_id)
-        .filter(employee::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()

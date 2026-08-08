@@ -92,7 +92,6 @@ async fn load_payment_form_context(
 ) -> (String, String, Vec<ManyToManyItem>) {
     let posted_invoice_display = if posted_invoice_id > 0 {
         PostedInvoiceEntity::find_by_id(posted_invoice_id)
-            .filter(posted_invoice::Column::DeletedAt.is_null())
             .one(db)
             .await
             .ok()
@@ -149,7 +148,6 @@ async fn load_posted_invoice_link(
         return (String::new(), None);
     }
     if let Ok(Some(inv)) = PostedInvoiceEntity::find_by_id(posted_invoice_id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
     {
@@ -172,7 +170,6 @@ pub async fn list(
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PaymentEntity::find()
-        .filter(payment::Column::DeletedAt.is_null())
         .order_by_desc(payment::Column::Datetime);
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -373,7 +370,6 @@ pub async fn posted_fk_select(
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
     let query = PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .filter(crate::scope::sql_posted_not_fully_paid())
         .filter(sql_posted_not_cancelled())
         .order_by_desc(posted_invoice::Column::Datetime);

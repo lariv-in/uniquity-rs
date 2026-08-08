@@ -22,7 +22,7 @@ pub async fn account_label(db: &DatabaseConnection, account_id: Option<i64>) -> 
     };
     let row = AccountRow::find_by_statement(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "SELECT name, code FROM accounts WHERE id = $1 AND deleted_at IS NULL LIMIT 1",
+        "SELECT name, code FROM accounts WHERE id = $1 LIMIT 1",
         [id.into()],
     ))
     .one(db)
@@ -45,14 +45,12 @@ pub async fn load_taxes_by_ids(
     }
     TaxEntity::find()
         .filter(tax::Column::Id.is_in(ids.to_vec()))
-        .filter(tax::Column::DeletedAt.is_null())
         .all(db)
         .await
 }
 
 pub async fn load_all_taxes(db: &DatabaseConnection) -> Result<Vec<tax::Model>, sea_orm::DbErr> {
     TaxEntity::find()
-        .filter(tax::Column::DeletedAt.is_null())
         .all(db)
         .await
 }
@@ -77,7 +75,6 @@ pub fn apply_tax_filters(
     name: Option<&str>,
     tax_type: Option<&str>,
 ) -> Select<TaxEntity> {
-    query = query.filter(tax::Column::DeletedAt.is_null());
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(tax::Column::Name.contains(n));
     }
@@ -95,7 +92,7 @@ pub async fn find_tax_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<tax::Model> {
-    let query = TaxEntity::find_by_id(id).filter(tax::Column::DeletedAt.is_null());
+    let query = TaxEntity::find_by_id(id);
     scope_taxes(query, auth).one(db).await.ok().flatten()
 }
 

@@ -41,7 +41,7 @@ use crate::logic::tax_calculations::{
     InvoiceLinesTotals,
 };
 use crate::logic::invoice_number::posted_invoice_number;
-use crate::scope::find_active_posted;
+use crate::scope::find_cancellable_posted;
 
 use crate::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
 
@@ -57,7 +57,6 @@ pub async fn draft_new_posted(
     posted_at: DateTime<Utc>,
 ) -> Result<posted_invoice::Model, String> {
     let draft = DraftInvoiceEntity::find_by_id(draft_id)
-        .filter(draft_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| e.to_string())?
@@ -65,7 +64,6 @@ pub async fn draft_new_posted(
 
     let posted_count = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -75,7 +73,6 @@ pub async fn draft_new_posted(
 
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
-        .filter(draft_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -130,7 +127,6 @@ pub async fn draft_new_posted(
     let number = posted_invoice_number(db, &draft).await?;
     let dup_posted = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::Number.eq(&number))
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .count(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -301,13 +297,12 @@ pub async fn posted_new_cancelled(
     reason: String,
     at: DateTime<Utc>,
 ) -> Result<cancelled_invoice::Model, String> {
-    let posted = find_active_posted(db, posted_id)
+    let posted = find_cancellable_posted(db, posted_id)
         .await
         .ok_or("posted invoice is not cancellable")?;
 
     let posted_lines = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
-        .filter(posted_invoice_line::Column::DeletedAt.is_null())
         .order_by_asc(posted_invoice_line::Column::Id)
         .all(db)
         .await
@@ -411,7 +406,6 @@ pub async fn cancelled_new_draft(
     cancelled_id: i64,
 ) -> Result<draft_invoice::Model, String> {
     let cancelled = CancelledInvoiceEntity::find_by_id(cancelled_id)
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| e.to_string())?
@@ -485,7 +479,7 @@ async fn load_cancelled_invoice_lines(
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
-             WHERE cancelled_invoice_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
         .await

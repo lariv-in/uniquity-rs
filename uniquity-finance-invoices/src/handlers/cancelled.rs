@@ -3,7 +3,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 
 use lariv_rs::{
     components::{SharedChromeFolder, SlotCtx},
@@ -16,9 +16,9 @@ use uniquity_common::require_superuser;
 
 use crate::{
     entities::{
-        cancelled_invoice::{self, Entity as CancelledInvoiceEntity},
+        cancelled_invoice::Entity as CancelledInvoiceEntity,
         payment_term::Entity as PaymentTermEntity,
-        posted_invoice::{self, Entity as PostedInvoiceEntity},
+        posted_invoice::Entity as PostedInvoiceEntity,
     },
     logic::{
         cancelled_new_draft,
@@ -36,7 +36,7 @@ use crate::{
 };
 
 use uniquity_finance_creditnotes::{
-    entities::credit_note::{self, Entity as CreditNoteEntity},
+    entities::credit_note::Entity as CreditNoteEntity,
     routes::CreditNoteDetailRouteTag,
 };
 
@@ -75,7 +75,6 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let cancelled = CancelledInvoiceEntity::find_by_id(id)
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
         .one(&state.db)
         .await
         .ok()
@@ -97,7 +96,6 @@ pub async fn detail(
 
         let (posted_invoice_label, posted_invoice_href) =
             if let Ok(Some(posted)) = PostedInvoiceEntity::find_by_id(c.posted_invoice_id)
-                .filter(posted_invoice::Column::DeletedAt.is_null())
                 .one(&state.db)
                 .await
             {
@@ -111,7 +109,6 @@ pub async fn detail(
 
         let (credit_note_label, credit_note_href) =
             if let Ok(Some(cn)) = CreditNoteEntity::find_by_id(c.credit_note_id)
-                .filter(credit_note::Column::DeletedAt.is_null())
                 .one(&state.db)
                 .await
             {

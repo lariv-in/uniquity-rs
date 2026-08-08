@@ -69,7 +69,6 @@ pub fn apply_fiscal_year_filters(
     code: Option<&str>,
     name: Option<&str>,
 ) -> Select<FiscalYearEntity> {
-    query = query.filter(fiscal_year::Column::DeletedAt.is_null());
     if let Some(c) = code.filter(|s| !s.is_empty()) {
         query = query.filter(fiscal_year::Column::Code.contains(c));
     }
@@ -84,7 +83,7 @@ pub async fn find_fiscal_year_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<fiscal_year::Model> {
-    let query = FiscalYearEntity::find_by_id(id).filter(fiscal_year::Column::DeletedAt.is_null());
+    let query = FiscalYearEntity::find_by_id(id);
     scope_fiscal_years(query, auth).one(db).await.ok().flatten()
 }
 
@@ -106,7 +105,6 @@ pub async fn load_fiscal_year_for_datetime(
     FiscalYearEntity::find()
         .filter(fiscal_year::Column::StartsAt.lte(dt))
         .filter(fiscal_year::Column::EndsAt.gte(dt))
-        .filter(fiscal_year::Column::DeletedAt.is_null())
         .order_by_desc(fiscal_year::Column::StartsAt)
         .one(db)
         .await
@@ -117,7 +115,6 @@ pub async fn load_fiscal_year_for_datetime(
 pub async fn load_active_fiscal_year(db: &DatabaseConnection) -> Option<fiscal_year::Model> {
     FiscalYearEntity::find()
         .filter(fiscal_year::Column::IsActive.eq(true))
-        .filter(fiscal_year::Column::DeletedAt.is_null())
         .order_by_desc(fiscal_year::Column::StartsAt)
         .one(db)
         .await

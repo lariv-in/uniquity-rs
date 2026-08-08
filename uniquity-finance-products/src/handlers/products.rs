@@ -405,10 +405,8 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-products/").into_response();
     }
-    if let Some(p) = find_product_scoped(&state.db, id, &ctx).await {
-        let mut am: product::ActiveModel = p.into();
-        am.deleted_at = Set(Some(Utc::now()));
-        let _ = am.update(&state.db).await;
+    if find_product_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = product::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/finance-products/").into_response()
 }

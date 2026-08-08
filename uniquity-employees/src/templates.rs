@@ -3,15 +3,16 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, FieldText, FieldTitle,
-        FormOpts, LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, button_clear, button_delete, button_link, button_modal_form,
-        button_submit, container_column, container_row, data_table_list,
-        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_sidebar, modal_keyed,
-        pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        table_button_filter, table_pagination,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+        ShellScaffold, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
+        button_delete, button_link, button_modal_form, button_submit, container_column,
+        container_row, data_table_list, data_table_list_refresh, detail, field_text,
+        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, shell_scaffold, table_button_filter,
+        table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -66,15 +67,102 @@ lariv_rs::define_register_items! {
     hook: SlotsHook;
 }
 
-fn app_scaffold(title: &str, chrome: &ShellChrome, body: Markup) -> Markup {
+fn app_scaffold(title: &str, chrome: &ShellChrome, crumbs: Markup, body: Markup) -> Markup {
     shell_scaffold(ShellScaffold {
         title,
         registry_head: chrome.head.clone(),
         topbar_items: chrome.topbar_items.clone(),
         right_sidebar: chrome.right_sidebar.clone(),
+        breadcrumbs: crumbs,
         body,
         ..Default::default()
     })
+}
+
+fn scaffold_pane(crumbs: Markup, body: Markup) -> lariv_rs::components::AppLayoutHtml {
+    layout_sidebar(LayoutSidebar {
+        sidebar: html! {},
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_rs::components::MainContentHtml {
+    layout_main(LayoutMain {
+        breadcrumbs: crumbs,
+        content: body,
+    })
+}
+
+fn employees_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Employees",
+        href: None,
+    }])
+}
+
+fn points_list_crumbs() -> Markup {
+    let employees_url = EmployeesDefaultRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Employees",
+            href: Some(&employees_url),
+        },
+        Crumb {
+            label: "Points",
+            href: None,
+        },
+    ])
+}
+
+fn employee_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = EmployeesDefaultRouteTag.url();
+    let detail_url = EmployeesDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Employees",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Employees",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn points_crumbs(_id: i64, label: &str) -> Markup {
+    let employees_url = EmployeesDefaultRouteTag.url();
+    let list_url = PointsListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Employees",
+            href: Some(&employees_url),
+        },
+        Crumb {
+            label: "Points",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: label,
+            href: None,
+        },
+    ])
 }
 
 fn employee_filter_form(name: &str, email: &str) -> Markup {
@@ -189,19 +277,16 @@ impl EmployeeListPage {
 
 impl RenderAppPane for EmployeeListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
+        scaffold_pane(employees_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(employees_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for EmployeeListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Employees — Uniquity", chrome, self.body())
+        app_scaffold("Employees — Uniquity", chrome, employees_list_crumbs(), self.body())
     }
 }
 
@@ -237,19 +322,18 @@ impl EmployeeDetailPage {
 
 impl RenderAppPane for EmployeeDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
+        let crumbs = employee_crumbs(self.id, &self.user_name, None);
+        scaffold_pane(crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(employee_crumbs(self.id, &self.user_name, None), self.body())
     }
 }
 
 impl RenderTemplate for EmployeeDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Employee — Uniquity", chrome, self.body())
+        let crumbs = employee_crumbs(self.id, &self.user_name, None);
+        app_scaffold("Employee — Uniquity", chrome, crumbs, self.body())
     }
 }
 
@@ -296,19 +380,21 @@ impl EmployeeFormPage {
 
 impl RenderAppPane for EmployeeFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
+        let crumbs = employee_crumbs(self.id, &self.user_display, Some("Edit"));
+        scaffold_pane(crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(
+            employee_crumbs(self.id, &self.user_display, Some("Edit")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for EmployeeFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Edit Employee — Uniquity", chrome, self.body())
+        let crumbs = employee_crumbs(self.id, &self.user_display, Some("Edit"));
+        app_scaffold("Edit Employee — Uniquity", chrome, crumbs, self.body())
     }
 }
 
@@ -476,19 +562,16 @@ impl PointsListPage {
 
 impl RenderAppPane for PointsListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
+        scaffold_pane(points_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        scaffold_main(points_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for PointsListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Points — Uniquity", chrome, self.body())
+        app_scaffold("Points — Uniquity", chrome, points_list_crumbs(), self.body())
     }
 }
 
@@ -519,19 +602,21 @@ impl PointsDetailPage {
 
 impl RenderAppPane for PointsDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_sidebar(LayoutSidebar {
-            sidebar: html! {},
-            content: self.body(),
-        })
+        let label = format!("{} points", self.points);
+        let crumbs = points_crumbs(self.id, &label);
+        scaffold_pane(crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        lariv_rs::components::layout_main(self.body())
+        let label = format!("{} points", self.points);
+        scaffold_main(points_crumbs(self.id, &label), self.body())
     }
 }
 
 impl RenderTemplate for PointsDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Points — Uniquity", chrome, self.body())
+        let label = format!("{} points", self.points);
+        let crumbs = points_crumbs(self.id, &label);
+        app_scaffold("Points — Uniquity", chrome, crumbs, self.body())
     }
 }
 

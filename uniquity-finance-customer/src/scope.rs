@@ -23,7 +23,6 @@ pub fn apply_customer_filters(
     name: Option<&str>,
     email: Option<&str>,
 ) -> Select<CustomerEntity> {
-    query = query.filter(customer::Column::DeletedAt.is_null());
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(customer::Column::Name.contains(n));
     }
@@ -38,6 +37,6 @@ pub async fn find_customer_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<customer::Model> {
-    let query = CustomerEntity::find_by_id(id).filter(customer::Column::DeletedAt.is_null());
+    let query = CustomerEntity::find_by_id(id);
     scope_customers(query, auth).one(db).await.ok().flatten()
 }

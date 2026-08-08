@@ -259,7 +259,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         customer_type: Set(customer_type),
         name: Set(form.name.clone()),
         address_line_1: Set(opt_string(form.address_line_1.clone())),
@@ -369,15 +368,8 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to("/finance-customers/").into_response();
     }
-    if let Some(existing) = find_customer_scoped(&state.db, id, &ctx).await {
-        let now = Utc::now();
-        let model = customer::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_customer_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = customer::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/finance-customers/").into_response()
 }

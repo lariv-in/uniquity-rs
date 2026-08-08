@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 use std::str::FromStr;
 use tracing::warn;
@@ -179,7 +179,6 @@ pub async fn create_post(
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        deleted_at: Set(None),
         edited_video_id: Set(form.edited_video_id),
         you_tube_video_id: Set(video_id),
     };
@@ -256,15 +255,8 @@ pub async fn delete_post(
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
 ) -> Response {
-    if let Some(existing) = find_published_video(&state.db, id).await {
-        let now = Utc::now();
-        let model = published_video::ActiveModel {
-            id: Set(existing.id),
-            deleted_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let _ = model.update(&state.db).await;
+    if find_published_video(&state.db, id).await.is_some() {
+        let _ = published_video::Entity::delete_by_id(id).exec(&state.db).await;
     }
     Redirect::to("/video/published/").into_response()
 }

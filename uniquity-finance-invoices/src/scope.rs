@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Expr};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, sea_query::Expr};
 
 use uniquity_finance_fiscal_year::{
     entities::fiscal_year::{self, Entity as FiscalYearEntity},
@@ -109,7 +109,6 @@ pub async fn selected_fiscal_year_id_for_ui(
 
 pub async fn list_fiscal_year_options(db: &DatabaseConnection) -> Vec<(i64, String)> {
     FiscalYearEntity::find()
-        .filter(fiscal_year::Column::DeletedAt.is_null())
         .order_by_desc(fiscal_year::Column::StartsAt)
         .all(db)
         .await
@@ -164,31 +163,31 @@ pub async fn resolve_list_fiscal_year(
 
 pub fn sql_posted_not_cancelled() -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = posted_invoices.id AND c.deleted_at IS NULL)",
+        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = posted_invoices.id)",
     )
 }
 
 pub fn sql_posted_not_fully_paid() -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM paid_invoices paid WHERE paid.posted_invoice_id = posted_invoices.id AND paid.deleted_at IS NULL)",
+        "NOT EXISTS (SELECT 1 FROM paid_invoices paid WHERE paid.posted_invoice_id = posted_invoices.id)",
     )
 }
 
 pub fn sql_posted_not_partially_paid() -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM partially_paid_invoices pp WHERE pp.posted_invoice_id = posted_invoices.id AND pp.deleted_at IS NULL)",
+        "NOT EXISTS (SELECT 1 FROM partially_paid_invoices pp WHERE pp.posted_invoice_id = posted_invoices.id)",
     )
 }
 
 pub fn sql_settlement_posted_not_cancelled(table: &str) -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(format!(
-        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = {table}.posted_invoice_id AND c.deleted_at IS NULL)"
+        "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = {table}.posted_invoice_id)"
     ))
 }
 
 pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM posted_invoices p WHERE p.draft_invoice_id = draft_invoices.id AND p.deleted_at IS NULL)",
+        "NOT EXISTS (SELECT 1 FROM posted_invoices p WHERE p.draft_invoice_id = draft_invoices.id)",
     )
 }
 
@@ -203,7 +202,6 @@ pub async fn find_active_draft(
     id: i64,
 ) -> Option<draft_invoice::Model> {
     DraftInvoiceEntity::find_by_id(id)
-        .filter(draft_invoice::Column::DeletedAt.is_null())
         .filter(sql_draft_not_posted())
         .one(db)
         .await
@@ -217,7 +215,6 @@ pub async fn find_active_posted(
     id: i64,
 ) -> Option<posted_invoice::Model> {
     PostedInvoiceEntity::find_by_id(id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .filter(sql_posted_not_cancelled())
         .filter(sql_posted_not_fully_paid())
         .filter(sql_posted_not_partially_paid())
@@ -227,10 +224,22 @@ pub async fn find_active_posted(
         .flatten()
 }
 
+/// Posted invoice that can still be cancelled (unpaid, partial, or paid; not already cancelled).
+pub async fn find_cancellable_posted(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<posted_invoice::Model> {
+    PostedInvoiceEntity::find_by_id(id)
+        .filter(sql_posted_not_cancelled())
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Paid settlement still listed under the paid hub tab.
 pub async fn find_active_paid(db: &DatabaseConnection, id: i64) -> Option<paid_invoice::Model> {
     PaidInvoiceEntity::find_by_id(id)
-        .filter(paid_invoice::Column::DeletedAt.is_null())
         .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
         .one(db)
         .await
@@ -244,7 +253,6 @@ pub async fn find_active_partial(
     id: i64,
 ) -> Option<partially_paid_invoice::Model> {
     PartiallyPaidInvoiceEntity::find_by_id(id)
-        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
         .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"))
         .one(db)
         .await

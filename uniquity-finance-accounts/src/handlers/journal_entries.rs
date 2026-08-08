@@ -26,7 +26,10 @@ use crate::{
     forms::JournalEntryForm,
     handlers::ModalNameQuery,
     keys::{JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey},
-    routes::JournalDetailRouteTag,
+    logic::journal::delete_journal_entry_recursive,
+    routes::{
+        JournalDetailRouteTag, JournalEntryDeleteGetRouteTag, JournalEntryDetailRouteTag,
+    },
     scope::{
         find_journal_entry_scoped, find_journal_scoped, load_journal_entry_items,
         load_source_doc_by_id, query_journal_entries_for_select,
@@ -34,8 +37,8 @@ use crate::{
     source_doc_label::source_doc_type_label,
     state::AccountsState,
     templates::{
-        JournalEntryCreateModalPage, JournalEntryDetailPage, JournalEntryItemRow, JournalEntryRow,
-        JournalEntrySelectPage,
+        JournalEntryCreateModalPage, JournalEntryDeletePage, JournalEntryDetailPage,
+        JournalEntryItemRow, JournalEntryRow, JournalEntrySelectPage,
     },
 };
 
@@ -142,9 +145,11 @@ pub async fn detail(
     let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/finance/journals").into_response();
     };
-    let journal = find_journal_scoped(&state.db, entry.journal_id, &ctx)
-        .await
-        .map(|j| j.name)
+    let journal = find_journal_scoped(&state.db, entry.journal_id, &ctx).await;
+    let journal_mutable = journal.as_ref().map(|j| j.is_mutable).unwrap_or(false);
+    let journal_name = journal
+        .as_ref()
+        .map(|j| j.name.clone())
         .unwrap_or_else(|| "—".into());
     let source_doc_label = load_source_doc_by_id(&state.db, entry.source_doc_id)
         .await
@@ -163,11 +168,64 @@ pub async fn detail(
         id: entry.id,
         datetime: ctx.format_datetime_seconds(entry.datetime).into_string(),
         journal_id: entry.journal_id,
-        journal_label: format!("{journal} (#{})", entry.journal_id),
+        journal_label: format!("{journal_name} (#{})", entry.journal_id),
         source_doc_label,
         items,
+        can_delete: require_superuser(&ctx) && journal_mutable,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn delete_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
+    }
+    let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/finance/journals").into_response();
+    };
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
+        return Redirect::to("/finance/journals").into_response();
+    };
+    let page = JournalEntryDeletePage {
+        id: entry.id,
+        journal_id: entry.journal_id,
+        journal_label: format!("{} (#{})", journal.name, entry.journal_id),
+        can_delete: journal.is_mutable,
+        error: if journal.is_mutable {
+            None
+        } else {
+            Some("This journal is immutable. Enable Mutable on the journal edit page before deleting entries.".into())
+        },
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn delete_post(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if !require_superuser(&ctx) {
+        return Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response();
+    }
+    let Some(entry) = find_journal_entry_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to("/finance/journals").into_response();
+    };
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id, &ctx).await else {
+        return Redirect::to("/finance/journals").into_response();
+    };
+    if !journal.is_mutable {
+        return Redirect::to(&JournalEntryDeleteGetRouteTag::new(id).url()).into_response();
+    }
+    let journal_id = entry.journal_id;
+    let _ = delete_journal_entry_recursive(&state.db, entry.id).await;
+    Redirect::to(&JournalDetailRouteTag::new(journal_id).url()).into_response()
 }
 
 pub async fn select(

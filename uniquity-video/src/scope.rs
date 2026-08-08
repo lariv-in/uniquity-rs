@@ -78,21 +78,19 @@ pub struct PublishedVideoDetail {
 }
 
 pub fn scope_raw_list(query: Select<RawFootageEntity>, _auth: &AuthContext) -> Select<RawFootageEntity> {
-    query.filter(raw_footage::Column::DeletedAt.is_null())
+    query
 }
 
 pub async fn scope_raw_select(
-    mut query: Select<RawFootageEntity>,
+    query: Select<RawFootageEntity>,
     db: &DatabaseConnection,
     auth: &AuthContext,
 ) -> Select<RawFootageEntity> {
-    query = query.filter(raw_footage::Column::DeletedAt.is_null());
     if auth.user.is_superuser {
         return query;
     }
     let Ok(Some(emp)) = EmployeeEntity::find()
         .filter(employee::Column::UserId.eq(auth.user.id))
-        .filter(employee::Column::DeletedAt.is_null())
         .one(db)
         .await
     else {
@@ -110,7 +108,6 @@ pub async fn load_vnode_names(
     }
     VNodeEntity::find()
         .filter(filesystem_node::Column::Id.is_in(ids.to_vec()))
-        .filter(filesystem_node::Column::DeletedAt.is_null())
         .all(db)
         .await
         .unwrap_or_default()
@@ -186,7 +183,6 @@ pub async fn find_raw_footage(
     id: i64,
 ) -> Option<RawFootageDetail> {
     let m = RawFootageEntity::find_by_id(id)
-        .filter(raw_footage::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -212,7 +208,6 @@ pub async fn query_edited_videos(
     page: u32,
 ) -> (Vec<EditedVideoRow>, u32, u64) {
     let query = EditedVideoEntity::find()
-        .filter(edited_video::Column::DeletedAt.is_null())
         .order_by_desc(edited_video::Column::UpdatedAt);
     let page = page.max(1);
     let paginator = query.paginate(db, PAGE_SIZE);
@@ -246,7 +241,6 @@ pub async fn query_edited_videos(
 
 pub async fn find_edited_video(db: &DatabaseConnection, id: i64) -> Option<EditedVideoDetail> {
     let m = EditedVideoEntity::find_by_id(id)
-        .filter(edited_video::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
@@ -274,7 +268,6 @@ pub async fn query_published_videos(
     page: u32,
 ) -> (Vec<PublishedVideoRow>, u32, u64) {
     let query = PublishedVideoEntity::find()
-        .filter(published_video::Column::DeletedAt.is_null())
         .order_by_desc(published_video::Column::UpdatedAt);
     let page = page.max(1);
     let paginator = query.paginate(db, PAGE_SIZE);
@@ -312,7 +305,6 @@ pub async fn query_published_videos(
 
 pub async fn find_published_video(db: &DatabaseConnection, id: i64) -> Option<PublishedVideoDetail> {
     let m = PublishedVideoEntity::find_by_id(id)
-        .filter(published_video::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()

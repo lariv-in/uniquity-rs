@@ -21,7 +21,7 @@ pub async fn find_credit_note_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<credit_note::Model> {
-    let query = CreditNoteEntity::find_by_id(id).filter(credit_note::Column::DeletedAt.is_null());
+    let query = CreditNoteEntity::find_by_id(id);
     scope_credit_notes(query, auth).one(db).await.ok().flatten()
 }
 

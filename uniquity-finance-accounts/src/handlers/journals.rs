@@ -24,7 +24,7 @@ use uniquity_common::require_superuser;
 
 use crate::{
     entities::journal::{self, Entity as JournalEntity},
-    forms::JournalForm,
+    forms::{JournalCreateForm, JournalForm},
     handlers::ModalNameQuery,
     journal_type::JournalType,
     keys::{
@@ -175,6 +175,7 @@ pub async fn detail(
         id: j.id,
         name: j.name,
         is_active: j.is_active,
+        is_mutable: j.is_mutable,
         currency_id: j.currency_id,
         currency_label,
         journal_type: j.journal_type.to_string(),
@@ -212,7 +213,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<JournalForm>,
+    Form(form): Form<JournalCreateForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
@@ -224,6 +225,7 @@ pub async fn create_post(
         updated_at: Set(Some(now)),
         name: Set(form.name.clone()),
         is_active: Set(checkbox_on(&form.is_active) || form.is_active.is_empty()),
+        is_mutable: Set(false),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(0)),
         journal_type: Set(jtype),
         ..Default::default()
@@ -298,6 +300,7 @@ pub async fn edit_post(
         updated_at: Set(Some(now)),
         name: Set(form.name),
         is_active: Set(checkbox_on(&form.is_active)),
+        is_mutable: Set(checkbox_on(&form.is_mutable)),
         currency_id: Set(parse_i64(&form.currency_id).unwrap_or(existing.currency_id)),
         journal_type: Set(jtype),
         ..Default::default()
@@ -317,17 +320,10 @@ pub async fn delete_post(
     if !require_superuser(&ctx) {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
     }
-    let Some(existing) = find_journal_scoped(&state.db, id, &ctx).await else {
+    if find_journal_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
-    };
-    let now = Utc::now();
-    let model = journal::ActiveModel {
-        id: Set(existing.id),
-        deleted_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    };
-    let _ = model.update(&state.db).await;
+    }
+    let _ = journal::Entity::delete_by_id(id).exec(&state.db).await;
     Redirect::to(&JournalListRouteTag.url()).into_response()
 }
 

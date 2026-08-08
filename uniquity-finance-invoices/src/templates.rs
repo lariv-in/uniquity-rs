@@ -5,10 +5,10 @@ use uniquity_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_rs::{
     components::{
-        ButtonModalForm, ButtonSubmit, FieldText, FieldTitle, FormOpts, ManyToManyItem,
+        ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts, ManyToManyItem,
         ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
         SwapKey, TableColumnHeader, TablePagination, TableRow,
-        button_delete, button_download_route, button_modal_form, button_submit,
+        breadcrumbs, button_delete, button_download_route, button_modal_form, button_submit,
         container_column, container_row, data_table_list, data_table_list_refresh, detail,
         detail_header, field_link, field_text, field_title, form, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed, pagination_pages,
@@ -27,8 +27,8 @@ use uniquity_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use uniquity_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
 use crate::components::{self, field_invoice_lines, fiscal_year_environment_selector};
@@ -58,8 +58,10 @@ use super::routes::{
     PartiallyPaidInvoicePdfRouteTag,
     PaymentTermCreateGetRouteTag, PaymentTermCreatePostRouteTag, PaymentTermDeletePostRouteTag,
     PaymentTermDetailRouteTag, PaymentTermEditGetRouteTag, PaymentTermEditPostRouteTag,
+    PaymentTermListRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoicePdfRouteTag,
+    PostedInvoicePdfRouteTag, PaymentBatchListRouteTag, PaymentPreferencesRouteTag,
+    InvoicePreferencesRouteTag,
 };
 
 lariv_rs::define_register_items! {
@@ -121,6 +123,152 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         pages: &pages,
         hx_target: K::SELECTOR,
     })
+}
+
+fn invoices_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Invoices",
+        href: None,
+    }])
+}
+
+fn payments_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Payments",
+        href: None,
+    }])
+}
+
+fn payment_batches_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Batches",
+        href: None,
+    }])
+}
+
+fn payment_terms_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Payment terms",
+        href: None,
+    }])
+}
+
+fn invoice_preferences_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Invoice preferences",
+        href: None,
+    }])
+}
+
+fn payment_preferences_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Payment preferences",
+        href: None,
+    }])
+}
+
+fn invoice_number_label(id: i64, number: &str) -> String {
+    if number.is_empty() {
+        format!("#{id}")
+    } else {
+        number.to_string()
+    }
+}
+
+fn draft_invoice_label(id: i64, number: &str) -> String {
+    if number.is_empty() {
+        format!("Draft #{id}")
+    } else {
+        format!("Draft {number}")
+    }
+}
+
+fn invoice_section_crumbs(label: &str, detail_url: &str, action: Option<&str>) -> Markup {
+    let list_url = InvoiceDefaultRouteTag.url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Invoices",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Invoices",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: Some(detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn payment_crumbs(label: &str) -> Markup {
+    let list_url = PaymentListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Payments",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: label,
+            href: None,
+        },
+    ])
+}
+
+fn payment_batch_crumbs(label: &str) -> Markup {
+    let list_url = PaymentBatchListRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Batches",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: label,
+            href: None,
+        },
+    ])
+}
+
+fn payment_term_crumbs(label: &str, detail_url: &str, action: Option<&str>) -> Markup {
+    let list_url = PaymentTermListRouteTag.url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Payment terms",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Payment terms",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: label,
+                href: Some(detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
 }
 
 fn tab_href(tab: &str) -> String {
@@ -507,10 +655,10 @@ impl InvoiceHubPage {
 
 impl RenderAppPane for InvoiceHubPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, invoices_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(invoices_list_crumbs(), self.body())
     }
 }
 
@@ -519,6 +667,7 @@ impl RenderTemplate for InvoiceHubPage {
         app_scaffold(
             "Finance Invoices — Uniquity",
             chrome,
+            invoices_list_crumbs(),
             self.body(),
             &self.path_and_query,
         )
@@ -592,16 +741,27 @@ impl DraftInvoiceFormPage {
 
 impl RenderAppPane for DraftInvoiceFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let label = draft_invoice_label(self.id, &self.form.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = draft_invoice_label(self.id, &self.form.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, Some("Edit")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for DraftInvoiceFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(&self.title, chrome, self.sidebar(), self.body())
+        let label = draft_invoice_label(self.id, &self.form.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Edit"));
+        app_scaffold_with_sidebar(&self.title, chrome, self.sidebar(), crumbs, self.body())
     }
 }
 
@@ -733,16 +893,24 @@ impl DraftInvoiceDetailPage {
 
 impl RenderAppPane for DraftInvoiceDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = draft_invoice_label(self.id, &self.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = draft_invoice_label(self.id, &self.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for DraftInvoiceDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Draft Invoice", chrome, self.menu(), self.body())
+        let label = draft_invoice_label(self.id, &self.number);
+        let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar("Draft Invoice", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -814,16 +982,24 @@ impl PostedInvoiceDetailPage {
 
 impl RenderAppPane for PostedInvoiceDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for PostedInvoiceDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Posted Invoice", chrome, self.menu(), self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar("Posted Invoice", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -969,16 +1145,24 @@ impl PaidInvoiceDetailPage {
 
 impl RenderAppPane for PaidInvoiceDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for PaidInvoiceDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Paid Invoice", chrome, self.menu(), self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar("Paid Invoice", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1020,16 +1204,30 @@ impl PartiallyPaidInvoiceDetailPage {
 
 impl RenderAppPane for PartiallyPaidInvoiceDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PartiallyPaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PartiallyPaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for PartiallyPaidInvoiceDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Partially Paid Invoice", chrome, self.menu(), self.body())
+        let label = invoice_number_label(self.ctx.settlement_id, &self.ctx.number);
+        let detail_url = PartiallyPaidInvoiceDetailRouteTag::new(self.ctx.settlement_id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar(
+            "Partially Paid Invoice",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -1122,16 +1320,30 @@ fn journal_entry_link(id: i64) -> Markup {
 
 impl RenderAppPane for CancelledInvoiceDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = CancelledInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = CancelledInvoiceDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(invoice_section_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for CancelledInvoiceDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Cancelled Invoice", chrome, self.menu(), self.body())
+        let label = invoice_number_label(self.id, &self.number);
+        let detail_url = CancelledInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar(
+            "Cancelled Invoice",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 
@@ -1205,16 +1417,22 @@ impl PaymentListPage {
 
 impl RenderAppPane for PaymentListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, payments_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(payments_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for PaymentListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payments", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Payments",
+            chrome,
+            payments_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -1335,16 +1553,26 @@ impl PaymentBatchListPage {
 
 impl RenderAppPane for PaymentBatchListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(
+            &self.path_and_query,
+            payment_batches_list_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(payment_batches_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for PaymentBatchListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payment Batches", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Payment Batches",
+            chrome,
+            payment_batches_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -1390,16 +1618,21 @@ impl PaymentDetailPage {
 
 impl RenderAppPane for PaymentDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = format!("#{}", self.id);
+        let crumbs = payment_crumbs(&label);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = format!("#{}", self.id);
+        layout_main_with_crumbs(payment_crumbs(&label), self.body())
     }
 }
 
 impl RenderTemplate for PaymentDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Payment", chrome, self.menu(), self.body())
+        let label = format!("#{}", self.id);
+        let crumbs = payment_crumbs(&label);
+        app_scaffold_with_sidebar("Payment", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1543,16 +1776,21 @@ impl PaymentBatchDetailPage {
 
 impl RenderAppPane for PaymentBatchDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = format!("Batch #{}", self.id);
+        let crumbs = payment_batch_crumbs(&label);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = format!("Batch #{}", self.id);
+        layout_main_with_crumbs(payment_batch_crumbs(&label), self.body())
     }
 }
 
 impl RenderTemplate for PaymentBatchDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Payment Batch", chrome, self.menu(), self.body())
+        let label = format!("Batch #{}", self.id);
+        let crumbs = payment_batch_crumbs(&label);
+        app_scaffold_with_sidebar("Payment Batch", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1626,16 +1864,26 @@ impl PaymentTermListPage {
 
 impl RenderAppPane for PaymentTermListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(
+            &self.path_and_query,
+            payment_terms_list_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(payment_terms_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for PaymentTermListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Payment Terms", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Payment Terms",
+            chrome,
+            payment_terms_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -1822,19 +2070,31 @@ impl PaymentTermFormPage {
 
 impl RenderAppPane for PaymentTermFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let label = payment_term_display_label(&self.summary, self.id);
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        let crumbs = payment_term_crumbs(&label, &detail_url, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = payment_term_display_label(&self.summary, self.id);
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(
+            payment_term_crumbs(&label, &detail_url, Some("Edit")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for PaymentTermFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
+        let label = payment_term_display_label(&self.summary, self.id);
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        let crumbs = payment_term_crumbs(&label, &detail_url, Some("Edit"));
         app_scaffold_with_sidebar(
             "Edit Payment Term",
             chrome,
             self.sidebar(),
+            crumbs,
             self.body(),
         )
     }
@@ -1933,16 +2193,24 @@ impl PaymentTermDetailPage {
 
 impl RenderAppPane for PaymentTermDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = self.title();
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        let crumbs = payment_term_crumbs(&label, &detail_url, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = self.title();
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(payment_term_crumbs(&label, &detail_url, None), self.body())
     }
 }
 
 impl RenderTemplate for PaymentTermDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(&self.title(), chrome, self.menu(), self.body())
+        let label = self.title();
+        let detail_url = PaymentTermDetailRouteTag::new(self.id).url();
+        let crumbs = payment_term_crumbs(&label, &detail_url, None);
+        app_scaffold_with_sidebar(&self.title(), chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1974,16 +2242,27 @@ impl CancelInvoicePage {
 
 impl RenderAppPane for CancelInvoicePage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let label = invoice_number_label(self.id, "");
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Cancel"));
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        let label = invoice_number_label(self.id, "");
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        layout_main_with_crumbs(
+            invoice_section_crumbs(&label, &detail_url, Some("Cancel")),
+            self.body(),
+        )
     }
 }
 
 impl RenderTemplate for CancelInvoicePage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Cancel Invoice", chrome, self.menu(), self.body())
+        let label = invoice_number_label(self.id, "");
+        let detail_url = PostedInvoiceDetailRouteTag::new(self.id).url();
+        let crumbs = invoice_section_crumbs(&label, &detail_url, Some("Cancel"));
+        app_scaffold_with_sidebar("Cancel Invoice", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -2020,10 +2299,14 @@ impl InvoicePreferencesPage {
 
 impl RenderAppPane for InvoicePreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&InvoiceDefaultRouteTag.url(), self.body())
+        layout_with_sidebar_crumbs(
+            &InvoicePreferencesRouteTag.url(),
+            invoice_preferences_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(invoice_preferences_crumbs(), self.body())
     }
 }
 
@@ -2032,6 +2315,7 @@ impl RenderTemplate for InvoicePreferencesPage {
         app_scaffold(
             "Invoice Preferences",
             chrome,
+            invoice_preferences_crumbs(),
             self.body(),
             &InvoiceDefaultRouteTag.url(),
         )
@@ -2062,10 +2346,14 @@ impl PaymentPreferencesPage {
 
 impl RenderAppPane for PaymentPreferencesPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&PaymentListRouteTag.url(), self.body())
+        layout_with_sidebar_crumbs(
+            &PaymentPreferencesRouteTag.url(),
+            payment_preferences_crumbs(),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(payment_preferences_crumbs(), self.body())
     }
 }
 
@@ -2074,6 +2362,7 @@ impl RenderTemplate for PaymentPreferencesPage {
         app_scaffold(
             "Payment Preferences",
             chrome,
+            payment_preferences_crumbs(),
             self.body(),
             &PaymentListRouteTag.url(),
         )

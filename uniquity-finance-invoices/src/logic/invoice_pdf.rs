@@ -19,13 +19,13 @@ use uniquity_finance_accounts::{
     DEFAULT_INVOICE_PDF_TEMPLATE, write_bundled_pdf_assets,
 };
 use uniquity_finance_accounts::logic::journal::load_accounting_preferences;
-use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
-use uniquity_finance_products::entities::product::{self, Entity as ProductEntity};
+use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
+use uniquity_finance_products::entities::product::Entity as ProductEntity;
 use uniquity_finance_taxes::entities::tax::{self, TaxKind};
 use uniquity_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
-    cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice, partially_paid_invoice,
+    draft_invoice_line,
     payment, posted_invoice, posted_invoice_line,
 };
 use crate::entities::{
@@ -188,7 +188,6 @@ fn tax_to_pdf(t: &tax::Model) -> PdfTax {
 
 async fn load_customer(db: &DatabaseConnection, id: i64) -> Result<PdfCustomer, InvoicePdfError> {
     let c = CustomerEntity::find_by_id(id)
-        .filter(customer::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -229,7 +228,6 @@ async fn load_product_pdf(
     id: i64,
 ) -> Result<PdfProduct, InvoicePdfError> {
     let p = ProductEntity::find_by_id(id)
-        .filter(product::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -249,7 +247,6 @@ async fn load_payments_for_posted(
 ) -> Result<Vec<PdfPayment>, InvoicePdfError> {
     let rows = PaymentEntity::find()
         .filter(payment::Column::PostedInvoiceId.eq(posted_id))
-        .filter(payment::Column::DeletedAt.is_null())
         .order_by_asc(payment::Column::Datetime)
         .all(db)
         .await
@@ -299,7 +296,6 @@ async fn line_tax_ids(
 async fn load_draft_lines(db: &DatabaseConnection, draft_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
-        .filter(draft_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
@@ -317,7 +313,6 @@ async fn load_draft_lines(db: &DatabaseConnection, draft_id: i64) -> Result<Vec<
 async fn load_posted_lines(db: &DatabaseConnection, posted_id: i64) -> Result<Vec<LineRow>, InvoicePdfError> {
     let rows = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
-        .filter(posted_invoice_line::Column::DeletedAt.is_null())
         .all(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
@@ -337,7 +332,7 @@ async fn load_cancelled_lines(db: &DatabaseConnection, cancelled_id: i64) -> Res
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity FROM cancelled_invoice_lines \
-             WHERE cancelled_invoice_id = $1 AND deleted_at IS NULL ORDER BY id ASC",
+             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
         .await
@@ -445,7 +440,6 @@ pub async fn render_draft_invoice_pdf(
     tz: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let draft = DraftInvoiceEntity::find_by_id(id)
-        .filter(draft_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -514,7 +508,6 @@ pub async fn render_cancelled_invoice_pdf(
     tz: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let inv = CancelledInvoiceEntity::find_by_id(id)
-        .filter(cancelled_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -555,13 +548,11 @@ pub async fn render_paid_invoice_pdf(
     tz: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let paid = PaidInvoiceEntity::find_by_id(id)
-        .filter(paid_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
         .ok_or(InvoicePdfError::NotFound)?;
     let posted = PostedInvoiceEntity::find_by_id(paid.posted_invoice_id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -575,13 +566,11 @@ pub async fn render_partially_paid_invoice_pdf(
     tz: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let partial = PartiallyPaidInvoiceEntity::find_by_id(id)
-        .filter(partially_paid_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
         .ok_or(InvoicePdfError::NotFound)?;
     let posted = PostedInvoiceEntity::find_by_id(partial.posted_invoice_id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?
@@ -844,7 +833,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
                 id: t.id,
                 created_at: None,
                 updated_at: None,
-                deleted_at: None,
                 name: t.name.clone(),
                 percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
                 tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
@@ -865,7 +853,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
             id: t.id,
             created_at: None,
             updated_at: None,
-            deleted_at: None,
             name: t.name.clone(),
             percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
             tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),

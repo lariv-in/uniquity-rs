@@ -3,10 +3,10 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonSubmit, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
         ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, ButtonModalForm, button_clear, button_delete, button_modal_form,
+        TablePagination, TableRow, ButtonModalForm, breadcrumbs, button_clear, button_delete, button_modal_form,
         button_submit, container_column, container_row, data_table_list_refresh,
         detail, field_text, field_title, form, form_hx_get_route,
         form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
@@ -24,8 +24,8 @@ use uniquity_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use uniquity_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_content, layout_with_entity_sidebar,
-    layout_with_sidebar,
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
 use super::forms::{
@@ -37,6 +37,44 @@ use super::routes::{
     ProductDeletePostRouteTag, ProductDetailRouteTag, ProductEditGetRouteTag,
     ProductEditPostRouteTag, ProductFkSelectRouteTag,
 };
+
+fn products_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Products",
+        href: None,
+    }])
+}
+
+fn product_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = ProductDefaultRouteTag.url();
+    let detail_url = ProductDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Products",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Products",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
 
 fn product_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Markup {
     let menu_title = format!("Product: {name}");
@@ -244,16 +282,22 @@ impl ProductListPage {
 
 impl RenderAppPane for ProductListPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar(&self.path_and_query, self.body())
+        layout_with_sidebar_crumbs(&self.path_and_query, products_list_crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(products_list_crumbs(), self.body())
     }
 }
 
 impl RenderTemplate for ProductListPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Products — Uniquity", chrome, self.body(), &self.path_and_query)
+        app_scaffold(
+            "Products — Uniquity",
+            chrome,
+            products_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
     }
 }
 
@@ -296,16 +340,18 @@ impl ProductDetailPage {
 
 impl RenderAppPane for ProductDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.menu(), self.body())
+        let crumbs = product_crumbs(self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(product_crumbs(self.id, &self.name, None), self.body())
     }
 }
 
 impl RenderTemplate for ProductDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Product — Uniquity", chrome, self.menu(), self.body())
+        let crumbs = product_crumbs(self.id, &self.name, None);
+        app_scaffold_with_sidebar("Product — Uniquity", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -377,16 +423,24 @@ impl ProductFormPage {
 
 impl RenderAppPane for ProductFormPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_entity_sidebar(self.sidebar(), self.body())
+        let crumbs = product_crumbs(self.id, &self.name, Some("Edit"));
+        layout_with_entity_sidebar_crumbs(self.sidebar(), crumbs, self.body())
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_content(self.body())
+        layout_main_with_crumbs(product_crumbs(self.id, &self.name, Some("Edit")), self.body())
     }
 }
 
 impl RenderTemplate for ProductFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar("Edit Product — Uniquity", chrome, self.sidebar(), self.body())
+        let crumbs = product_crumbs(self.id, &self.name, Some("Edit"));
+        app_scaffold_with_sidebar(
+            "Edit Product — Uniquity",
+            chrome,
+            self.sidebar(),
+            crumbs,
+            self.body(),
+        )
     }
 }
 

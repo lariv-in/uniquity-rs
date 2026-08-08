@@ -2,7 +2,7 @@ use axum::{
     extract::Path,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 
 use lariv_rs::{
     components::{SharedChromeFolder, SlotCtx},
@@ -15,9 +15,9 @@ use uniquity_common::require_superuser;
 
 use crate::{
     entities::{
-        payment::{self, Entity as PaymentEntity},
+        payment::Entity as PaymentEntity,
         payment_term::Entity as PaymentTermEntity,
-        posted_invoice::{self, Entity as PostedInvoiceEntity},
+        posted_invoice::Entity as PostedInvoiceEntity,
     },
     logic::{
         invoice_line_editor::{
@@ -42,13 +42,11 @@ async fn load_settlement_context(
     tz: &str,
 ) -> Option<SettlementDetailContext> {
     let posted = PostedInvoiceEntity::find_by_id(posted_invoice_id)
-        .filter(posted_invoice::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()
         .flatten()?;
     let payment = PaymentEntity::find_by_id(payment_id)
-        .filter(payment::Column::DeletedAt.is_null())
         .one(db)
         .await
         .ok()

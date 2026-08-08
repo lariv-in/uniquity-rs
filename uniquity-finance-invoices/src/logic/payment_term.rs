@@ -121,9 +121,6 @@ pub async fn update_payment_term(
     else {
         return Err("payment term not found".to_string());
     };
-    if existing.deleted_at.is_some() {
-        return Err("payment term not found".to_string());
-    }
 
     let (new_term_type, due_datetime, duration_nanos) = match input {
         CreatePaymentTermInput::DueDate(d) => {
@@ -200,7 +197,7 @@ pub async fn update_payment_term(
             }
             _ => return Err("invalid payment term type".to_string()),
         };
-        soft_delete_payment_term_backing(&txn, &existing, now).await?;
+        delete_payment_term_backing(&txn, &existing).await?;
         backing_id
     };
 
@@ -218,29 +215,22 @@ pub async fn update_payment_term(
     Ok(pt)
 }
 
-async fn soft_delete_payment_term_backing(
+async fn delete_payment_term_backing(
     txn: &sea_orm::DatabaseTransaction,
     pt: &payment_term::Model,
-    now: DateTime<Utc>,
 ) -> Result<(), String> {
     match pt.term_type.as_str() {
         PAYMENT_TERM_TYPE_DUE_DATE => {
-            let am: payment_term_due_date::ActiveModel = payment_term_due_date::ActiveModel {
-                id: Set(pt.backing_id),
-                deleted_at: Set(Some(now)),
-                updated_at: Set(Some(now)),
-                ..Default::default()
-            };
-            am.update(txn).await.map_err(|e| e.to_string())?;
+            payment_term_due_date::Entity::delete_by_id(pt.backing_id)
+                .exec(txn)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         PAYMENT_TERM_TYPE_RELATIVE => {
-            let am: payment_term_relative::ActiveModel = payment_term_relative::ActiveModel {
-                id: Set(pt.backing_id),
-                deleted_at: Set(Some(now)),
-                updated_at: Set(Some(now)),
-                ..Default::default()
-            };
-            am.update(txn).await.map_err(|e| e.to_string())?;
+            payment_term_relative::Entity::delete_by_id(pt.backing_id)
+                .exec(txn)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         _ => {}
     }
