@@ -17,6 +17,7 @@ pub mod migrations;
 pub mod preferences_hints;
 pub mod routes;
 pub mod scope;
+pub mod source_docs;
 pub mod state;
 pub mod templates;
 
@@ -50,6 +51,7 @@ lariv_rs::define_plugin_install! {
     plugin: UniquityFinanceInvoicesTag;
     steps: [
         cap_hook(uniquity_finance_accounts::accounting_sidebar::AccountingSidebarTag, uniquity_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
+        cap_hook(uniquity_finance_accounts::SourceDocTag, uniquity_finance_accounts::SourceDocCap, source_docs::Hook),
         apps(apps::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),

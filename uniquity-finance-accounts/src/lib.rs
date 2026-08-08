@@ -27,8 +27,14 @@ pub use account_select::account_select_url_with_balance_type as account_select_r
 pub use account_validation::validate_leaf_account_balance_type;
 pub use balance_type::BalanceType;
 pub use journal_type::JournalType;
-pub use source_doc_label::{source_doc_ref_summary, source_doc_summary, source_doc_type_label};
-pub use source_doc_registry::{SourceDocInstance, SourceDocRegistry, SourceDocType};
+pub use source_doc_label::{
+    resolve_source_doc_display, source_doc_ref_summary, source_doc_summary, source_doc_type_label,
+    SourceDocDisplay,
+};
+pub use source_doc_registry::{
+    humanize_type_name, SourceDocCap, SourceDocInstance, SourceDocRegistrar, SourceDocRegistry,
+    SourceDocTag, SourceDocType,
+};
 pub use state::AccountsState;
 
 pub use crate::apps::ACCOUNTING_APP_KEY;
@@ -59,6 +65,8 @@ lariv_rs::define_plugin_install! {
     steps: [
         cap_attach(accounting_sidebar::AccountingSidebarTag, accounting_sidebar::AccountingSidebarCap, accounting_sidebar::AccountingSidebarCap::<frunk::HNil>::new()),
         cap_hook(accounting_sidebar::AccountingSidebarTag, accounting_sidebar::AccountingSidebarCap, accounting_sidebar::BaseHook),
+        cap_attach(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::SourceDocCap::<frunk::HNil>::new()),
+        cap_hook(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::BaseHook),
         apps(apps::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),

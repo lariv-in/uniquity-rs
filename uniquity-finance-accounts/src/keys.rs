@@ -1,6 +1,7 @@
 lariv_rs::swap_key!(AccountCreateModalKey, "finance-account-create-modal");
 lariv_rs::swap_key!(AccountTableKey, "finance-accounts-table");
 lariv_rs::swap_key!(AccountJournalEntriesTableKey, "finance-account-journal-entries-table");
+lariv_rs::swap_key!(AccountJournalEntryItemsTableKey, "finance-account-journal-entry-items-table");
 lariv_rs::swap_key!(AccountSelectTableKey, "finance-account-selection-table");
 lariv_rs::swap_key!(AccountSelectModalKey, "finance-account-selection-modal");
 lariv_rs::swap_key!(AccountDeleteModalKey, "finance-account-delete-modal");

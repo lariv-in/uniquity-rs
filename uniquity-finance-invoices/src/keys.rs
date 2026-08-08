@@ -4,7 +4,6 @@ lariv_rs::swap_key!(DraftInvoiceCreateModalKey, "draft-invoice-create-modal");
 lariv_rs::swap_key!(PostedInvoiceTableKey, "posted-invoice-table");
 lariv_rs::swap_key!(PaymentTableKey, "finance-payment-table");
 lariv_rs::swap_key!(PaymentCreateModalKey, "finance-payment-create-modal");
-lariv_rs::swap_key!(PaymentBatchTableKey, "finance-payment-batch-table");
 lariv_rs::swap_key!(PaymentBatchCreateModalKey, "finance-payment-batch-create-modal");
 lariv_rs::swap_key!(PaymentTermTableKey, "finance-payment-term-table");
 lariv_rs::swap_key!(PaymentTermCreateModalKey, "finance-payment-term-create-modal");

@@ -196,6 +196,11 @@ pub fn hub_tab_url(tab: &str) -> String {
     format!("/finance-invoices/?tab={tab}")
 }
 
+/// Payments list URL for a tab (`single`, `batches`).
+pub fn payments_tab_url(tab: &str) -> String {
+    format!("/finance-invoices/payments/?tab={tab}")
+}
+
 /// Draft still listed under the drafts hub tab (not deleted, not posted).
 pub async fn find_active_draft(
     db: &DatabaseConnection,

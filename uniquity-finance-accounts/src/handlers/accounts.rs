@@ -22,7 +22,7 @@ use lariv_rs::{
     },
 };
 
-use uniquity_common::require_superuser;
+use uniquity_common::{decimal::decimal_display, require_superuser};
 
 use crate::{
     account_validation::{
@@ -35,6 +35,7 @@ use crate::{
     handlers::ModalNameQuery,
     keys::AccountCreateModalKey,
     keys::AccountJournalEntriesTableKey,
+    keys::AccountJournalEntryItemsTableKey,
     keys::AccountSelectModalKey,
     keys::AccountSelectTableKey,
     keys::AccountTableKey,
@@ -43,15 +44,17 @@ use crate::{
     },
     scope::{
         apply_account_filters, find_account_scoped, load_account_ancestors,
-        load_account_parent_label, query_journal_entries_for_account_subtree,
+        load_account_parent_label, load_journal_entry_transfer_amounts,
+        query_journal_entries_for_account_subtree, query_journal_entry_items_for_account_subtree,
         sum_account_subtree_balance,
     },
-    source_doc_label::source_doc_type_label,
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
-        AccountCreateModalPage, AccountDetailPage, AccountFormPage,
-        AccountJournalEntriesPage, AccountListPage, AccountRow, AccountSelectPage,
-        JournalEntryRow,
+        AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountJournalEntriesPage,
+        AccountJournalEntryItemRow, AccountJournalEntryItemsPage, AccountListPage, AccountRow,
+        AccountSelectPage, JournalEntryRow,
     },
 };
 
@@ -306,6 +309,7 @@ pub async fn detail(
 
 pub async fn journal_entries(
     Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -320,17 +324,24 @@ pub async fn journal_entries(
     let page_num = q.page.get();
     let (entry_models, entry_total) =
         query_journal_entries_for_account_subtree(&state.db, &ctx, a.id, page_num, PAGE_SIZE).await;
+    let entry_ids: Vec<i64> = entry_models.iter().map(|(e, _)| e.id).collect();
+    let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let mut entry_rows = Vec::with_capacity(entry_models.len());
     for (e, journal_name) in entry_models {
-        let source_doc_label = crate::scope::load_source_doc_by_id(&state.db, e.source_doc_id)
-            .await
-            .map(|d| source_doc_type_label(&d.source_doc_type))
-            .unwrap_or_else(|| "—".into());
+        let source_doc = resolve_source_doc_display(
+            &state.db,
+            &source_docs,
+            e.source_doc_id,
+        )
+        .await;
         entry_rows.push(JournalEntryRow {
             id: e.id,
             datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
-            source_doc_label,
+            source_doc_label: source_doc.type_label,
+            source_doc_instance_name: source_doc.instance_name,
+            source_doc_url: source_doc.detail_url,
             journal_name,
+            amount: amounts.get(&e.id).cloned().unwrap_or_else(|| "—".into()),
             label: String::new(),
         });
     }
@@ -345,6 +356,55 @@ pub async fn journal_entries(
     };
     if htmx.targets::<AccountJournalEntriesTableKey>() {
         return page.render_entries_table().into_response();
+    }
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn journal_entry_items(
+    Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Path(id): Path<i64>,
+    Query(q): Query<AccountDetailQuery>,
+) -> Response {
+    let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
+    };
+    let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
+    let page_num = q.page.get();
+    let (item_models, item_total) = query_journal_entry_items_for_account_subtree(
+        &state.db,
+        &ctx,
+        a.id,
+        page_num,
+        PAGE_SIZE,
+    )
+    .await;
+    let mut item_rows = Vec::with_capacity(item_models.len());
+    for (item, source_doc_id) in item_models {
+        let source_doc =
+            resolve_source_doc_display(&state.db, &source_docs, source_doc_id).await;
+        item_rows.push(AccountJournalEntryItemRow {
+            datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
+            amount: decimal_display(item.amount),
+            source_doc_instance_name: source_doc.instance_name,
+            source_doc_url: source_doc.detail_url,
+        });
+    }
+    let items = ObjectList::from_page(item_rows, page_num, PAGE_SIZE, item_total);
+    let page = AccountJournalEntryItemsPage {
+        id: a.id,
+        name: a.name,
+        ancestors,
+        items,
+        path_and_query: path_and_query(&uri),
+        can_edit: require_superuser(&ctx),
+    };
+    if htmx.targets::<AccountJournalEntryItemsTableKey>() {
+        return page.render_items_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

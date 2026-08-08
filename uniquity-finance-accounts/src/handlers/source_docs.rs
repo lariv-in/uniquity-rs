@@ -17,7 +17,8 @@ use crate::{
     entities::source_doc::{self, Entity as SourceDocEntity},
     keys::{SourceDocSelectModalKey, SourceDocSelectTableKey},
     scope::scope_superuser,
-    source_doc_label::{source_doc_summary, source_doc_type_label},
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{SourceDocRow, SourceDocSelectPage},
 };
@@ -36,6 +37,7 @@ pub struct SourceDocSelectQuery {
 
 pub async fn select(
     Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
@@ -50,18 +52,16 @@ pub async fn select(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let rows: Vec<SourceDocRow> = models
-        .into_iter()
-        .map(|d| {
-            let typ = d.source_doc_type.clone();
-            SourceDocRow {
-                id: d.id,
-                source_doc_type: source_doc_type_label(&typ),
-                source_doc_id: d.source_doc_id,
-                label: source_doc_summary(&typ, d.source_doc_id, d.id),
-            }
-        })
-        .collect();
+    let mut rows = Vec::with_capacity(models.len());
+    for d in models {
+        let display = resolve_source_doc_display(&state.db, &source_docs, d.id).await;
+        rows.push(SourceDocRow {
+            id: d.id,
+            source_doc_type: display.type_label.clone(),
+            source_doc_id: d.source_doc_id,
+            label: display.summary_label(),
+        });
+    }
     let docs = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
     let page = SourceDocSelectPage {
         docs,

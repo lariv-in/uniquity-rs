@@ -2,19 +2,17 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Path, Query},
-    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    template::RenderAppPane,
     web::{
         Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
     },
@@ -28,7 +26,7 @@ use uniquity_finance_taxes::scope::{load_all_taxes, load_taxes_by_ids, tax_label
 use crate::{
     entities::{
         payment::{self, Entity as PaymentEntity},
-        payment_batch::{self, Entity as PaymentBatchEntity},
+        payment_batch::Entity as PaymentBatchEntity,
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     forms::PaymentBatchForm,
@@ -42,25 +40,11 @@ use crate::{
     state::InvoicesState,
     templates::{
         PaymentBatchAllocationRow, PaymentBatchCreateModalPage, PaymentBatchDetailPage,
-        PaymentBatchListPage, PaymentBatchPaymentRow, PaymentBatchRow,
+        PaymentBatchPaymentRow,
     },
 };
 
 use super::ModalNameQuery;
-
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
-
-#[derive(Debug, serde::Deserialize, Default)]
-pub struct ListQuery {
-    #[serde(default)]
-    pub page: Option<u32>,
-}
-
-fn path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
-}
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct BatchCreateQuery {
@@ -286,71 +270,6 @@ async fn payment_batch_create_modal_page(
         batch_allocations_preview: batch_allocations_preview(&state.db).await,
         error,
     }
-}
-
-pub async fn list(
-    Cap(state): Cap<InvoicesState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<ListQuery>,
-) -> maud::Markup {
-    let page_num = q.page.unwrap_or(1).max(1);
-    let query = PaymentBatchEntity::find()
-        .order_by_desc(payment_batch::Column::Datetime);
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-
-    let batch_ids: Vec<i64> = models.iter().map(|b| b.id).collect();
-    let payment_counts: HashMap<i64, u64> = if batch_ids.is_empty() {
-        HashMap::new()
-    } else {
-        PaymentEntity::find()
-            .filter(payment::Column::PaymentBatchId.is_in(batch_ids))
-            .all(&state.db)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .fold(HashMap::new(), |mut acc, p| {
-                if let Some(batch_id) = p.payment_batch_id {
-                    *acc.entry(batch_id).or_insert(0) += 1;
-                }
-                acc
-            })
-    };
-
-    let rows: Vec<PaymentBatchRow> = models
-        .into_iter()
-        .map(|b| PaymentBatchRow {
-            id: b.id,
-            datetime: ctx.format_datetime_short(b.datetime).into_string(),
-            total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
-            payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
-        })
-        .collect();
-
-    let batches = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
-    let page = PaymentBatchListPage {
-        batches,
-        path_and_query: path_and_query(&uri),
-        can_edit: require_superuser(&ctx),
-    };
-    let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<crate::keys::PaymentBatchTableKey>() {
-        return page.render_table();
-    }
-    if htmx.wants_main_content() {
-        return page.render_main().into();
-    }
-    if htmx.wants_app_layout() {
-        return page.render_pane().into();
-    }
-    html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
 pub async fn create_get(

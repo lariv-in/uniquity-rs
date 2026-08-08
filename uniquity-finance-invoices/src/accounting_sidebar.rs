@@ -2,9 +2,7 @@
 
 use uniquity_finance_accounts::accounting_sidebar::{self, AccountingSidebarRegistrar};
 
-use crate::routes::{
-    InvoiceDefaultRouteTag, PaymentBatchListRouteTag, PaymentListRouteTag, PaymentTermListRouteTag,
-};
+use crate::routes::{InvoiceDefaultRouteTag, PaymentListRouteTag, PaymentTermListRouteTag};
 
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
@@ -31,12 +29,6 @@ impl AccountingSidebarRegistrar for Hook {
             "Payments",
             120,
             Some("banknotes"),
-        ))
-        .push(accounting_sidebar::link::<PaymentBatchListRouteTag>(
-            "payment-batches",
-            "Batches",
-            125,
-            Some("rectangle-stack"),
         ))
     }
 

@@ -33,9 +33,10 @@ use crate::{
     routes::{JournalDetailRouteTag, JournalEditGetRouteTag, JournalListRouteTag},
     scope::{
         apply_journal_filters, currency_summary, find_journal_scoped, load_currency_by_id,
-        load_journal_entries_for_journal, scope_superuser,
+        load_journal_entries_for_journal, load_journal_entry_transfer_amounts, scope_superuser,
     },
-    source_doc_label::source_doc_type_label,
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
         JournalCreateModalPage, JournalDetailPage, JournalEntryRow, JournalFormPage,
@@ -140,6 +141,7 @@ pub async fn list(
 
 pub async fn detail(
     Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -154,19 +156,26 @@ pub async fn detail(
         .map(|c| currency_summary(&c))
         .unwrap_or_else(|| "—".into());
     let entries_raw = load_journal_entries_for_journal(&state.db, j.id).await;
+    let entry_ids: Vec<i64> = entries_raw.iter().map(|e| e.id).collect();
+    let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let journal_name = j.name.clone();
     let mut entry_rows = Vec::with_capacity(entries_raw.len());
     for e in entries_raw {
-        let source_doc_label = crate::scope::load_source_doc_by_id(&state.db, e.source_doc_id)
-            .await
-            .map(|d| source_doc_type_label(&d.source_doc_type))
-            .unwrap_or_else(|| "—".into());
+        let source_doc = resolve_source_doc_display(
+            &state.db,
+            &source_docs,
+            e.source_doc_id,
+        )
+        .await;
         entry_rows.push(JournalEntryRow {
             id: e.id,
             datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
-            source_doc_label: source_doc_label.clone(),
+            source_doc_label: source_doc.type_label.clone(),
+            source_doc_instance_name: source_doc.instance_name,
+            source_doc_url: source_doc.detail_url,
             journal_name: journal_name.clone(),
-            label: format!("#{} · {}", e.id, source_doc_label),
+            amount: amounts.get(&e.id).cloned().unwrap_or_else(|| "—".into()),
+            label: format!("#{} · {}", e.id, source_doc.type_label),
         });
     }
     let entry_count = entry_rows.len() as u64;

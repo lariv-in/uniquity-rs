@@ -3,13 +3,14 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-        FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
-        breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
-        container_row, data_table_list, data_table_list_refresh, delete_confirmation, detail,
-        field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_main, form_hx_post_redirect, form_hx_post_url, label_inline, modal_keyed,
-        row_attr_navigate_route, row_attr_select, table_button_filter,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
+        FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+        TableRow, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit,
+        container_column, container_row, data_table_list, data_table_list_refresh,
+        delete_confirmation, detail, field_link, field_text, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_redirect,
+        form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route, row_attr_select,
+        table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -161,8 +162,23 @@ pub struct JournalEntryRow {
     pub id: i64,
     pub datetime: String,
     pub source_doc_label: String,
+    pub source_doc_instance_name: String,
+    pub source_doc_url: String,
     pub journal_name: String,
+    pub amount: String,
     pub label: String,
+}
+
+fn source_doc_instance_cell(name: &str, url: &str) -> Markup {
+    if url.is_empty() {
+        field_text(FieldText { value: name, classes: "" })
+    } else {
+        field_link(FieldLink {
+            href: url,
+            label: name,
+            classes: "",
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -321,6 +337,8 @@ impl JournalDetailPage {
             TableColumnHeader { label: "ID", sort_url: None, push_url: false },
             TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
             TableColumnHeader { label: "Source document type", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .entries
@@ -332,6 +350,8 @@ impl JournalDetailPage {
                     field_text(FieldText { value: &e.id.to_string(), classes: "" }),
                     field_text(FieldText { value: &e.datetime, classes: "" }),
                     field_text(FieldText { value: &e.source_doc_label, classes: "" }),
+                    source_doc_instance_cell(&e.source_doc_instance_name, &e.source_doc_url),
+                    field_text(FieldText { value: &e.amount, classes: "" }),
                 ],
             })
             .collect();
@@ -720,6 +740,8 @@ pub struct JournalEntryDetailPage {
     pub journal_id: i64,
     pub journal_label: String,
     pub source_doc_label: String,
+    pub source_doc_instance_name: String,
+    pub source_doc_url: String,
     pub items: Vec<JournalEntryItemRow>,
     pub can_delete: bool,
 }
@@ -763,6 +785,10 @@ impl JournalEntryDetailPage {
                     }))
                     (label_inline("Journal", field_text(FieldText { value: &self.journal_label, classes: "" })))
                     (label_inline("Source document type", field_text(FieldText { value: &self.source_doc_label, classes: "" })))
+                    (label_inline(
+                        "Source document",
+                        source_doc_instance_cell(&self.source_doc_instance_name, &self.source_doc_url),
+                    ))
                     div class="mt-6" {
                         (self.items_table())
                     }

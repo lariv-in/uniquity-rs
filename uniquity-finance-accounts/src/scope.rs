@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use rust_decimal::Decimal;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
     QuerySelect, sea_query::Expr,
@@ -5,7 +8,7 @@ use sea_orm::{
 
 use lariv_rs::plugins::users::state::AuthContext;
 
-use uniquity_common::is_superuser;
+use uniquity_common::{decimal::decimal_display, is_superuser};
 
 use crate::{
     account_validation::{account_descendant_ids, BALANCE_TYPE_SCOPE_QUERY_PARAM},
@@ -250,6 +253,36 @@ pub fn currency_summary(c: &currency::Model) -> String {
     format!("{} — {} ({})", c.symbol, c.name, c.code)
 }
 
+/// Currency symbol for a journal entry via its journal (`""` if unresolved).
+pub async fn load_journal_entry_currency_symbol(
+    db: &DatabaseConnection,
+    journal_entry_id: i64,
+) -> String {
+    if journal_entry_id <= 0 {
+        return String::new();
+    }
+    let Some(entry) = JournalEntryEntity::find_by_id(journal_entry_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return String::new();
+    };
+    let Some(journal) = JournalEntity::find_by_id(entry.journal_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return String::new();
+    };
+    load_currency_by_id(db, journal.currency_id)
+        .await
+        .map(|c| c.symbol)
+        .unwrap_or_default()
+}
+
 pub async fn load_journal_entries_for_journal(
     db: &DatabaseConnection,
     journal_id: i64,
@@ -295,6 +328,32 @@ pub async fn load_journal_entry_items(
     out
 }
 
+/// Transfer amount per journal entry: sum of debit lines (positive amounts).
+/// For a balanced entry this equals the sum of absolute credit amounts.
+pub async fn load_journal_entry_transfer_amounts(
+    db: &DatabaseConnection,
+    entry_ids: &[i64],
+) -> HashMap<i64, String> {
+    if entry_ids.is_empty() {
+        return HashMap::new();
+    }
+    let items = JournalEntryItemEntity::find()
+        .filter(journal_entry_item::Column::JournalEntryId.is_in(entry_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let mut sums: HashMap<i64, Decimal> = HashMap::new();
+    for item in items {
+        if item.amount > Decimal::ZERO {
+            *sums.entry(item.journal_entry_id).or_insert(Decimal::ZERO) += item.amount;
+        }
+    }
+    sums
+        .into_iter()
+        .map(|(id, amount)| (id, decimal_display(amount)))
+        .collect()
+}
+
 pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i64) -> String {
     let ids = account_descendant_ids(db, account_id).await.unwrap_or_default();
     if ids.is_empty() {
@@ -324,6 +383,58 @@ pub fn scope_journal_entries(
     auth: &AuthContext,
 ) -> Select<JournalEntryEntity> {
     scope_superuser(query, auth)
+}
+
+/// Journal entry items posting to an account or its descendants, with parent `source_doc_id`.
+pub async fn query_journal_entry_items_for_account_subtree(
+    db: &DatabaseConnection,
+    auth: &AuthContext,
+    account_id: i64,
+    page: u32,
+    page_size: u32,
+) -> (Vec<(journal_entry_item::Model, i64)>, u64) {
+    let account_ids = match account_descendant_ids(db, account_id).await {
+        Ok(ids) if !ids.is_empty() => ids,
+        _ => return (vec![], 0),
+    };
+
+    let query = scope_superuser(JournalEntryItemEntity::find(), auth)
+        .filter(journal_entry_item::Column::AccountId.is_in(account_ids))
+        .order_by_desc(journal_entry_item::Column::Datetime)
+        .order_by_desc(journal_entry_item::Column::Id);
+    let paginator = query.paginate(db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+
+    let mut entry_ids: Vec<i64> = models.iter().map(|i| i.journal_entry_id).collect();
+    entry_ids.sort_unstable();
+    entry_ids.dedup();
+    let mut source_doc_by_entry: HashMap<i64, i64> = HashMap::new();
+    if !entry_ids.is_empty() {
+        let entries = JournalEntryEntity::find()
+            .filter(journal_entry::Column::Id.is_in(entry_ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        for e in entries {
+            source_doc_by_entry.insert(e.id, e.source_doc_id);
+        }
+    }
+
+    let rows = models
+        .into_iter()
+        .map(|item| {
+            let source_doc_id = source_doc_by_entry
+                .get(&item.journal_entry_id)
+                .copied()
+                .unwrap_or(0);
+            (item, source_doc_id)
+        })
+        .collect();
+    (rows, total)
 }
 
 pub async fn query_journal_entries_for_account_subtree(

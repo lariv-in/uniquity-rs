@@ -32,9 +32,10 @@ use crate::{
     },
     scope::{
         find_journal_entry_scoped, find_journal_scoped, load_journal_entry_items,
-        load_source_doc_by_id, query_journal_entries_for_select,
+        query_journal_entries_for_select,
     },
-    source_doc_label::source_doc_type_label,
+    source_doc_label::resolve_source_doc_display,
+    source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
         JournalEntryCreateModalPage, JournalEntryDeletePage, JournalEntryDetailPage,
@@ -79,6 +80,7 @@ pub async fn create_get(
 
 pub async fn create_post(
     Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -113,10 +115,9 @@ pub async fn create_post(
         ),
         Err(e) => {
             let source_doc_display = if source_doc_id > 0 {
-                load_source_doc_by_id(&state.db, source_doc_id)
+                resolve_source_doc_display(&state.db, &source_docs, source_doc_id)
                     .await
-                    .map(|d| source_doc_type_label(&d.source_doc_type))
-                    .unwrap_or_default()
+                    .summary_label()
             } else {
                 String::new()
             };
@@ -137,6 +138,7 @@ pub async fn create_post(
 
 pub async fn detail(
     Cap(state): Cap<AccountsState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -151,10 +153,8 @@ pub async fn detail(
         .as_ref()
         .map(|j| j.name.clone())
         .unwrap_or_else(|| "—".into());
-    let source_doc_label = load_source_doc_by_id(&state.db, entry.source_doc_id)
-        .await
-        .map(|d| source_doc_type_label(&d.source_doc_type))
-        .unwrap_or_else(|| "—".into());
+    let source_doc =
+        resolve_source_doc_display(&state.db, &source_docs, entry.source_doc_id).await;
     let items_raw = load_journal_entry_items(&state.db, entry.id).await;
     let items: Vec<JournalEntryItemRow> = items_raw
         .into_iter()
@@ -169,7 +169,9 @@ pub async fn detail(
         datetime: ctx.format_datetime_seconds(entry.datetime).into_string(),
         journal_id: entry.journal_id,
         journal_label: format!("{journal_name} (#{})", entry.journal_id),
-        source_doc_label,
+        source_doc_label: source_doc.type_label,
+        source_doc_instance_name: source_doc.instance_name,
+        source_doc_url: source_doc.detail_url,
         items,
         can_delete: require_superuser(&ctx) && journal_mutable,
     };
@@ -249,7 +251,10 @@ pub async fn select(
                 id: e.id,
                 datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
                 source_doc_label: format!("entry #{}", e.id),
+                source_doc_instance_name: String::new(),
+                source_doc_url: String::new(),
                 journal_name: jn.clone(),
+                amount: String::new(),
                 label: format!(
                     "{} · {}",
                     jn,

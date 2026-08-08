@@ -3,11 +3,11 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
+        ButtonClear, ButtonSubmit, Crumb, FieldLink, FieldText, FieldTitle, FormOpts,
         ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
         ManyToManyItem,
         ButtonModalForm, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit, container_column,
-        container_row, data_table_list_refresh, detail, field_text, field_title, form,
+        container_row, data_table_list_refresh, detail, field_link, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed,
         row_attr_navigate_route, table_button_filter, SwapKey,
@@ -26,12 +26,15 @@ use crate::{
         AccountFilterForm, AccountFilterFormField, AccountForm, AccountFormField, AccountFormFlag,
         AccountSelectionFilterForm, AccountSelectionFilterFormField,
     },
-    keys::{AccountCreateModalKey, AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey, AccountTableKey},
+    keys::{
+        AccountCreateModalKey, AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey,
+        AccountSelectModalKey, AccountSelectTableKey, AccountTableKey,
+    },
     routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeletePostRouteTag,
         AccountDetailRouteTag, AccountEditGetRouteTag, AccountEditPostRouteTag,
-        AccountJournalEntriesRouteTag, AccountSelectRouteTag, FinanceDefaultRouteTag,
-        JournalEntryDetailRouteTag,
+        AccountJournalEntriesRouteTag, AccountJournalEntryItemsRouteTag, AccountSelectRouteTag,
+        FinanceDefaultRouteTag, JournalEntryDetailRouteTag,
     },
 };
 
@@ -127,6 +130,11 @@ fn account_detail_menu(id: i64, name: &str, active: &str, can_edit: bool) -> Mar
             title: "Journal Entries",
             url: AccountJournalEntriesRouteTag::new(id).url(),
             active: active == "journal-entries",
+        },
+        DetailMenuNavItem {
+            title: "Journal Entry Items",
+            url: AccountJournalEntryItemsRouteTag::new(id).url(),
+            active: active == "journal-entry-items",
         },
     ];
     if can_edit {
@@ -474,19 +482,37 @@ impl AccountJournalEntriesPage {
             TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
             TableColumnHeader { label: "Journal", sort_url: None, push_url: false },
             TableColumnHeader { label: "Source document type", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .entries
             .items
             .iter()
-            .map(|e| TableRow {
-                attrs: row_attr_navigate_route(JournalEntryDetailRouteTag::new(e.id)),
-                cells: vec![
-                    field_text(FieldText { value: &e.id.to_string(), classes: "" }),
-                    field_text(FieldText { value: &e.datetime, classes: "" }),
-                    field_text(FieldText { value: &e.journal_name, classes: "" }),
-                    field_text(FieldText { value: &e.source_doc_label, classes: "" }),
-                ],
+            .map(|e| {
+                let instance_cell = if e.source_doc_url.is_empty() {
+                    field_text(FieldText {
+                        value: &e.source_doc_instance_name,
+                        classes: "",
+                    })
+                } else {
+                    field_link(FieldLink {
+                        href: &e.source_doc_url,
+                        label: &e.source_doc_instance_name,
+                        classes: "",
+                    })
+                };
+                TableRow {
+                    attrs: row_attr_navigate_route(JournalEntryDetailRouteTag::new(e.id)),
+                    cells: vec![
+                        field_text(FieldText { value: &e.id.to_string(), classes: "" }),
+                        field_text(FieldText { value: &e.datetime, classes: "" }),
+                        field_text(FieldText { value: &e.journal_name, classes: "" }),
+                        field_text(FieldText { value: &e.source_doc_label, classes: "" }),
+                        instance_cell,
+                        field_text(FieldText { value: &e.amount, classes: "" }),
+                    ],
+                }
             })
             .collect();
         let pagination = render_pagination::<AccountJournalEntriesTableKey>(
@@ -546,6 +572,131 @@ impl RenderTemplate for AccountJournalEntriesPage {
         );
         app_scaffold_with_sidebar(
             "Account Journal Entries — Uniquity",
+            chrome,
+            self.menu(),
+            crumbs,
+            self.body(),
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct AccountJournalEntryItemRow {
+    pub datetime: String,
+    pub amount: String,
+    pub source_doc_instance_name: String,
+    pub source_doc_url: String,
+}
+
+#[derive(Generic)]
+pub struct AccountJournalEntryItemsPage {
+    pub id: i64,
+    pub name: String,
+    /// Root → … → parent (excludes this account).
+    pub ancestors: Vec<(i64, String)>,
+    pub items: ObjectList<AccountJournalEntryItemRow>,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl AccountJournalEntryItemsPage {
+    pub fn render_items_table(&self) -> Markup {
+        self.items_table()
+    }
+
+    fn items_table(&self) -> Markup {
+        let headers = [
+            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
+        ];
+        let rows: Vec<TableRow> = self
+            .items
+            .items
+            .iter()
+            .map(|item| {
+                let source_cell = if item.source_doc_url.is_empty() {
+                    field_text(FieldText {
+                        value: &item.source_doc_instance_name,
+                        classes: "",
+                    })
+                } else {
+                    field_link(FieldLink {
+                        href: &item.source_doc_url,
+                        label: &item.source_doc_instance_name,
+                        classes: "",
+                    })
+                };
+                TableRow {
+                    attrs: lariv_rs::components::HtmlAttrs::new(),
+                    cells: vec![
+                        field_text(FieldText { value: &item.datetime, classes: "" }),
+                        field_text(FieldText {
+                            value: &item.amount,
+                            classes: "tabular-nums",
+                        }),
+                        source_cell,
+                    ],
+                }
+            })
+            .collect();
+        let pagination = render_pagination::<AccountJournalEntryItemsTableKey>(
+            &self.path_and_query,
+            self.items.number,
+            self.items.num_pages,
+        );
+        data_table_list_refresh::<AccountJournalEntryItemsTableKey>(
+            "Journal entry items",
+            html! {},
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        self.items_table()
+    }
+
+    fn menu(&self) -> Markup {
+        account_detail_menu(self.id, &self.name, "journal-entry-items", self.can_edit)
+    }
+}
+
+impl RenderAppPane for AccountJournalEntryItemsPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        let crumbs = account_crumbs(
+            &self.ancestors,
+            self.id,
+            &self.name,
+            Some("Journal entry items"),
+        );
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        layout_main_with_crumbs(
+            account_crumbs(
+                &self.ancestors,
+                self.id,
+                &self.name,
+                Some("Journal entry items"),
+            ),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for AccountJournalEntryItemsPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = account_crumbs(
+            &self.ancestors,
+            self.id,
+            &self.name,
+            Some("Journal entry items"),
+        );
+        app_scaffold_with_sidebar(
+            "Account Journal Entry Items — Uniquity",
             chrome,
             self.menu(),
             crumbs,

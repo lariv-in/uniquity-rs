@@ -42,7 +42,7 @@ use super::forms::{
     PaymentPreferencesForm, PaymentPreferencesFormField, PaymentTermForm, PaymentTermFormField,
 };
 use super::keys::{
-    DraftInvoiceCreateModalKey, InvoiceHubTableKey, PaymentBatchCreateModalKey, PaymentBatchTableKey,
+    DraftInvoiceCreateModalKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
     PaymentCreateModalKey, PaymentTableKey, PaymentTermCreateModalKey, PaymentTermSelectModalKey,
     PaymentTermSelectTableKey, PaymentTermTableKey, PostedInvoiceSelectModalKey,
     PostedInvoiceSelectTableKey,
@@ -60,7 +60,7 @@ use super::routes::{
     PaymentTermDetailRouteTag, PaymentTermEditGetRouteTag, PaymentTermEditPostRouteTag,
     PaymentTermListRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoicePdfRouteTag, PaymentBatchListRouteTag, PaymentPreferencesRouteTag,
+    PostedInvoicePdfRouteTag, PaymentPreferencesRouteTag,
     InvoicePreferencesRouteTag,
 };
 
@@ -85,7 +85,6 @@ lariv_rs::define_register_items! {
         PaymentCreateModalIdx: PaymentCreateModalPageTag => PaymentCreateModalPage,
         PaymentDetailIdx: PaymentDetailPageTag => PaymentDetailPage,
         PaymentBatchCreateModalIdx: PaymentBatchCreateModalPageTag => PaymentBatchCreateModalPage,
-        PaymentBatchListIdx: PaymentBatchListPageTag => PaymentBatchListPage,
         PaymentBatchDetailIdx: PaymentBatchDetailPageTag => PaymentBatchDetailPage,
         PaymentTermListIdx: PaymentTermListPageTag => PaymentTermListPage,
         PaymentTermFormIdx: PaymentTermFormPageTag => PaymentTermFormPage,
@@ -135,13 +134,6 @@ fn invoices_list_crumbs() -> Markup {
 fn payments_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Payments",
-        href: None,
-    }])
-}
-
-fn payment_batches_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Batches",
         href: None,
     }])
 }
@@ -228,10 +220,10 @@ fn payment_crumbs(label: &str) -> Markup {
 }
 
 fn payment_batch_crumbs(label: &str) -> Markup {
-    let list_url = PaymentBatchListRouteTag.url();
+    let list_url = payment_tab_href("batches");
     breadcrumbs(&[
         Crumb {
-            label: "Batches",
+            label: "Payments",
             href: Some(&list_url),
         },
         Crumb {
@@ -273,6 +265,12 @@ fn payment_term_crumbs(label: &str, detail_url: &str, action: Option<&str>) -> M
 
 fn tab_href(tab: &str) -> String {
     lariv_rs::http::RouteQueryBuilder::new(InvoiceDefaultRouteTag)
+        .query("tab", tab)
+        .build()
+}
+
+fn payment_tab_href(tab: &str) -> String {
+    lariv_rs::http::RouteQueryBuilder::new(PaymentListRouteTag)
         .query("tab", tab)
         .build()
 }
@@ -1355,15 +1353,82 @@ pub struct PaymentRow {
     pub datetime: String,
 }
 
+#[derive(Clone)]
+pub struct PaymentBatchRow {
+    pub id: i64,
+    pub datetime: String,
+    pub total_amount: String,
+    pub payment_count: u64,
+}
+
 #[derive(Generic)]
 pub struct PaymentListPage {
+    pub tab: String,
     pub payments: ObjectList<PaymentRow>,
+    pub batches: ObjectList<PaymentBatchRow>,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl PaymentListPage {
+    fn tab_link(&self, tab: &str, label: &str) -> Markup {
+        use lariv_rs::components::attrs::escape_attr;
+        use maud::PreEscaped;
+
+        let active = self.tab == tab;
+        let cls = if active { "tab tab-active" } else { "tab" };
+        let href = payment_tab_href(tab);
+        let nav = lariv_rs::components::nav_content_attrs(&href);
+        html! {
+            (PreEscaped(format!(
+                r#"<a class="{cls}" href="{href}"{attrs}>"#,
+                cls = escape_attr(cls),
+                href = escape_attr(&href),
+                attrs = nav.as_string(),
+            )))
+            (label)
+            (PreEscaped("</a>"))
+        }
+    }
+
     pub fn render_table(&self) -> Markup {
+        if self.tab == "batches" {
+            let headers = [
+                TableColumnHeader { label: "Date", sort_url: None, push_url: true },
+                TableColumnHeader { label: "Total", sort_url: None, push_url: true },
+                TableColumnHeader { label: "Payments", sort_url: None, push_url: true },
+            ];
+            let rows: Vec<TableRow> = self
+                .batches
+                .items
+                .iter()
+                .map(|b| TableRow {
+                    attrs: row_attr_navigate(&PaymentBatchDetailRouteTag::new(b.id).url()),
+                    cells: vec![
+                        field_text(FieldText { value: &b.datetime, classes: "" }),
+                        field_text(FieldText { value: &b.total_amount, classes: "" }),
+                        field_text(FieldText {
+                            value: &b.payment_count.to_string(),
+                            classes: "",
+                        }),
+                    ],
+                })
+                .collect();
+            let pagination = render_pagination::<PaymentTableKey>(
+                &self.path_and_query,
+                self.batches.number,
+                self.batches.num_pages,
+            );
+            return data_table_list_refresh::<PaymentTableKey>(
+                "Batch payments",
+                html! {},
+                &headers,
+                &rows,
+                pagination,
+                &self.path_and_query,
+            );
+        }
+
         let headers = [
             TableColumnHeader { label: "Invoice", sort_url: None, push_url: true },
             TableColumnHeader { label: "Amount", sort_url: None, push_url: true },
@@ -1401,7 +1466,7 @@ impl PaymentListPage {
             html! {}
         };
         data_table_list_refresh::<PaymentTableKey>(
-            "Payments",
+            "Single payments",
             actions,
             &headers,
             &rows,
@@ -1411,7 +1476,15 @@ impl PaymentListPage {
     }
 
     fn body(&self) -> Markup {
-        container_column("", self.render_table())
+        html! {
+            (container_column("", html! {
+                div class="tabs tabs-boxed mb-4" {
+                    (self.tab_link("single", "Single payments"))
+                    (self.tab_link("batches", "Batch payments"))
+                }
+                (self.render_table())
+            }))
+        }
     }
 }
 
@@ -1495,83 +1568,6 @@ impl RenderTemplate for PaymentCreateModalPage {
                 },
                 ..Default::default()
             }),
-        )
-    }
-}
-
-#[derive(Clone)]
-pub struct PaymentBatchRow {
-    pub id: i64,
-    pub datetime: String,
-    pub total_amount: String,
-    pub payment_count: u64,
-}
-
-#[derive(Generic)]
-pub struct PaymentBatchListPage {
-    pub batches: ObjectList<PaymentBatchRow>,
-    pub path_and_query: String,
-    pub can_edit: bool,
-}
-
-impl PaymentBatchListPage {
-    pub fn render_table(&self) -> Markup {
-        let headers = [
-            TableColumnHeader { label: "Date", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Total", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Payments", sort_url: None, push_url: true },
-        ];
-        let rows: Vec<TableRow> = self
-            .batches
-            .items
-            .iter()
-            .map(|b| TableRow {
-                attrs: row_attr_navigate(&PaymentBatchDetailRouteTag::new(b.id).url()),
-                cells: vec![
-                    field_text(FieldText { value: &b.datetime, classes: "" }),
-                    field_text(FieldText { value: &b.total_amount, classes: "" }),
-                    field_text(FieldText {
-                        value: &b.payment_count.to_string(),
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
-        let pagination = render_pagination::<PaymentBatchTableKey>(
-            &self.path_and_query,
-            self.batches.number,
-            self.batches.num_pages,
-        );
-        let actions = html! {};
-        data_table_list::<PaymentBatchTableKey>("Payment batches", actions, &headers, &rows, pagination)
-    }
-
-    fn body(&self) -> Markup {
-        container_column("", self.render_table())
-    }
-}
-
-impl RenderAppPane for PaymentBatchListPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(
-            &self.path_and_query,
-            payment_batches_list_crumbs(),
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
-        layout_main_with_crumbs(payment_batches_list_crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for PaymentBatchListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Payment Batches",
-            chrome,
-            payment_batches_list_crumbs(),
-            self.body(),
-            &self.path_and_query,
         )
     }
 }

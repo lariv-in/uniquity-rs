@@ -8,7 +8,7 @@ use lariv_rs::{
 use super::{
     accounts::{
         AccountCreateModalPage, AccountDetailPage, AccountFormPage, AccountJournalEntriesPage,
-        AccountListPage, AccountSelectPage,
+        AccountJournalEntryItemsPage, AccountListPage, AccountSelectPage,
     },
     currencies::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyFormPage, CurrencyListPage,
@@ -35,6 +35,7 @@ lariv_rs::define_register_items! {
         AccountListIdx: AccountListPageTag => AccountListPage,
         AccountDetailIdx: AccountDetailPageTag => AccountDetailPage,
         AccountJournalEntriesIdx: AccountJournalEntriesPageTag => AccountJournalEntriesPage,
+        AccountJournalEntryItemsIdx: AccountJournalEntryItemsPageTag => AccountJournalEntryItemsPage,
         AccountFormIdx: AccountFormPageTag => AccountFormPage,
         AccountCreateModalIdx: AccountCreateModalPageTag => AccountCreateModalPage,
         AccountSelectIdx: AccountSelectPageTag => AccountSelectPage,

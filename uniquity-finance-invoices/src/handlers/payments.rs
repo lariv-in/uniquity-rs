@@ -27,6 +27,7 @@ use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use crate::{
     entities::{
         payment::{self, Entity as PaymentEntity},
+        payment_batch::{self, Entity as PaymentBatchEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     forms::PaymentForm,
@@ -47,7 +48,7 @@ use crate::{
     scope::sql_posted_not_cancelled,
     state::InvoicesState,
     templates::{
-        PaymentCreateModalPage, PaymentDetailPage, PaymentListPage, PaymentRow,
+        PaymentBatchRow, PaymentCreateModalPage, PaymentDetailPage, PaymentListPage, PaymentRow,
         PostedInvoiceSelectPage, PostedInvoiceSelectRow,
     },
 };
@@ -56,6 +57,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ListQuery {
+    #[serde(default)]
+    pub tab: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
@@ -160,18 +163,15 @@ async fn load_posted_invoice_link(
     }
 }
 
-pub async fn list(
-    Cap(state): Cap<InvoicesState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    uri: Uri,
-    Query(q): Query<ListQuery>,
-) -> maud::Markup {
-    let page_num = q.page.unwrap_or(1).max(1);
+async fn query_single_payment_rows(
+    db: &sea_orm::DatabaseConnection,
+    page_num: u32,
+    timezone: &str,
+) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
     let query = PaymentEntity::find()
+        .filter(payment::Column::PaymentBatchId.is_null())
         .order_by_desc(payment::Column::Datetime);
-    let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
+    let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -183,7 +183,7 @@ pub async fn list(
     } else {
         PostedInvoiceEntity::find()
             .filter(posted_invoice::Column::Id.is_in(invoice_ids))
-            .all(&state.db)
+            .all(db)
             .await
             .unwrap_or_default()
             .into_iter()
@@ -202,12 +202,84 @@ pub async fn list(
                 .cloned()
                 .unwrap_or_else(|| "—".into()),
             amount: uniquity_common::decimal::decimal_display(p.amount),
-            datetime: ctx.format_datetime_short(p.datetime).into_string(),
+            datetime: lariv_rs::datetime::DatetimeLabel::short(p.datetime, timezone).into_string(),
         })
         .collect();
-    let payments = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
+    (
+        ObjectList::from_page(rows, page_num, PAGE_SIZE, total),
+        ObjectList::from_page(Vec::<PaymentBatchRow>::new(), 1, PAGE_SIZE, 0),
+    )
+}
+
+async fn query_batch_payment_rows(
+    db: &sea_orm::DatabaseConnection,
+    page_num: u32,
+    timezone: &str,
+) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
+    let query = PaymentBatchEntity::find().order_by_desc(payment_batch::Column::Datetime);
+    let paginator = query.paginate(db, PAGE_SIZE as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+
+    let batch_ids: Vec<i64> = models.iter().map(|b| b.id).collect();
+    let payment_counts: HashMap<i64, u64> = if batch_ids.is_empty() {
+        HashMap::new()
+    } else {
+        PaymentEntity::find()
+            .filter(payment::Column::PaymentBatchId.is_in(batch_ids))
+            .all(db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .fold(HashMap::new(), |mut acc, p| {
+                if let Some(batch_id) = p.payment_batch_id {
+                    *acc.entry(batch_id).or_insert(0) += 1;
+                }
+                acc
+            })
+    };
+
+    let rows: Vec<PaymentBatchRow> = models
+        .into_iter()
+        .map(|b| PaymentBatchRow {
+            id: b.id,
+            datetime: lariv_rs::datetime::DatetimeLabel::short(b.datetime, timezone).into_string(),
+            total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
+            payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
+        })
+        .collect();
+
+    (
+        ObjectList::from_page(Vec::<PaymentRow>::new(), 1, PAGE_SIZE, 0),
+        ObjectList::from_page(rows, page_num, PAGE_SIZE, total),
+    )
+}
+
+pub async fn list(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<ListQuery>,
+) -> maud::Markup {
+    let tab = match q.tab.as_deref() {
+        Some("batches") => "batches",
+        _ => "single",
+    };
+    let page_num = q.page.unwrap_or(1).max(1);
+    let (payments, batches) = if tab == "batches" {
+        query_batch_payment_rows(&state.db, page_num, &ctx.timezone).await
+    } else {
+        query_single_payment_rows(&state.db, page_num, &ctx.timezone).await
+    };
     let page = PaymentListPage {
+        tab: tab.to_string(),
         payments,
+        batches,
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

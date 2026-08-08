@@ -1,73 +1,99 @@
-//! Human-readable labels for stored source document type keys.
+//! Display helpers for source documents (registry-backed).
 
-const CREDIT_NOTE: &str = "p_uniquity_finance_creditnotes.CreditNote";
-const POSTED_INVOICE: &str = "p_uniquity_finance_invoices.PostedInvoice";
-const PAYMENT: &str = "p_uniquity_finance_invoices.Payment";
-const PAYMENT_BATCH: &str = "p_uniquity_finance_invoices.PaymentBatch";
+use sea_orm::DatabaseConnection;
 
-/// Map a stored source document type key to a display label.
-pub fn source_doc_type_label(typ: &str) -> String {
-    match typ {
-        CREDIT_NOTE => "Credit Note".into(),
-        POSTED_INVOICE => "Posted Invoice".into(),
-        PAYMENT => "Payment".into(),
-        PAYMENT_BATCH => "Payment Batch".into(),
-        _ => humanize_type_name(typ),
-    }
+use crate::source_doc_registry::SourceDocRegistry;
+
+/// Map a stored source document type key to a display label via the registry.
+pub fn source_doc_type_label(registry: &SourceDocRegistry, typ: &str) -> String {
+    registry.type_display_name(typ)
 }
 
-/// Build a short summary for pickers and journal entry headers.
-pub fn source_doc_summary(typ: &str, source_doc_id: i64, row_id: i64) -> String {
+/// Build a short summary for pickers when only type/ids are known (no instance load).
+pub fn source_doc_summary(registry: &SourceDocRegistry, typ: &str, source_doc_id: i64, row_id: i64) -> String {
     format!(
         "{} · ref {} · #{}",
-        source_doc_type_label(typ),
+        source_doc_type_label(registry, typ),
         source_doc_id,
         row_id
     )
 }
 
 /// Build a compact summary without the source_docs row id.
-pub fn source_doc_ref_summary(typ: &str, source_doc_id: i64) -> String {
-    format!("{} · ref {}", source_doc_type_label(typ), source_doc_id)
+pub fn source_doc_ref_summary(registry: &SourceDocRegistry, typ: &str, source_doc_id: i64) -> String {
+    format!(
+        "{} · ref {}",
+        source_doc_type_label(registry, typ),
+        source_doc_id
+    )
 }
 
-fn humanize_type_name(typ: &str) -> String {
-    let name = typ.rsplit('.').next().unwrap_or(typ);
-    let mut out = String::new();
-    for (i, ch) in name.chars().enumerate() {
-        if ch.is_uppercase() && i > 0 {
-            out.push(' ');
+/// Resolved display fields for a `source_docs` row (instance name is not persisted).
+#[derive(Clone, Debug, Default)]
+pub struct SourceDocDisplay {
+    pub type_label: String,
+    pub instance_name: String,
+    pub detail_url: String,
+}
+
+impl SourceDocDisplay {
+    pub fn empty() -> Self {
+        Self {
+            type_label: "—".into(),
+            instance_name: "—".into(),
+            detail_url: String::new(),
         }
-        out.extend(ch.to_lowercase());
     }
-    if out.is_empty() {
-        typ.to_string()
-    } else {
-        let mut chars = out.chars();
-        match chars.next() {
-            None => typ.to_string(),
-            Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
+
+    /// Picker / form display: prefer type + instance when both are meaningful.
+    pub fn summary_label(&self) -> String {
+        if self.instance_name.is_empty() || self.instance_name == "—" {
+            self.type_label.clone()
+        } else if self.type_label.is_empty() || self.type_label == "—" {
+            self.instance_name.clone()
+        } else {
+            format!("{} · {}", self.type_label, self.instance_name)
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Load a `source_docs` row and resolve type label + instance name + detail URL.
+pub async fn resolve_source_doc_display(
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    source_docs_row_id: i64,
+) -> SourceDocDisplay {
+    use crate::scope::load_source_doc_by_id;
 
-    #[test]
-    fn credit_note_label() {
-        assert_eq!(
-            source_doc_type_label(CREDIT_NOTE),
-            "Credit Note"
-        );
+    if source_docs_row_id <= 0 {
+        return SourceDocDisplay::empty();
     }
-
-    #[test]
-    fn unknown_type_humanizes() {
-        assert_eq!(
-            source_doc_type_label("p_example.SomeDocument"),
-            "Some document"
-        );
+    let Some(doc) = load_source_doc_by_id(db, source_docs_row_id).await else {
+        return SourceDocDisplay::empty();
+    };
+    let type_label = registry.type_display_name(&doc.source_doc_type);
+    if doc.source_doc_id <= 0 {
+        return SourceDocDisplay {
+            type_label,
+            instance_name: "—".into(),
+            detail_url: String::new(),
+        };
+    }
+    match registry
+        .resolve_instance(db, &doc.source_doc_type, doc.source_doc_id)
+        .await
+    {
+        Ok(inst) => SourceDocDisplay {
+            type_label,
+            instance_name: inst.display_name(),
+            detail_url: inst.detail_url(),
+        },
+        Err(_) => SourceDocDisplay {
+            type_label,
+            instance_name: "—".into(),
+            detail_url: registry
+                .type_detail_url(&doc.source_doc_type, doc.source_doc_id)
+                .unwrap_or_default(),
+        },
     }
 }

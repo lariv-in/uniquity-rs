@@ -1,10 +1,11 @@
 use super::{
     handlers,
     keys::{
-        AccountJournalEntriesTableKey, AccountSelectModalKey, AccountSelectTableKey,
-        AccountTableKey, CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
-        JournalEntrySelectModalKey, JournalEntrySelectTableKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey, SourceDocSelectTableKey,
+        AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
+        AccountSelectTableKey, AccountTableKey, CurrencySelectModalKey, CurrencySelectTableKey,
+        CurrencyTableKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey,
+        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey, SourceDocSelectModalKey,
+        SourceDocSelectTableKey,
     },
 };
 
@@ -17,6 +18,7 @@ lariv_rs::define_plugin_routes! {
         get AccountSelectRouteTag, "/finance/accounts/select", handlers::accounts::select, fk_select(AccountSelectTableKey, AccountSelectModalKey);
         get AccountDetailRouteTag, "/finance/accounts/{id}", handlers::accounts::detail;
         get AccountJournalEntriesRouteTag, "/finance/accounts/{id}/journal-entries", handlers::accounts::journal_entries, fragment(AccountJournalEntriesTableKey);
+        get AccountJournalEntryItemsRouteTag, "/finance/accounts/{id}/journal-entry-items", handlers::accounts::journal_entry_items, fragment(AccountJournalEntryItemsTableKey);
         get AccountEditGetRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_get;
         post AccountEditPostRouteTag, "/finance/accounts/{id}/edit", handlers::accounts::edit_post;
         post AccountDeletePostRouteTag, "/finance/accounts/{id}/delete", bare handlers::accounts::delete_post, redirect;

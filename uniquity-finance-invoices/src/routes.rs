@@ -1,9 +1,8 @@
 use super::{
     handlers,
     keys::{
-        InvoiceHubTableKey, PaymentBatchTableKey, PaymentTableKey, PaymentTermSelectModalKey,
-        PaymentTermSelectTableKey, PaymentTermTableKey, PostedInvoiceSelectModalKey,
-        PostedInvoiceSelectTableKey,
+        InvoiceHubTableKey, PaymentTableKey, PaymentTermSelectModalKey, PaymentTermSelectTableKey,
+        PaymentTermTableKey, PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
     },
 };
 
@@ -47,7 +46,6 @@ lariv_rs::define_plugin_routes! {
         post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post;
         get PaymentDetailRouteTag, "/finance-invoices/payments/{id}", handlers::payments::detail;
 
-        get PaymentBatchListRouteTag, "/finance-invoices/payment-batches", handlers::payment_batches::list, fragment(PaymentBatchTableKey);
         get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get, modal;
         post PaymentBatchCreatePostRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_post;
         get PaymentBatchDetailRouteTag, "/finance-invoices/payment-batches/{id}", handlers::payment_batches::detail;
