@@ -69,7 +69,7 @@ pub async fn create_get(
         q.refresh_table(),
         journal.id,
         journal.name,
-        ctx.format_datetime_local_input(Utc::now()),
+        ctx.datetime_local_input(Utc::now()).into_string(),
     );
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -154,14 +154,14 @@ pub async fn detail(
     let items: Vec<JournalEntryItemRow> = items_raw
         .into_iter()
         .map(|(item, acct)| JournalEntryItemRow {
-            datetime: ctx.format_datetime_seconds(item.datetime),
+            datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
             account_label: format!("{} — {}", acct.code, acct.name),
             amount: item.amount.to_string(),
         })
         .collect();
     let page = JournalEntryDetailPage {
         id: entry.id,
-        datetime: ctx.format_datetime_seconds(entry.datetime),
+        datetime: ctx.format_datetime_seconds(entry.datetime).into_string(),
         journal_id: entry.journal_id,
         journal_label: format!("{journal} (#{})", entry.journal_id),
         source_doc_label,
@@ -189,7 +189,7 @@ pub async fn select(
             let jn = journal_name.clone();
             JournalEntryRow {
                 id: e.id,
-                datetime: ctx.format_datetime_seconds(e.datetime),
+                datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
                 source_doc_label: format!("entry #{}", e.id),
                 journal_name: jn.clone(),
                 label: format!(

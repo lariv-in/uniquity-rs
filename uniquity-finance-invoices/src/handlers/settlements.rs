@@ -85,7 +85,7 @@ async fn load_settlement_context(
         datetime: format_invoice_date(posted.datetime, tz),
         posted_at: posted
             .posted_at
-            .map(|t| lariv_rs::datetime::format_datetime_short(t, tz)),
+            .map(|t| lariv_rs::datetime::DatetimeLabel::short(t, tz).into_string()),
         customer_name,
         payment_term_summary,
         tax_labels,
@@ -94,7 +94,8 @@ async fn load_settlement_context(
         payment_id: payment.id,
         payment_label,
         payment_href,
-        payment_datetime: lariv_rs::datetime::format_datetime_short(payment.datetime, tz),
+        payment_datetime: lariv_rs::datetime::DatetimeLabel::short(payment.datetime, tz)
+            .into_string(),
         prior_partial_label,
         prior_partial_href,
     })

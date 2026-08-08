@@ -60,11 +60,13 @@ pub fn parse_invoice_datetime(s: &str, tz: &str) -> DateTime<Utc> {
             }
         }
     }
-    lariv_rs::datetime::parse_datetime_local_input(s, tz).unwrap_or_else(|| {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-            .map(|ndt| ndt.and_utc())
-            .unwrap_or_else(|_| Utc::now())
-    })
+    lariv_rs::datetime::DatetimeLocalInput::from_raw(s)
+        .to_stored(tz)
+        .unwrap_or_else(|| {
+            NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                .map(|ndt| ndt.and_utc())
+                .unwrap_or_else(|_| Utc::now())
+        })
 }
 
 pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Result<(), String> {

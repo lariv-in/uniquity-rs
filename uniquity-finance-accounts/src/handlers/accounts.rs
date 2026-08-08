@@ -294,7 +294,7 @@ pub async fn detail(
             .unwrap_or_else(|| "—".into());
         entry_rows.push(JournalEntryRow {
             id: e.id,
-            datetime: ctx.format_datetime_seconds(e.datetime),
+            datetime: ctx.format_datetime_seconds(e.datetime).into_string(),
             source_doc_label,
             journal_name,
             label: String::new(),

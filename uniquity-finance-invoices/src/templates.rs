@@ -913,7 +913,7 @@ fn settlement_detail_body(
                 (label_inline("Reference", field_text(FieldText { value: &ctx.reference, classes: "" })))
                 (label_inline("Payment reference", field_text(FieldText { value: &ctx.payment_reference, classes: "" })))
                 (label_inline("Bank account", field_text(FieldText { value: &ctx.bank_account, classes: "" })))
-                (label_inline("Posted date", field_text(FieldText { value: posted_at_display, classes: "" })))
+                (label_inline("Posted at", field_text(FieldText { value: posted_at_display, classes: "" })))
                 (label_inline("Invoice date", field_text(FieldText { value: &ctx.datetime, classes: "" })))
                 (label_inline("Customer", field_text(FieldText { value: &ctx.customer_name, classes: "" })))
                 (label_inline("Payment term", field_text(FieldText { value: &ctx.payment_term_summary, classes: "" })))

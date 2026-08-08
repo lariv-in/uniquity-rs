@@ -30,7 +30,8 @@ pub fn parse_due_datetime(s: &str, tz: &str) -> Result<DateTime<Utc>, String> {
     if s.is_empty() {
         return Err("datetime is required for due date payment term".to_string());
     }
-    lariv_rs::datetime::parse_datetime_local_input(s, tz)
+    lariv_rs::datetime::DatetimeLocalInput::from_raw(s)
+        .to_stored(tz)
         .ok_or_else(|| "invalid datetime".to_string())
 }
 
@@ -75,7 +76,10 @@ pub async fn payment_term_form_values(
                 .await
                 .ok()
                 .flatten()
-                .map(|row| lariv_rs::datetime::format_datetime_local_input(row.datetime, tz))
+                .map(|row| {
+                    lariv_rs::datetime::DatetimeLocalInput::from_stored(row.datetime, tz)
+                        .into_string()
+                })
                 .unwrap_or_default();
             PaymentTermFormValues {
                 term_type: pt.term_type.clone(),
@@ -319,7 +323,7 @@ pub async fn payment_term_summary(
                 .one(db)
                 .await
             {
-                return lariv_rs::datetime::format_datetime_short(row.datetime, tz);
+                return lariv_rs::datetime::DatetimeLabel::short(row.datetime, tz).into_string();
             }
             format!("Due date #{}", pt.backing_id)
         }

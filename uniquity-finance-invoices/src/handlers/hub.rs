@@ -286,7 +286,7 @@ async fn query_paid_rows(
                 .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
             let (datetime, status) = if let Some(pay) = payments.get(&paid.payment_id) {
                 (
-                    lariv_rs::datetime::format_datetime_short(pay.datetime, tz),
+                    lariv_rs::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
                     format!(
                         "Paid · {}",
                         uniquity_common::decimal::decimal_display(pay.amount)
@@ -347,7 +347,7 @@ async fn query_partial_rows(
                 .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
             let (datetime, status) = if let Some(pay) = payments.get(&partial.payment_id) {
                 (
-                    lariv_rs::datetime::format_datetime_short(pay.datetime, tz),
+                    lariv_rs::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
                     format!(
                         "Partial · {}",
                         uniquity_common::decimal::decimal_display(pay.amount)

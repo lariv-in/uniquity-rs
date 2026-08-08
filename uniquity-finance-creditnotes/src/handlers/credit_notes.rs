@@ -41,7 +41,7 @@ fn path_and_query(uri: &Uri) -> String {
 
 
 fn journal_entry_datetime_label(entry: &journal_entry::Model, tz: &str) -> String {
-    lariv_rs::datetime::format_datetime_short(entry.datetime, tz)
+    lariv_rs::datetime::DatetimeLabel::short(entry.datetime, tz).into_string()
 }
 
 async fn load_journal_entry_labels(
@@ -86,7 +86,7 @@ async fn query_rows(
         .into_iter()
         .map(|c| CreditNoteRow {
             id: c.id,
-            datetime: auth.format_datetime_seconds(c.datetime),
+            datetime: auth.format_datetime_seconds(c.datetime).into_string(),
             reason: c.reason.unwrap_or_default(),
             original_entry_label: entry_labels
                 .get(&c.journal_entry_id)
@@ -141,7 +141,7 @@ pub async fn detail(
     };
     let page = CreditNoteDetailPage {
         id: c.id,
-        datetime: ctx.format_datetime_seconds(c.datetime),
+        datetime: ctx.format_datetime_seconds(c.datetime).into_string(),
         reason: c.reason.unwrap_or_default(),
         journal_entry_id: c.journal_entry_id,
         reversed_journal_entry_id: c.reversed_journal_entry_id,

@@ -326,8 +326,9 @@ pub async fn create_payment(
         .map_err(|e| e.to_string())?;
     validate_payment_taxes(&taxes)?;
 
+    let now = Utc::now();
     let dt = if input.datetime.timestamp() == 0 {
-        Utc::now()
+        now
     } else {
         input.datetime
     };
@@ -350,11 +351,10 @@ pub async fn create_payment(
     }];
     lines.extend(alloc_lines);
 
-    let (je_id, _) = insert_journal_entry(&txn, dt, posted.journal_id, doc_id, &lines)
+    let (je_id, _) = insert_journal_entry(&txn, now, posted.journal_id, doc_id, &lines)
         .await
         .map_err(|e| e.to_string())?;
 
-    let now = Utc::now();
     let pay = payment::ActiveModel {
         posted_invoice_id: Set(posted.id),
         amount: Set(settlement),

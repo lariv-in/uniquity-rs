@@ -28,8 +28,9 @@ pub fn parse_filter_datetime(s: &str) -> Option<DateTime<Utc>> {
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
         .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                 .ok()
+                .or_else(|| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
                 .map(|ndt| ndt.and_utc())
         })
 }

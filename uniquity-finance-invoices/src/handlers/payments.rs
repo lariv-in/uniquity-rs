@@ -205,7 +205,7 @@ pub async fn list(
                 .cloned()
                 .unwrap_or_else(|| "—".into()),
             amount: uniquity_common::decimal::decimal_display(p.amount),
-            datetime: ctx.format_datetime_short(p.datetime),
+            datetime: ctx.format_datetime_short(p.datetime).into_string(),
         })
         .collect();
     let payments = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
@@ -256,7 +256,7 @@ pub async fn create_get(
             posted_invoice_id,
             amount,
             account_id: String::new(),
-            datetime: ctx.format_datetime_local_input(Utc::now()),
+            datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             taxes: vec![],
         },
         String::new(),
@@ -339,7 +339,7 @@ pub async fn detail(
             posted_invoice_href,
             amount: uniquity_common::decimal::decimal_display(p.amount),
             tax_labels,
-            datetime: ctx.format_datetime_short(p.datetime),
+            datetime: ctx.format_datetime_short(p.datetime).into_string(),
             journal_entry_id: p.journal_entry_id,
             payment_batch_id: p.payment_batch_id,
             payment_batch_href: p.payment_batch_id.map(|bid| {

@@ -23,8 +23,9 @@ pub async fn create_credit_note(
     if input.journal_entry_id == 0 {
         bail!("journal entry is required");
     }
+    let now = Utc::now();
     let dt = if input.datetime.timestamp() == 0 {
-        Utc::now()
+        now
     } else {
         input.datetime
     };
@@ -33,13 +34,12 @@ pub async fn create_credit_note(
     let (doc_id, reversed_id) = create_reversing_journal_entry_in_txn(
         &txn,
         input.journal_entry_id,
-        dt,
+        now,
         CREDIT_NOTE_SOURCE_DOC_TYPE,
     )
     .await
     .context("create reversal")?;
 
-    let now = Utc::now();
     let am = credit_note::ActiveModel {
         datetime: Set(dt),
         reason: Set(if input.reason.is_empty() {

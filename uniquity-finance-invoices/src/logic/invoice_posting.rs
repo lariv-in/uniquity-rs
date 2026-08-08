@@ -233,7 +233,7 @@ pub async fn draft_new_posted(
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)
         .await
         .map_err(|e| e.to_string())?;
-    let (je_id, je_items) = insert_journal_entry(&txn, draft.datetime, journal_id, doc_id, &specs)
+    let (je_id, je_items) = insert_journal_entry(&txn, posted_at, journal_id, doc_id, &specs)
         .await
         .map_err(|e| e.to_string())?;
 

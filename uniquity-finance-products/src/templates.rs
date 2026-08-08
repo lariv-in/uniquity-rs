@@ -173,9 +173,9 @@ pub struct ProductListPage {
 impl ProductListPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
+            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
             TableColumnHeader { label: "Type", sort_url: None, push_url: true },
             TableColumnHeader { label: "Reference", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
             TableColumnHeader { label: "Base cost", sort_url: None, push_url: true },
             TableColumnHeader { label: "Sales price", sort_url: None, push_url: true },
             TableColumnHeader { label: "HSN", sort_url: None, push_url: true },
@@ -187,9 +187,9 @@ impl ProductListPage {
             .map(|p| TableRow {
                 attrs: row_attr_navigate_route(ProductDetailRouteTag::new(p.id)),
                 cells: vec![
+                    field_text(FieldText { value: &p.name, classes: "" }),
                     field_text(FieldText { value: &p.product_type, classes: "" }),
                     field_text(FieldText { value: &p.reference, classes: "" }),
-                    field_text(FieldText { value: &p.name, classes: "" }),
                     field_text(FieldText {
                         value: &p.base_cost,
                         classes: "text-end tabular-nums",

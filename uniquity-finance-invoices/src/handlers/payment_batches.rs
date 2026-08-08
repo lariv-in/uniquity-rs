@@ -332,7 +332,7 @@ pub async fn list(
         .into_iter()
         .map(|b| PaymentBatchRow {
             id: b.id,
-            datetime: ctx.format_datetime_short(b.datetime),
+            datetime: ctx.format_datetime_short(b.datetime).into_string(),
             total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
             payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
         })
@@ -383,7 +383,7 @@ pub async fn create_get(
         &state,
         &q.modal,
         PaymentBatchForm {
-            datetime: ctx.format_datetime_local_input(Utc::now()),
+            datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             account_id: String::new(),
             allocations_json,
         },
@@ -515,7 +515,7 @@ pub async fn detail(
 
         PaymentBatchDetailPage {
             id: b.id,
-            datetime: ctx.format_datetime_short(b.datetime),
+            datetime: ctx.format_datetime_short(b.datetime).into_string(),
             account_label,
             total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
             journal_entry_id: b.journal_entry_id,

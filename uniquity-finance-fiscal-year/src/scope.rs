@@ -28,8 +28,9 @@ fn parse_fiscal_date_only(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .ok()
         .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M")
+            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                 .ok()
+                .or_else(|| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
                 .map(|dt| dt.date())
         })
         .or_else(|| {
