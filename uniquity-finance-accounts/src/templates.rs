@@ -3,7 +3,6 @@ mod common;
 mod currencies;
 mod journals;
 mod preferences;
-mod preferences_hints;
 mod register;
 mod source_docs;
 

@@ -6,14 +6,6 @@ pub fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-pub fn opt_str(s: &str) -> Option<String> {
-    if s.is_empty() {
-        None
-    } else {
-        Some(s.to_string())
-    }
-}
-
 pub fn parse_i64(s: &str) -> Option<i64> {
     if s.is_empty() {
         None

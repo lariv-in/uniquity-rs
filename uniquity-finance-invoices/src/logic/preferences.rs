@@ -21,10 +21,12 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         return p;
     }
     let now = Utc::now();
+    let default_format = "INV-{{YYYY}}-{{POSTED_SEQ}}".to_string();
     let am = preferences::ActiveModel {
         id: Set(1),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        invoice_number_format: Set(Some(default_format.clone())),
         ..Default::default()
     };
     am.insert(db).await.unwrap_or(preferences::Model {
@@ -35,6 +37,8 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         account_revenue_id: None,
         account_tax_payable_id: None,
         journal_id: None,
+        invoice_number_format: Some(default_format),
+        invoice_pdf_template: None,
     })
 }
 

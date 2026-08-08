@@ -1,10 +1,16 @@
-//! Patches invoice and payment GL preferences onto `/finance/preferences`.
+//! Patches invoice presentation + GL preferences onto `/finance/preferences`.
 
 use std::collections::HashMap;
 
 use chrono::Utc;
+use lariv_rs::components::{
+    CodeEditorInput, code_editor_input,
+    attrs::escape_attr,
+    htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL},
+    label_newline_hint,
+};
 use lariv_rs::html_form::FormFieldKey;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use uniquity_finance_accounts::{
     account_select_route_url,
@@ -20,10 +26,12 @@ use crate::{
         preferences::{self},
     },
     forms::{
-        InvoicePreferencesForm, InvoicePreferencesFormField, PaymentPreferencesForm,
-        PaymentPreferencesFormField,
+        InvoicePreferencesForm, InvoicePreferencesFormField, InvoicePresentationPreferencesFormField,
+        PaymentPreferencesForm, PaymentPreferencesFormField,
     },
+    invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
     logic::preferences::{load_invoice_preferences, load_payment_preferences},
+    preferences_hints::{INVOICE_NUMBER_FORMAT_HINT, INVOICE_PDF_TEMPLATE_HINT},
 };
 
 fn param_opt_i64(params: &HashMap<String, String>, key: &str) -> Option<i64> {
@@ -33,6 +41,16 @@ fn param_opt_i64(params: &HashMap<String, String>, key: &str) -> Option<i64> {
             None
         } else {
             s.parse().ok()
+        }
+    })
+}
+
+fn param_opt_str(params: &HashMap<String, String>, key: &str) -> Option<String> {
+    params.get(key).and_then(|s| {
+        if s.is_empty() {
+            None
+        } else {
+            Some(s.clone())
         }
     })
 }
@@ -67,7 +85,52 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         let debit_url = account_select_route_url(debit_balance_type().as_str());
         let credit_url = account_select_route_url(credit_balance_type().as_str());
 
+        let number_format = inv.invoice_number_format.unwrap_or_default();
+        let pdf_template = inv.invoice_pdf_template.unwrap_or_default();
+
         html! {
+            (label_newline_hint(
+                "Invoice number format",
+                Some(INVOICE_NUMBER_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(InvoicePresentationPreferencesFormField::InvoiceNumberFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(number_format) {}
+                },
+            ))
+            (label_newline_hint(
+                "Invoice PDF template (Typst + Minijinja)",
+                Some(INVOICE_PDF_TEMPLATE_HINT),
+                html! {
+                    (code_editor_input(CodeEditorInput {
+                        label: "",
+                        name: InvoicePresentationPreferencesFormField::InvoicePdfTemplate.html_name(),
+                        value: &pdf_template,
+                        id: "invoice-pdf-template-field",
+                        language: "plaintext",
+                        rows: 16,
+                        max_height: "24rem",
+                        ..Default::default()
+                    }))
+                    textarea id="default-invoice-pdf-template" hidden readonly {
+                        (DEFAULT_INVOICE_PDF_TEMPLATE)
+                    }
+                    div class="flex justify-end gap-2 mt-2" {
+                        button type="button" class="btn btn-ghost btn-sm"
+                            onclick="if (confirm('This will overwrite the template in the field with the default example template. Continue?')) { const ta = document.getElementById('invoice-pdf-template-field'); const def = document.getElementById('default-invoice-pdf-template'); if (!ta || !def) return; ta.value = def.value; const root = ta.closest('[data-code-editor-root]'); if (root) { root.dispatchEvent(new CustomEvent('code-editor:set', { detail: { value: def.value } })); } else { ta.dispatchEvent(new Event('change', { bubbles: true })); } }" {
+                            "Use default template"
+                        }
+                        div class="fk-modal-host" {
+                            (PreEscaped(format!(
+                                r#"<button type="button" class="btn btn-outline btn-sm" hx-post="/finance-invoices/invoice-pdf-preview" hx-target="{}" hx-swap="{}" hx-include="closest form" hx-push-url="false">Preview sample PDF</button>"#,
+                                escape_attr(HTMX_TARGET_BODY_MODAL),
+                                escape_attr(HTMX_SWAP_BODY_MODAL),
+                            )))
+                        }
+                    }
+                },
+            ))
             (InvoicePreferencesForm::render_inputs(
                 &FormCtx::form::<InvoicePreferencesForm>()
                     .value(
@@ -133,6 +196,14 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.journal_id = Set(param_opt_i64(
             params,
             InvoicePreferencesFormField::JournalId.html_name(),
+        ));
+        inv_am.invoice_number_format = Set(param_opt_str(
+            params,
+            InvoicePresentationPreferencesFormField::InvoiceNumberFormat.html_name(),
+        ));
+        inv_am.invoice_pdf_template = Set(param_opt_str(
+            params,
+            InvoicePresentationPreferencesFormField::InvoicePdfTemplate.html_name(),
         ));
         inv_am.updated_at = Set(Some(now));
         inv_am

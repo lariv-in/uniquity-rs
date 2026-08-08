@@ -1,4 +1,4 @@
-//! Tooltip copy for accounting preference fields (see invoice_number.rs and invoice_pdf.rs).
+//! Tooltip copy for invoice preference fields patched onto `/finance/preferences`.
 
 pub const INVOICE_NUMBER_FORMAT_HINT: &str = "\
 Applied when posting a draft that has no invoice number (blank or unset). \

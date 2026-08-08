@@ -284,6 +284,16 @@ impl FormWidget for PaymentBatchAllocations {
     }
 }
 
+/// Presentation prefs patched onto `/finance/preferences` (custom UI in the addon).
+#[html_form]
+pub struct InvoicePresentationPreferencesForm {
+    #[form(label = "Invoice number format", widget = Text)]
+    pub invoice_number_format: String,
+
+    #[form(label = "Invoice PDF template (Typst + Minijinja)", widget = Textarea, rows = 16)]
+    pub invoice_pdf_template: String,
+}
+
 #[html_form]
 pub struct InvoicePreferencesForm {
     #[form(

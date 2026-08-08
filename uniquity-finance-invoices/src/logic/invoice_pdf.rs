@@ -15,10 +15,6 @@ use sea_orm::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uniquity_common::typst;
-use uniquity_finance_accounts::{
-    DEFAULT_INVOICE_PDF_TEMPLATE, write_bundled_pdf_assets,
-};
-use uniquity_finance_accounts::logic::journal::load_accounting_preferences;
 use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
 use uniquity_finance_products::entities::product::Entity as ProductEntity;
 use uniquity_finance_taxes::entities::tax::{self, TaxKind};
@@ -33,7 +29,10 @@ use crate::entities::{
     PartiallyPaidInvoiceEntity, PaymentEntity, PaymentTermEntity, PostedInvoiceEntity,
     PostedInvoiceLineEntity,
 };
+use crate::invoice_pdf_assets::write_bundled_pdf_assets;
+use crate::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 use crate::logic::payment_term::{payment_term_summary, payment_term_type_label};
+use crate::logic::preferences::load_invoice_preferences;
 use crate::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
@@ -679,7 +678,7 @@ async fn render_pdf_from_prefs(
     root: &PdfRoot,
     filename_base: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
-    let prefs = load_accounting_preferences(db).await;
+    let prefs = load_invoice_preferences(db).await;
     let tmpl_src = prefs
         .invoice_pdf_template
         .as_deref()
@@ -942,8 +941,6 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
     use rust_decimal::Decimal;
-    use uniquity_finance_accounts::DEFAULT_INVOICE_PDF_TEMPLATE;
-
     fn sample_example_invoice_root() -> PdfRoot {
         sample_invoice_pdf_root(lariv_rs::datetime::DEFAULT_TIMEZONE)
     }

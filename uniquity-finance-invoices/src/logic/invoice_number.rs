@@ -3,10 +3,10 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 
-use uniquity_finance_accounts::logic::journal::load_accounting_preferences;
 use uniquity_finance_fiscal_year::scope::resolve_fiscal_year_for_invoice;
 
 use crate::entities::draft_invoice;
+use crate::logic::preferences::load_invoice_preferences;
 
 pub async fn next_posted_invoice_seq(db: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
     let row = db
@@ -54,7 +54,7 @@ pub async fn posted_invoice_number(
             return Ok(t.to_string());
         }
     }
-    let prefs = load_accounting_preferences(db).await;
+    let prefs = load_invoice_preferences(db).await;
     let format = prefs.invoice_number_format.unwrap_or_default();
     let seq = next_posted_invoice_seq(db).await.map_err(|e| e.to_string())?;
     Ok(format_posted_invoice_number(db, &format, draft.datetime, seq).await)

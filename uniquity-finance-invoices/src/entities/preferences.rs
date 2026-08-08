@@ -13,6 +13,8 @@ pub struct Model {
     pub account_revenue_id: Option<i64>,
     pub account_tax_payable_id: Option<i64>,
     pub journal_id: Option<i64>,
+    pub invoice_number_format: Option<String>,
+    pub invoice_pdf_template: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

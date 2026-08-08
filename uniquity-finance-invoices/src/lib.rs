@@ -9,13 +9,19 @@ pub mod components;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod invoice_pdf_assets;
+pub mod invoice_pdf_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod preferences_hints;
 pub mod routes;
 pub mod scope;
 pub mod state;
 pub mod templates;
+
+pub use invoice_pdf_assets::{SIGNATURE_IMAGE, write_bundled_pdf_assets};
+pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 
 use frunk::{HCons, hlist::HList};
 

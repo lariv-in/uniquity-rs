@@ -16,9 +16,9 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
-use uniquity_finance_accounts::forms::AccountingPreferencesFormField;
 
 use crate::{
+    forms::InvoicePresentationPreferencesFormField,
     keys::InvoicePdfPreviewModalKey,
     logic::invoice_pdf::{InvoicePdfError, render_invoice_pdf_preview},
     routes::InvoicePdfPreviewPdfRouteTag,
@@ -112,7 +112,7 @@ pub async fn modal_post(
     }
     cleanup_stale_previews(3600);
     let template = params
-        .get(AccountingPreferencesFormField::InvoicePdfTemplate.html_name())
+        .get(InvoicePresentationPreferencesFormField::InvoicePdfTemplate.html_name())
         .map(|s| s.as_str());
     match render_invoice_pdf_preview(template, &ctx.timezone).await {
         Ok(result) => {

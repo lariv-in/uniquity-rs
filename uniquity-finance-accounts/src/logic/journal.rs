@@ -16,7 +16,6 @@ use crate::{
     account_validation::validate_leaf_account_balance_type,
     balance_type::BalanceType,
     entities::{
-        accounting_preferences,
         journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self},
@@ -27,28 +26,6 @@ use crate::{
 pub struct JournalLineSpec {
     pub account_id: i64,
     pub amount: Decimal,
-}
-
-pub async fn load_accounting_preferences(db: &DatabaseConnection) -> accounting_preferences::Model {
-    use accounting_preferences::Entity as PrefsEntity;
-    if let Ok(Some(p)) = PrefsEntity::find_by_id(1i64).one(db).await {
-        return p;
-    }
-    let now = Utc::now();
-    let am = accounting_preferences::ActiveModel {
-        id: Set(1),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        invoice_number_format: Set(Some("INV-{{YYYY}}-{{POSTED_SEQ}}".to_string())),
-        ..Default::default()
-    };
-    am.insert(db).await.unwrap_or(accounting_preferences::Model {
-        id: 1,
-        created_at: Some(now),
-        updated_at: Some(now),
-        invoice_number_format: Some("INV-{{YYYY}}-{{POSTED_SEQ}}".to_string()),
-        invoice_pdf_template: None,
-    })
 }
 
 pub async fn create_source_doc<C: ConnectionTrait>(db: &C, source_doc_type: &str) -> Result<i64> {
