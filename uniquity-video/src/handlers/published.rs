@@ -45,11 +45,15 @@ use super::ModalNameQuery;
 #[derive(Debug, Deserialize, Default)]
 pub struct PublishedListQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct PublishedSelectQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
@@ -84,10 +88,12 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PublishedListQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) = query_published_videos(&state.db, q.page.unwrap_or(1)).await;
+    let (rows, page, total) =
+        query_published_videos(&state.db, q.page.unwrap_or(1), q.sort.as_deref()).await;
     let items = ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total);
     let page = PublishedListPage {
         items,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -266,12 +272,16 @@ pub async fn select(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Query(q): Query<PublishedSelectQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) = query_published_videos(&state.db, q.page.unwrap_or(1)).await;
+    let (rows, page, total) =
+        query_published_videos(&state.db, q.page.unwrap_or(1), q.sort.as_deref()).await;
     let items = ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total);
     let page = PublishedSelectPage {
         items,
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
         target_input: q
             .target_input
             .clone()

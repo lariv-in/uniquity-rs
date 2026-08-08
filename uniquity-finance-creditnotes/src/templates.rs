@@ -6,9 +6,9 @@ use lariv_rs::{
         Crumb, FieldText, FieldTitle, ObjectList,
         PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, container_column,
-        data_table_list, detail, field_text, field_title,
+        column_sort_url, data_table_list_refresh, detail, field_text, field_title,
         label_inline, pagination_pages,
-        row_attr_navigate_route, table_pagination,
+        row_attr_navigate_route, sort_indicator, table_pagination,
     },
     http::ProvideRequestCaps,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
@@ -112,16 +112,41 @@ pub struct CreditNoteRow {
 #[derive(Generic)]
 pub struct CreditNoteListPage {
     pub credit_notes: ObjectList<CreditNoteRow>,
+    pub sort: String,
     pub path_and_query: String,
 }
 
 impl CreditNoteListPage {
     pub fn render_table(&self) -> Markup {
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let reason_sort = column_sort_url(&self.path_and_query, "Reason", &self.sort);
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let reason_label = format!("Reason{}", sort_indicator(&self.sort, "Reason"));
         let headers = [
-            TableColumnHeader { label: "Date", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Reason", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Original entry", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Reversal entry", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Reason",
+                label: &reason_label,
+                sort_url: Some(&reason_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "OriginalEntry",
+                label: "Original entry",
+                sort_url: None,
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "ReversalEntry",
+                label: "Reversal entry",
+                sort_url: None,
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .credit_notes
@@ -148,12 +173,13 @@ impl CreditNoteListPage {
             self.credit_notes.number,
             self.credit_notes.num_pages,
         );
-        data_table_list::<CreditNoteTableKey>(
+        data_table_list_refresh::<CreditNoteTableKey>(
             "Credit Notes",
             html! {},
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 

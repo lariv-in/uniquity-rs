@@ -10,6 +10,7 @@ use lariv_rs::{
         data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed, row_attr_navigate_route, row_attr_select, table_button_filter,
+        column_sort_url, sort_indicator,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -140,17 +141,46 @@ pub struct CurrencyListPage {
     pub filter_name: String,
     pub filter_symbol: String,
     pub filter_minor_unit: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl CurrencyListPage {
     pub fn render_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let symbol_sort = column_sort_url(&self.path_and_query, "Symbol", &self.sort);
+        let minor_unit_sort = column_sort_url(&self.path_and_query, "MinorUnit", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let symbol_label = format!("Symbol{}", sort_indicator(&self.sort, "Symbol"));
+        let minor_unit_label = format!("Minor unit{}", sort_indicator(&self.sort, "MinorUnit"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Symbol", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Minor unit", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Symbol",
+                label: &symbol_label,
+                sort_url: Some(&symbol_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "MinorUnit",
+                label: &minor_unit_label,
+                sort_url: Some(&minor_unit_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .currencies
@@ -427,16 +457,38 @@ pub struct CurrencySelectPage {
     pub filter_code: String,
     pub filter_name: String,
     pub filter_symbol: String,
+    pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
 }
 
 impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for CurrencySelectPage {
     fn render_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let symbol_sort = column_sort_url(&self.path_and_query, "Symbol", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let symbol_label = format!("Symbol{}", sort_indicator(&self.sort, "Symbol"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Symbol", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Symbol",
+                label: &symbol_label,
+                sort_url: Some(&symbol_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .currencies

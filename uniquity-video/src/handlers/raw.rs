@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -47,6 +47,8 @@ pub struct RawListQuery {
     #[serde(default, rename = "Title", alias = "title")]
     pub title: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<u32>,
 }
 
@@ -54,6 +56,8 @@ pub struct RawListQuery {
 pub struct RawSelectQuery {
     #[serde(default, rename = "Title", alias = "title")]
     pub title: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
@@ -84,8 +88,14 @@ async fn load_rows(
     auth: &lariv_rs::plugins::users::state::AuthContext,
     q: &RawListQuery,
 ) -> ObjectList<RawFootageRow> {
-    let (rows, page, total) =
-        query_raw_footages(db, auth, q.title.as_deref(), q.page.unwrap_or(1)).await;
+    let (rows, page, total) = query_raw_footages(
+        db,
+        auth,
+        q.title.as_deref(),
+        q.page.unwrap_or(1),
+        q.sort.as_deref(),
+    )
+    .await;
     ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total)
 }
 
@@ -101,6 +111,7 @@ pub async fn list(
     let page = RawListPage {
         items,
         filter_title: q.title.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -277,6 +288,7 @@ pub async fn select(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Query(q): Query<RawSelectQuery>,
 ) -> maud::Markup {
     let mut query = crate::entities::RawFootageEntity::find();
@@ -284,6 +296,14 @@ pub async fn select(
     if let Some(t) = q.title.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(RawFootageColumn::Title.contains(t));
     }
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(RawFootageColumn::Title),
+        s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
+            query.order_by_asc(RawFootageColumn::Title)
+        }
+        _ => query.order_by_desc(RawFootageColumn::UpdatedAt),
+    };
     let page_num = q.page.unwrap_or(1).max(1);
     let paginator = query.paginate(&state.db, DEFAULT_PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -303,6 +323,8 @@ pub async fn select(
     let page = RawSelectPage {
         items,
         filter_title: q.title.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
         target_input: q
             .target_input
             .clone()

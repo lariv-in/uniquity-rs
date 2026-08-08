@@ -11,6 +11,7 @@ use lariv_rs::{
         detail, field_text, field_title, form, form_hx_get_route,
         form_hx_post_main, form_hx_post_url, label_inline, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select_extra,
+        column_sort_url, sort_indicator,
         table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
@@ -204,19 +205,62 @@ pub struct ProductListPage {
     pub products: ObjectList<ProductRow>,
     pub filter_name: String,
     pub filter_reference: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl ProductListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
+        let base_cost_sort = column_sort_url(&self.path_and_query, "BaseCost", &self.sort);
+        let sales_price_sort = column_sort_url(&self.path_and_query, "SalesPrice", &self.sort);
+        let hsn_sort = column_sort_url(&self.path_and_query, "HSN", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
+        let base_cost_label = format!("Base cost{}", sort_indicator(&self.sort, "BaseCost"));
+        let sales_price_label = format!("Sales price{}", sort_indicator(&self.sort, "SalesPrice"));
+        let hsn_label = format!("HSN{}", sort_indicator(&self.sort, "HSN"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Reference", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Base cost", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Sales price", sort_url: None, push_url: true },
-            TableColumnHeader { label: "HSN", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Reference",
+                label: &reference_label,
+                sort_url: Some(&reference_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "BaseCost",
+                label: &base_cost_label,
+                sort_url: Some(&base_cost_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "SalesPrice",
+                label: &sales_price_label,
+                sort_url: Some(&sales_price_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "HSN",
+                label: &hsn_label,
+                sort_url: Some(&hsn_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .products
@@ -520,14 +564,22 @@ pub struct ProductSelectPage {
     pub filter_name: String,
     pub filter_reference: String,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for ProductSelectPage {
     fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .products

@@ -51,6 +51,8 @@ pub struct FiscalYearListQuery {
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -77,9 +79,36 @@ async fn query_fiscal_years(
     let mut query = FiscalYearEntity::find();
     query = apply_fiscal_year_filters(query, q.code.as_deref(), q.name.as_deref());
     query = scope_fiscal_years(query, auth);
-    query = query
-        .order_by_desc(fiscal_year::Column::StartsAt)
-        .order_by_desc(fiscal_year::Column::Id);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(fiscal_year::Column::Code),
+        s if s.eq_ignore_ascii_case("Code ASC") || s.eq_ignore_ascii_case("Code") => {
+            query.order_by_asc(fiscal_year::Column::Code)
+        }
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(fiscal_year::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(fiscal_year::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Start DESC") => {
+            query.order_by_desc(fiscal_year::Column::StartsAt)
+        }
+        s if s.eq_ignore_ascii_case("Start ASC") || s.eq_ignore_ascii_case("Start") => {
+            query.order_by_asc(fiscal_year::Column::StartsAt)
+        }
+        s if s.eq_ignore_ascii_case("End DESC") => query.order_by_desc(fiscal_year::Column::EndsAt),
+        s if s.eq_ignore_ascii_case("End ASC") || s.eq_ignore_ascii_case("End") => {
+            query.order_by_asc(fiscal_year::Column::EndsAt)
+        }
+        s if s.eq_ignore_ascii_case("Active DESC") => {
+            query.order_by_desc(fiscal_year::Column::IsActive)
+        }
+        s if s.eq_ignore_ascii_case("Active ASC") || s.eq_ignore_ascii_case("Active") => {
+            query.order_by_asc(fiscal_year::Column::IsActive)
+        }
+        _ => query
+            .order_by_desc(fiscal_year::Column::StartsAt)
+            .order_by_desc(fiscal_year::Column::Id),
+    };
 
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -105,6 +134,7 @@ pub async fn list(
         fiscal_years,
         filter_code: q.code.clone().unwrap_or_default(),
         filter_name: q.name.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -280,6 +310,7 @@ pub async fn select(
     Cap(state): Cap<FiscalYearState>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Query(q): Query<FiscalYearSelectQuery>,
 ) -> maud::Markup {
     let fiscal_years = query_fiscal_years(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
@@ -291,6 +322,8 @@ pub async fn select(
             .target_input
             .clone()
             .unwrap_or_else(|| "FiscalYearID".into()),
+        sort: q.filter.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
     };
     respond_picker_select::<FiscalYearSelectTableKey, FiscalYearSelectModalKey, _>(&htmx, &page)
 }

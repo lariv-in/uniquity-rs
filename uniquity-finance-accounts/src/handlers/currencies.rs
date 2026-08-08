@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -53,6 +53,8 @@ pub struct CurrencyListQuery {
     #[serde(default, rename = "MinorUnit", alias = "minor_unit")]
     pub minor_unit: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -78,6 +80,28 @@ async fn load_currency_rows(
         q.minor_unit.as_deref(),
     );
     query = scope_superuser(query, auth);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(currency::Column::Code),
+        s if s.eq_ignore_ascii_case("Code ASC") || s.eq_ignore_ascii_case("Code") => {
+            query.order_by_asc(currency::Column::Code)
+        }
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(currency::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(currency::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Symbol DESC") => query.order_by_desc(currency::Column::Symbol),
+        s if s.eq_ignore_ascii_case("Symbol ASC") || s.eq_ignore_ascii_case("Symbol") => {
+            query.order_by_asc(currency::Column::Symbol)
+        }
+        s if s.eq_ignore_ascii_case("MinorUnit DESC") => {
+            query.order_by_desc(currency::Column::MinorUnit)
+        }
+        s if s.eq_ignore_ascii_case("MinorUnit ASC") || s.eq_ignore_ascii_case("MinorUnit") => {
+            query.order_by_asc(currency::Column::MinorUnit)
+        }
+        _ => query.order_by_asc(currency::Column::Code),
+    };
     let page = q.page.get();
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -113,6 +137,7 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         filter_symbol: q.symbol.clone().unwrap_or_default(),
         filter_minor_unit: q.minor_unit.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -286,6 +311,7 @@ pub async fn select(
         filter_code: q.filter.code.clone().unwrap_or_default(),
         filter_name: q.filter.name.clone().unwrap_or_default(),
         filter_symbol: q.filter.symbol.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "CurrencyId".into()),
     };

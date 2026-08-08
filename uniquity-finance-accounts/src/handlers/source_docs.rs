@@ -30,6 +30,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 #[derive(Debug, Deserialize, Default)]
 pub struct SourceDocSelectQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub target_input: Option<String>,
@@ -44,8 +46,23 @@ pub async fn select(
     Query(q): Query<SourceDocSelectQuery>,
 ) -> maud::Markup {
     let page_num = q.page.get();
-    let query = scope_superuser(SourceDocEntity::find(), &ctx)
-        .order_by_desc(source_doc::Column::Id);
+    let mut query = scope_superuser(SourceDocEntity::find(), &ctx);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Type DESC") => {
+            query.order_by_desc(source_doc::Column::SourceDocType)
+        }
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(source_doc::Column::SourceDocType)
+        }
+        s if s.eq_ignore_ascii_case("Reference DESC") => {
+            query.order_by_desc(source_doc::Column::SourceDocId)
+        }
+        s if s.eq_ignore_ascii_case("Reference ASC") || s.eq_ignore_ascii_case("Reference") => {
+            query.order_by_asc(source_doc::Column::SourceDocId)
+        }
+        _ => query.order_by_desc(source_doc::Column::Id),
+    };
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -66,6 +83,7 @@ pub async fn select(
     let page = SourceDocSelectPage {
         docs,
         target_input: q.target_input.unwrap_or_else(|| "SourceDocID".into()),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     respond_picker_select::<SourceDocSelectTableKey, SourceDocSelectModalKey, _>(&htmx, &page)

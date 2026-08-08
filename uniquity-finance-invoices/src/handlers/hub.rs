@@ -54,6 +54,8 @@ pub struct HubQuery {
     pub datetime_from: Option<String>,
     #[serde(default, rename = "DatetimeTo")]
     pub datetime_to: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -88,7 +90,22 @@ async fn query_draft_rows(
             .filter(draft_invoice::Column::Datetime.gte(fy.starts_at))
             .filter(draft_invoice::Column::Datetime.lte(fy.ends_at));
     }
-    query = query.order_by_desc(draft_invoice::Column::Datetime);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(draft_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(draft_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(draft_invoice::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(draft_invoice::Column::Datetime)
+        }
+        _ => query.order_by_desc(draft_invoice::Column::Datetime),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -136,7 +153,22 @@ async fn query_posted_rows(
             .filter(posted_invoice::Column::Datetime.gte(fy.starts_at))
             .filter(posted_invoice::Column::Datetime.lte(fy.ends_at));
     }
-    query = query.order_by_desc(posted_invoice::Column::Datetime);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(posted_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(posted_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(posted_invoice::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(posted_invoice::Column::Datetime)
+        }
+        _ => query.order_by_desc(posted_invoice::Column::Datetime),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -197,7 +229,22 @@ async fn query_cancelled_rows(
             .filter(cancelled_invoice::Column::Datetime.gte(fy.starts_at))
             .filter(cancelled_invoice::Column::Datetime.lte(fy.ends_at));
     }
-    query = query.order_by_desc(cancelled_invoice::Column::Datetime);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(cancelled_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(cancelled_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(cancelled_invoice::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(cancelled_invoice::Column::Datetime)
+        }
+        _ => query.order_by_desc(cancelled_invoice::Column::Datetime),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -253,9 +300,24 @@ async fn query_paid_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = PaidInvoiceEntity::find()
-        .filter(sql_settlement_posted_not_cancelled("paid_invoices"))
-        .order_by_desc(paid_invoice::Column::Id);
+    let mut query = PaidInvoiceEntity::find()
+        .filter(sql_settlement_posted_not_cancelled("paid_invoices"));
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(paid_invoice::Column::PostedInvoiceId)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(paid_invoice::Column::PostedInvoiceId)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(paid_invoice::Column::PaymentId)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(paid_invoice::Column::PaymentId)
+        }
+        _ => query.order_by_desc(paid_invoice::Column::Id),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -313,9 +375,24 @@ async fn query_partial_rows(
     tz: &str,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = PartiallyPaidInvoiceEntity::find()
-        .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"))
-        .order_by_desc(partially_paid_invoice::Column::Id);
+    let mut query = PartiallyPaidInvoiceEntity::find()
+        .filter(sql_settlement_posted_not_cancelled("partially_paid_invoices"));
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(partially_paid_invoice::Column::PostedInvoiceId)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(partially_paid_invoice::Column::PostedInvoiceId)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(partially_paid_invoice::Column::PaymentId)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(partially_paid_invoice::Column::PaymentId)
+        }
+        _ => query.order_by_desc(partially_paid_invoice::Column::Id),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -398,6 +475,7 @@ pub async fn hub(
     let page = InvoiceHubPage {
         invoices,
         tab: tab.to_string(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         fiscal_years,
         selected_fiscal_year_id,

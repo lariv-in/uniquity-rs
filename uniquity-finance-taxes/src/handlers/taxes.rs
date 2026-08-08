@@ -46,6 +46,8 @@ pub struct TaxListQuery {
     #[serde(default, rename = "TaxType", alias = "tax_type")]
     pub tax_type: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -93,9 +95,26 @@ async fn query_taxes(
     let mut query = TaxEntity::find();
     query = apply_tax_filters(query, q.name.as_deref(), q.tax_type.as_deref());
     query = scope_taxes(query, auth);
-    query = query
-        .order_by_desc(tax::Column::CreatedAt)
-        .order_by_desc(tax::Column::Id);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(tax::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(tax::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Type DESC") => query.order_by_desc(tax::Column::TaxType),
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(tax::Column::TaxType)
+        }
+        s if s.eq_ignore_ascii_case("Percentage DESC") => {
+            query.order_by_desc(tax::Column::Percentage)
+        }
+        s if s.eq_ignore_ascii_case("Percentage ASC") || s.eq_ignore_ascii_case("Percentage") => {
+            query.order_by_asc(tax::Column::Percentage)
+        }
+        _ => query
+            .order_by_desc(tax::Column::CreatedAt)
+            .order_by_desc(tax::Column::Id),
+    };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -123,6 +142,7 @@ pub async fn list(
         taxes,
         filter_name: q.name.clone().unwrap_or_default(),
         filter_tax_type: q.tax_type.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -325,6 +345,7 @@ pub async fn multi_select(
         taxes,
         filter_name: q.filter.name.clone().unwrap_or_default(),
         filter_tax_type: q.filter.tax_type.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q
             .target_input

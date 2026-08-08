@@ -11,6 +11,7 @@ use lariv_rs::{
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed,
         row_attr_navigate_route, table_button_filter, SwapKey,
+        column_sort_url, sort_indicator,
     },
     html_form::{FormCtx, FormFieldKey, HtmlForm},
     picker::RenderPickerSelect,
@@ -224,18 +225,47 @@ pub struct AccountListPage {
     pub filter_code: String,
     pub filter_is_group: bool,
     pub filter_balance_type: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl AccountListPage {
     pub fn render_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let balance_sort = column_sort_url(&self.path_and_query, "Balance", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let balance_label = format!("Balance{}", sort_indicator(&self.sort, "Balance"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Balance", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Parent", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Balance",
+                label: &balance_label,
+                sort_url: Some(&balance_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "Parent",label: "Parent", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .accounts
@@ -337,6 +367,7 @@ pub struct AccountDetailPage {
     pub ancestors: Vec<(i64, String)>,
     pub balance_total: String,
     pub children: ObjectList<AccountRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -347,11 +378,39 @@ impl AccountDetailPage {
     }
 
     fn children_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let balance_sort = column_sort_url(&self.path_and_query, "Balance", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let balance_label = format!("Balance{}", sort_indicator(&self.sort, "Balance"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Balance", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Balance",
+                label: &balance_label,
+                sort_url: Some(&balance_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .children
@@ -467,6 +526,7 @@ pub struct AccountJournalEntriesPage {
     /// Root → … → parent (excludes this account).
     pub ancestors: Vec<(i64, String)>,
     pub entries: ObjectList<JournalEntryRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -477,13 +537,27 @@ impl AccountJournalEntriesPage {
     }
 
     fn entries_table(&self) -> Markup {
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
+        let datetime_sort = column_sort_url(&self.path_and_query, "DateTime", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
+        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "DateTime"));
         let headers = [
-            TableColumnHeader { label: "ID", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Journal", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Source document type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "DateTime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "Journal",label: "Journal", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "SourceDocumentType",label: "Source document type", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "SourceDocument",label: "Source document", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "Amount",label: "Amount", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .entries
@@ -595,6 +669,7 @@ pub struct AccountJournalEntryItemsPage {
     /// Root → … → parent (excludes this account).
     pub ancestors: Vec<(i64, String)>,
     pub items: ObjectList<AccountJournalEntryItemRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -605,10 +680,24 @@ impl AccountJournalEntryItemsPage {
     }
 
     fn items_table(&self) -> Markup {
+        let datetime_sort = column_sort_url(&self.path_and_query, "DateTime", &self.sort);
+        let amount_sort = column_sort_url(&self.path_and_query, "Amount", &self.sort);
+        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "DateTime"));
+        let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
         let headers = [
-            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "DateTime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Amount",
+                label: &amount_label,
+                sort_url: Some(&amount_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "SourceDocument",label: "Source document", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -902,6 +991,7 @@ pub struct AccountSelectPage {
     pub balance_type_scope: String,
     pub parent_id: i64,
     pub grandparent_id: Option<i64>,
+    pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
     pub exclude_account_id: i64,
@@ -957,13 +1047,34 @@ impl AccountSelectPage {
         let child_picker =
             self.target_input == AccountFormField::ChildIds.target_input();
         let show_open_column = parent_picker || child_picker;
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let balance_sort = column_sort_url(&self.path_and_query, "Balance", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let balance_label = format!("Balance{}", sort_indicator(&self.sort, "Balance"));
         let mut headers = vec![
-            TableColumnHeader { label: "Code", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Balance", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Balance",
+                label: &balance_label,
+                sort_url: Some(&balance_sort),
+                push_url: false,
+            },
         ];
         if show_open_column {
-            headers.push(TableColumnHeader { label: "", sort_url: None, push_url: false });
+            headers.push(TableColumnHeader {  key: "Actions",label: "", sort_url: None, push_url: false });
         }
         let parent_up_url = account_select_parent_up_url(&self.path_and_query, self.grandparent_id);
         let rows: Vec<TableRow> = self

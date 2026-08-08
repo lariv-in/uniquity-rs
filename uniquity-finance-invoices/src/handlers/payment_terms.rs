@@ -46,11 +46,15 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ListQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct PaymentTermSelectQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
@@ -72,8 +76,15 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = PaymentTermEntity::find()
-        .order_by_desc(payment_term::Column::Id);
+    let mut query = PaymentTermEntity::find();
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Type DESC") => query.order_by_desc(payment_term::Column::TermType),
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(payment_term::Column::TermType)
+        }
+        _ => query.order_by_desc(payment_term::Column::Id),
+    };
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -91,6 +102,7 @@ pub async fn list(
     let terms = ObjectList::from_page(rows, page_num, PAGE_SIZE, total);
     let page = PaymentTermListPage {
         terms,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -322,8 +334,15 @@ pub async fn fk_select(
     Query(q): Query<PaymentTermSelectQuery>,
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = PaymentTermEntity::find()
-        .order_by_desc(payment_term::Column::Id);
+    let mut query = PaymentTermEntity::find();
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Type DESC") => query.order_by_desc(payment_term::Column::TermType),
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(payment_term::Column::TermType)
+        }
+        _ => query.order_by_desc(payment_term::Column::Id),
+    };
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -344,6 +363,7 @@ pub async fn fk_select(
         target_input: q
             .target_input
             .unwrap_or_else(|| "PaymentTermID".into()),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

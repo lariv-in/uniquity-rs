@@ -46,6 +46,8 @@ pub struct CustomerListQuery {
     #[serde(default, rename = "Email", alias = "email")]
     pub email: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -90,9 +92,30 @@ async fn query_customers(
     let mut query = CustomerEntity::find();
     query = apply_customer_filters(query, q.name.as_deref(), q.email.as_deref());
     query = scope_customers(query, auth);
-    query = query
-        .order_by_desc(customer::Column::CreatedAt)
-        .order_by_desc(customer::Column::Id);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(customer::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(customer::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Type DESC") => {
+            query.order_by_desc(customer::Column::CustomerType)
+        }
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(customer::Column::CustomerType)
+        }
+        s if s.eq_ignore_ascii_case("Email DESC") => query.order_by_desc(customer::Column::Email),
+        s if s.eq_ignore_ascii_case("Email ASC") || s.eq_ignore_ascii_case("Email") => {
+            query.order_by_asc(customer::Column::Email)
+        }
+        s if s.eq_ignore_ascii_case("Phone DESC") => query.order_by_desc(customer::Column::Phone),
+        s if s.eq_ignore_ascii_case("Phone ASC") || s.eq_ignore_ascii_case("Phone") => {
+            query.order_by_asc(customer::Column::Phone)
+        }
+        _ => query
+            .order_by_desc(customer::Column::CreatedAt)
+            .order_by_desc(customer::Column::Id),
+    };
 
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -143,6 +166,7 @@ pub async fn list(
         customers,
         filter_name: q.name.clone().unwrap_or_default(),
         filter_email: q.email.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -390,6 +414,7 @@ pub async fn select(
             .target_input
             .clone()
             .unwrap_or_else(|| "CustomerID".into()),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

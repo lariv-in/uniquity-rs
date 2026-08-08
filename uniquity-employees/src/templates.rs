@@ -8,11 +8,11 @@ use lariv_rs::{
         ShellScaffold, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
         button_delete, button_link, button_modal_form, button_submit, container_column,
-        container_row, data_table_list, data_table_list_refresh, detail, field_text,
-        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
+        container_row, column_sort_url, data_table_list, data_table_list_refresh, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, table_button_filter,
-        table_pagination,
+        row_attr_navigate_route, row_attr_select, shell_scaffold, sort_indicator,
+        table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -214,8 +214,8 @@ pub struct EmployeeListPage {
 impl EmployeeListPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Email", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "Name",label: "Name", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "Email",label: "Email", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .employees
@@ -459,8 +459,8 @@ pub struct EmployeeSelectPage {
 impl EmployeeSelectPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "User", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Email", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "User",label: "User", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "Email",label: "Email", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .employees
@@ -493,16 +493,31 @@ impl RenderTemplate for EmployeeSelectPage {
 #[derive(Generic)]
 pub struct PointsListPage {
     pub points: ObjectList<PointsRow>,
+    pub sort: String,
     pub path_and_query: String,
 }
 
 impl PointsListPage {
     pub fn render_table(&self) -> Markup {
+        let points_sort = column_sort_url(&self.path_and_query, "Points", &self.sort);
+        let when_sort = column_sort_url(&self.path_and_query, "When", &self.sort);
+        let points_label = format!("Points{}", sort_indicator(&self.sort, "Points"));
+        let when_label = format!("When{}", sort_indicator(&self.sort, "When"));
         let headers = [
-            TableColumnHeader { label: "Points", sort_url: None, push_url: true },
-            TableColumnHeader { label: "From", sort_url: None, push_url: true },
-            TableColumnHeader { label: "To", sort_url: None, push_url: true },
-            TableColumnHeader { label: "When", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Points",
+                label: &points_label,
+                sort_url: Some(&points_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "From",label: "From", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "To",label: "To", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "When",
+                label: &when_label,
+                sort_url: Some(&when_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .points

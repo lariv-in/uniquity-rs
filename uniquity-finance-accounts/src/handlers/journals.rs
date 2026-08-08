@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
 use serde::Deserialize;
 
 use lariv_rs::{
@@ -59,7 +59,15 @@ pub struct JournalListQuery {
     #[serde(default, rename = "Type", alias = "journal_type")]
     pub journal_type: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct JournalDetailQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -84,6 +92,24 @@ async fn load_journal_rows(
         q.journal_type.as_deref(),
     );
     query = scope_superuser(query, auth);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(journal::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(journal::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Active DESC") => query.order_by_desc(journal::Column::IsActive),
+        s if s.eq_ignore_ascii_case("Active ASC") || s.eq_ignore_ascii_case("Active") => {
+            query.order_by_asc(journal::Column::IsActive)
+        }
+        s if s.eq_ignore_ascii_case("Type DESC") => {
+            query.order_by_desc(journal::Column::JournalType)
+        }
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(journal::Column::JournalType)
+        }
+        _ => query.order_by_desc(journal::Column::CreatedAt),
+    };
     let page = q.page.get();
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -123,6 +149,7 @@ pub async fn list(
         filter_is_active: q.is_active.unwrap_or(false),
         filter_currency_id: q.currency_id.clone().unwrap_or_default(),
         filter_journal_type: q.journal_type.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -146,6 +173,7 @@ pub async fn detail(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
+    Query(q): Query<JournalDetailQuery>,
     Path(id): Path<i64>,
 ) -> Response {
     let Some(j) = find_journal_scoped(&state.db, id, &ctx).await else {
@@ -155,7 +183,8 @@ pub async fn detail(
         .await
         .map(|c| currency_summary(&c))
         .unwrap_or_else(|| "—".into());
-    let entries_raw = load_journal_entries_for_journal(&state.db, j.id).await;
+    let entries_raw =
+        load_journal_entries_for_journal(&state.db, j.id, q.sort.as_deref()).await;
     let entry_ids: Vec<i64> = entries_raw.iter().map(|e| e.id).collect();
     let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let journal_name = j.name.clone();
@@ -189,9 +218,13 @@ pub async fn detail(
         currency_label,
         journal_type: j.journal_type.to_string(),
         entries,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
+    if htmx.targets::<JournalTableKey>() {
+        return page.render_entries_table().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -350,6 +383,7 @@ pub async fn select(
         filter_is_active: q.filter.is_active.unwrap_or(false),
         filter_currency_id: q.filter.currency_id.clone().unwrap_or_default(),
         filter_journal_type: q.filter.journal_type.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),
     };

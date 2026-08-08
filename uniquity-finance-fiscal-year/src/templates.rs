@@ -7,10 +7,11 @@ use lariv_rs::{
         FieldText, FieldTitle, FormOpts, ObjectList, PaginationPage, ShellChrome,
         SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
         TablePagination, TableRow, breadcrumbs, button_clear, button_delete, button_modal_form,
-        button_submit, container_column, container_row, data_table_list,
+        button_submit, container_column, container_row,
         data_table_list_refresh, detail, field_checkbox, field_date, field_text, field_title,
         form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select,
+        column_sort_url, sort_indicator,
         table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
@@ -148,6 +149,30 @@ fn fiscal_year_filter_form(code: &str, name: &str) -> Markup {
     })
 }
 
+fn fiscal_year_select_filter_form(code: &str, name: &str, target_input: &str) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<FiscalYearSelectTableKey, FiscalYearSelectRouteTag>(
+            FiscalYearSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        inputs: html! {
+            (FiscalYearFilterForm::render_inputs(
+                &FormCtx::form::<FiscalYearFilterForm>()
+                    .value(FiscalYearFilterFormField::Code, code)
+                    .value(FiscalYearFilterFormField::Name, name),
+            ))
+            input type="hidden" name="target_input" value=(target_input) {}
+        },
+        actions: html! {
+            (container_row("flex gap-2", html! {
+                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+            }))
+        },
+        ..Default::default()
+    })
+}
+
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
@@ -181,18 +206,54 @@ pub struct FiscalYearListPage {
     pub fiscal_years: ObjectList<FiscalYearRow>,
     pub filter_code: String,
     pub filter_name: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl FiscalYearListPage {
     pub fn render_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let start_sort = column_sort_url(&self.path_and_query, "Start", &self.sort);
+        let end_sort = column_sort_url(&self.path_and_query, "End", &self.sort);
+        let active_sort = column_sort_url(&self.path_and_query, "Active", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let start_label = format!("Start{}", sort_indicator(&self.sort, "Start"));
+        let end_label = format!("End{}", sort_indicator(&self.sort, "End"));
+        let active_label = format!("Active{}", sort_indicator(&self.sort, "Active"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Start", sort_url: None, push_url: true },
-            TableColumnHeader { label: "End", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Active", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Start",
+                label: &start_label,
+                sort_url: Some(&start_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "End",
+                label: &end_label,
+                sort_url: Some(&end_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Active",
+                label: &active_label,
+                sort_url: Some(&active_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .fiscal_years
@@ -470,15 +531,45 @@ pub struct FiscalYearSelectPage {
     pub filter_code: String,
     pub filter_name: String,
     pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
 }
 
 impl RenderPickerSelect<FiscalYearSelectTableKey, FiscalYearSelectModalKey> for FiscalYearSelectPage {
     fn render_table(&self) -> Markup {
+        let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let start_sort = column_sort_url(&self.path_and_query, "Start", &self.sort);
+        let end_sort = column_sort_url(&self.path_and_query, "End", &self.sort);
+        let code_label = format!("Code{}", sort_indicator(&self.sort, "Code"));
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let start_label = format!("Start{}", sort_indicator(&self.sort, "Start"));
+        let end_label = format!("End{}", sort_indicator(&self.sort, "End"));
         let headers = [
-            TableColumnHeader { label: "Code", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Start", sort_url: None, push_url: false },
-            TableColumnHeader { label: "End", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Code",
+                label: &code_label,
+                sort_url: Some(&code_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Start",
+                label: &start_label,
+                sort_url: Some(&start_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "End",
+                label: &end_label,
+                sort_url: Some(&end_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .fiscal_years
@@ -494,32 +585,25 @@ impl RenderPickerSelect<FiscalYearSelectTableKey, FiscalYearSelectModalKey> for 
                 ],
             })
             .collect();
-        let filter = form(FormOpts {
-            attrs: form_hx_get_route::<FiscalYearSelectTableKey, FiscalYearSelectRouteTag>(
-                FiscalYearSelectRouteTag,
-            ),
-            inputs: FiscalYearFilterForm::render_inputs(
-                &FormCtx::form::<FiscalYearFilterForm>()
-                    .value(FiscalYearFilterFormField::Code, &self.filter_code)
-                    .value(FiscalYearFilterFormField::Name, &self.filter_name),
-            ),
-            actions: html! {
-                (container_row("flex gap-2", html! {
-                    (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
-                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
-                }))
-            },
-            ..Default::default()
-        });
-        data_table_list::<FiscalYearSelectTableKey>(
+        let pagination = render_pagination::<FiscalYearSelectTableKey>(
+            &self.path_and_query,
+            self.fiscal_years.number,
+            self.fiscal_years.num_pages,
+        );
+        data_table_list_refresh::<FiscalYearSelectTableKey>(
             "Select Fiscal Year",
             table_button_filter(TableButtonFilter {
-                panel: filter,
+                panel: fiscal_year_select_filter_form(
+                    &self.filter_code,
+                    &self.filter_name,
+                    &self.target_input,
+                ),
                 ..Default::default()
             }),
             &headers,
             &rows,
-            html! {},
+            pagination,
+            &self.path_and_query,
         )
     }
 }

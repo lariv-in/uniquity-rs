@@ -5,7 +5,7 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
@@ -18,9 +18,9 @@ use lariv_rs::{
 use uniquity_finance_accounts::entities::{journal_entry, JournalEntryEntity};
 
 use crate::{
-    entities::credit_note::Entity as CreditNoteEntity,
+    entities::credit_note::{self, Entity as CreditNoteEntity},
     keys::CreditNoteTableKey,
-    scope::{find_credit_note_scoped, order_credit_notes, scope_credit_notes},
+    scope::{find_credit_note_scoped, scope_credit_notes},
     state::CreditnotesState,
     templates::{CreditNoteDetailPage, CreditNoteListPage, CreditNoteRow},
 };
@@ -29,6 +29,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct ListQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
 }
@@ -66,8 +68,23 @@ async fn query_rows(
     db: &sea_orm::DatabaseConnection,
     auth: &AuthContext,
     page: u32,
+    sort: Option<&str>,
 ) -> (Vec<CreditNoteRow>, u32, u64) {
-    let query = order_credit_notes(scope_credit_notes(CreditNoteEntity::find(), auth));
+    let mut query = scope_credit_notes(CreditNoteEntity::find(), auth);
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Date DESC") => query.order_by_desc(credit_note::Column::Datetime),
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(credit_note::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Reason DESC") => query.order_by_desc(credit_note::Column::Reason),
+        s if s.eq_ignore_ascii_case("Reason ASC") || s.eq_ignore_ascii_case("Reason") => {
+            query.order_by_asc(credit_note::Column::Reason)
+        }
+        _ => query
+            .order_by_desc(credit_note::Column::Datetime)
+            .order_by_desc(credit_note::Column::Id),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -110,10 +127,11 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
-    let (rows, page, total) = query_rows(&state.db, &ctx, page_num).await;
+    let (rows, page, total) = query_rows(&state.db, &ctx, page_num, q.sort.as_deref()).await;
     let credit_notes = ObjectList::from_page(rows, page, PAGE_SIZE, total);
     let page = CreditNoteListPage {
         credit_notes,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);

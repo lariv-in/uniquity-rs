@@ -11,7 +11,7 @@ use lariv_rs::{
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_url,
         modal_keyed,
         pagination_pages, row_attr_navigate_route, row_attr_select_multi,
-        table_button_filter, table_pagination,
+        column_sort_url, sort_indicator, table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -179,17 +179,39 @@ pub struct TaxListPage {
     pub taxes: ObjectList<TaxRow>,
     pub filter_name: String,
     pub filter_tax_type: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl TaxListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let percentage_sort = column_sort_url(&self.path_and_query, "Percentage", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let percentage_label = format!("Percentage{}", sort_indicator(&self.sort, "Percentage"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Percentage", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Account", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Percentage",
+                label: &percentage_label,
+                sort_url: Some(&percentage_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "Account",label: "Account", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .taxes
@@ -444,6 +466,7 @@ pub struct TaxMultiSelectPage {
     pub taxes: ObjectList<TaxRow>,
     pub filter_name: String,
     pub filter_tax_type: String,
+    pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
@@ -456,10 +479,31 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
         } else {
             self.target_input.as_str()
         };
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let percentage_sort = column_sort_url(&self.path_and_query, "Percentage", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let percentage_label = format!("Percentage{}", sort_indicator(&self.sort, "Percentage"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Percentage", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Percentage",
+                label: &percentage_label,
+                sort_url: Some(&percentage_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .taxes

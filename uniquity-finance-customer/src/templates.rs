@@ -10,6 +10,7 @@ use lariv_rs::{
         form, form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, modal_keyed,
         pagination_pages,
         row_attr_navigate_route, row_attr_select,
+        column_sort_url, sort_indicator,
         table_button_filter, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
@@ -202,15 +203,30 @@ pub struct CustomerListPage {
     pub customers: ObjectList<CustomerRow>,
     pub filter_name: String,
     pub filter_email: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl CustomerListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .customers
@@ -528,16 +544,38 @@ pub struct CustomerSelectPage {
     pub filter_name: String,
     pub filter_email: String,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for CustomerSelectPage {
     fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
+        let phone_sort = column_sort_url(&self.path_and_query, "Phone", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let email_label = format!("Email{}", sort_indicator(&self.sort, "Email"));
+        let phone_label = format!("Phone{}", sort_indicator(&self.sort, "Phone"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Email", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Phone", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Email",
+                label: &email_label,
+                sort_url: Some(&email_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Phone",
+                label: &phone_label,
+                sort_url: Some(&phone_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .customers

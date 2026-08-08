@@ -7,11 +7,11 @@ use lariv_rs::{
         LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
         ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete, button_link,
-        button_modal_form, button_submit, container_column, container_row, data_table_list,
-        data_table_list_refresh, detail, field_text, field_title, form, form_hx_get_route,
-        form_hx_post_main, form_hx_post_url, label_inline, layout_main, layout_sidebar,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select, shell_scaffold,
-        sidebar_menu, sidebar_menu_item, table_pagination,
+        button_modal_form, button_submit, column_sort_url, container_column, container_row,
+        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
+        form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, layout_main,
+        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
+        shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -386,14 +386,22 @@ impl RenderTemplate for HubPage {
 pub struct RawListPage {
     pub items: ObjectList<RawFootageRow>,
     pub filter_title: String,
+    pub sort: String,
     pub path_and_query: String,
 }
 
 impl RawListPage {
     pub fn render_table(&self) -> Markup {
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
         let headers = [
-            TableColumnHeader { label: "Title", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Assigned to", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Title",
+                label: &title_label,
+                sort_url: Some(&title_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "AssignedTo",label: "Assigned to", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -662,12 +670,21 @@ impl RenderTemplate for RawCreateModalPage {
 pub struct RawSelectPage {
     pub items: ObjectList<RawFootageRow>,
     pub filter_title: String,
+    pub sort: String,
+    pub path_and_query: String,
     pub target_input: String,
 }
 
 impl RawSelectPage {
     pub fn render_table(&self) -> Markup {
-        let headers = [TableColumnHeader { label: "Title", sort_url: None, push_url: false }];
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let headers = [TableColumnHeader {
+            key: "Title",
+            label: &title_label,
+            sort_url: Some(&title_sort),
+            push_url: false,
+        }];
         let rows: Vec<TableRow> = self
             .items
             .items
@@ -677,12 +694,13 @@ impl RawSelectPage {
                 cells: vec![field_text(FieldText { value: &r.title, classes: "" })],
             })
             .collect();
-        data_table_list::<RawFootageSelectTableKey>(
+        data_table_list_refresh::<RawFootageSelectTableKey>(
             "Select raw footage",
             html! {},
             &headers,
             &rows,
             html! {},
+            &self.path_and_query,
         )
     }
 }
@@ -704,8 +722,8 @@ pub struct VideoEmployeeSelectPage {
 impl VideoEmployeeSelectPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "User", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Email", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "User",label: "User", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "Email",label: "Email", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .employees
@@ -744,8 +762,8 @@ pub struct EditedListPage {
 impl EditedListPage {
     pub fn render_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "Raw title", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Output file", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "RawTitle",label: "Raw title", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "OutputFile",label: "Output file", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -1018,7 +1036,7 @@ pub struct EditedSelectPage {
 impl EditedSelectPage {
     pub fn render_table(&self) -> Markup {
         let headers = [TableColumnHeader {
-            label: "Raw footage",
+             key: "RawFootage",label: "Raw footage",
             sort_url: None,
             push_url: false,
         }];
@@ -1050,14 +1068,22 @@ impl RenderTemplate for EditedSelectPage {
 #[derive(Generic)]
 pub struct PublishedListPage {
     pub items: ObjectList<PublishedVideoRow>,
+    pub sort: String,
     pub path_and_query: String,
 }
 
 impl PublishedListPage {
     pub fn render_table(&self) -> Markup {
+        let youtube_sort = column_sort_url(&self.path_and_query, "YouTubeID", &self.sort);
+        let youtube_label = format!("YouTube ID{}", sort_indicator(&self.sort, "YouTubeID"));
         let headers = [
-            TableColumnHeader { label: "YouTube ID", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Raw title", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "YouTubeID",
+                label: &youtube_label,
+                sort_url: Some(&youtube_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "RawTitle",label: "Raw title", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -1376,14 +1402,19 @@ impl RenderTemplate for PublishedCreateModalPage {
 #[derive(Generic)]
 pub struct PublishedSelectPage {
     pub items: ObjectList<PublishedVideoRow>,
+    pub sort: String,
+    pub path_and_query: String,
     pub target_input: String,
 }
 
 impl PublishedSelectPage {
     pub fn render_table(&self) -> Markup {
+        let youtube_sort = column_sort_url(&self.path_and_query, "YouTubeID", &self.sort);
+        let youtube_label = format!("YouTube ID{}", sort_indicator(&self.sort, "YouTubeID"));
         let headers = [TableColumnHeader {
-            label: "YouTube ID",
-            sort_url: None,
+            key: "YouTubeID",
+            label: &youtube_label,
+            sort_url: Some(&youtube_sort),
             push_url: false,
         }];
         let rows: Vec<TableRow> = self
@@ -1395,12 +1426,13 @@ impl PublishedSelectPage {
                 cells: vec![field_text(FieldText { value: &r.youtube_id, classes: "" })],
             })
             .collect();
-        data_table_list::<PublishedVideoSelectTableKey>(
+        data_table_list_refresh::<PublishedVideoSelectTableKey>(
             "Select published video",
             html! {},
             &headers,
             &rows,
             html! {},
+            &self.path_and_query,
         )
     }
 }

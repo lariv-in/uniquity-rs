@@ -9,11 +9,11 @@ use lariv_rs::{
         ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
         SwapKey, TableColumnHeader, TablePagination, TableRow,
         breadcrumbs, button_delete, button_download_route, button_modal_form, button_submit,
-        container_column, container_row, data_table_list, data_table_list_refresh, detail,
+        container_column, container_row, data_table_list_refresh, detail,
         detail_header, field_link, field_text, field_title, form, form_hx_post_main, form_hx_post_url,
         label_inline, modal_keyed, pagination_pages,
         HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL,
-        row_attr_navigate, row_attr_select, table_pagination,
+        column_sort_url, row_attr_navigate, row_attr_select, sort_indicator, table_pagination,
         ButtonDeletePost, button_delete_post_route, DetailHeader, FieldLink,
     },
     html_form::{FormCtx, HtmlForm},
@@ -447,6 +447,7 @@ pub struct InvoiceRow {
 pub struct InvoiceHubPage {
     pub invoices: ObjectList<InvoiceRow>,
     pub tab: String,
+    pub sort: String,
     pub path_and_query: String,
     pub fiscal_years: Vec<components::FiscalYearOption>,
     pub selected_fiscal_year_id: Option<i64>,
@@ -478,38 +479,45 @@ impl InvoiceHubPage {
         let posted_hub = self.tab == "posted";
         let show_select = posted_hub && self.can_edit;
 
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+
         let mut headers = Vec::new();
         if show_select {
             headers.push(TableColumnHeader {
-                label: "",
+                 key: "Actions",label: "",
                 sort_url: None,
                 push_url: true,
             });
         }
         headers.push(TableColumnHeader {
-            label: "Number",
-            sort_url: None,
+             key: "Number",
+            label: &number_label,
+            sort_url: Some(&number_sort),
             push_url: true,
         });
         if posted_hub {
             headers.push(TableColumnHeader {
-                label: "Customer",
+                 key: "Customer",label: "Customer",
                 sort_url: None,
                 push_url: true,
             });
             headers.push(TableColumnHeader {
-                label: "Open balance",
+                 key: "OpenBalance",label: "Open balance",
                 sort_url: None,
                 push_url: true,
             });
         }
         headers.push(TableColumnHeader {
-            label: "Date",
-            sort_url: None,
+             key: "Date",
+            label: &date_label,
+            sort_url: Some(&date_sort),
             push_url: true,
         });
         headers.push(TableColumnHeader {
-            label: "Status",
+             key: "Status",label: "Status",
             sort_url: None,
             push_url: true,
         });
@@ -1366,6 +1374,7 @@ pub struct PaymentListPage {
     pub tab: String,
     pub payments: ObjectList<PaymentRow>,
     pub batches: ObjectList<PaymentBatchRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
@@ -1393,10 +1402,24 @@ impl PaymentListPage {
 
     pub fn render_table(&self) -> Markup {
         if self.tab == "batches" {
+            let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+            let total_sort = column_sort_url(&self.path_and_query, "Total", &self.sort);
+            let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+            let total_label = format!("Total{}", sort_indicator(&self.sort, "Total"));
             let headers = [
-                TableColumnHeader { label: "Date", sort_url: None, push_url: true },
-                TableColumnHeader { label: "Total", sort_url: None, push_url: true },
-                TableColumnHeader { label: "Payments", sort_url: None, push_url: true },
+                TableColumnHeader {
+                    key: "Date",
+                    label: &date_label,
+                    sort_url: Some(&date_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {
+                    key: "Total",
+                    label: &total_label,
+                    sort_url: Some(&total_sort),
+                    push_url: true,
+                },
+                TableColumnHeader {  key: "Payments",label: "Payments", sort_url: None, push_url: true },
             ];
             let rows: Vec<TableRow> = self
                 .batches
@@ -1429,10 +1452,24 @@ impl PaymentListPage {
             );
         }
 
+        let amount_sort = column_sort_url(&self.path_and_query, "Amount", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let headers = [
-            TableColumnHeader { label: "Invoice", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Amount", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Date", sort_url: None, push_url: true },
+            TableColumnHeader {  key: "Invoice",label: "Invoice", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Amount",
+                label: &amount_label,
+                sort_url: Some(&amount_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .payments
@@ -1800,15 +1837,23 @@ pub struct PaymentTermRow {
 #[derive(Generic)]
 pub struct PaymentTermListPage {
     pub terms: ObjectList<PaymentTermRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl PaymentTermListPage {
     pub fn render_table(&self) -> Markup {
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Summary", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
+            TableColumnHeader {  key: "Summary",label: "Summary", sort_url: None, push_url: true },
         ];
         let rows: Vec<TableRow> = self
             .terms
@@ -1887,15 +1932,23 @@ impl RenderTemplate for PaymentTermListPage {
 pub struct PaymentTermSelectPage {
     pub terms: ObjectList<PaymentTermRow>,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl RenderPickerSelect<PaymentTermSelectTableKey, PaymentTermSelectModalKey> for PaymentTermSelectPage {
     fn render_table(&self) -> Markup {
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
-            TableColumnHeader { label: "Type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Summary", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: false,
+            },
+            TableColumnHeader {  key: "Summary",label: "Summary", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .terms
@@ -1958,6 +2011,7 @@ pub struct PostedInvoiceSelectRow {
 pub struct PostedInvoiceSelectPage {
     pub invoices: ObjectList<PostedInvoiceSelectRow>,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
 }
 
@@ -1965,9 +2019,23 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
     for PostedInvoiceSelectPage
 {
     fn render_table(&self) -> Markup {
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let headers = [
-            TableColumnHeader { label: "Number", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Date", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .invoices
@@ -1993,12 +2061,13 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list::<PostedInvoiceSelectTableKey>(
+        data_table_list_refresh::<PostedInvoiceSelectTableKey>(
             "Select Posted Invoice",
             html! {},
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }

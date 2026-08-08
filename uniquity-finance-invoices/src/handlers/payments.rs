@@ -60,6 +60,8 @@ pub struct ListQuery {
     #[serde(default)]
     pub tab: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<u32>,
     #[serde(default)]
     pub target_input: Option<String>,
@@ -167,10 +169,21 @@ async fn query_single_payment_rows(
     db: &sea_orm::DatabaseConnection,
     page_num: u32,
     timezone: &str,
+    sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
-    let query = PaymentEntity::find()
-        .filter(payment::Column::PaymentBatchId.is_null())
-        .order_by_desc(payment::Column::Datetime);
+    let mut query = PaymentEntity::find().filter(payment::Column::PaymentBatchId.is_null());
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Amount DESC") => query.order_by_desc(payment::Column::Amount),
+        s if s.eq_ignore_ascii_case("Amount ASC") || s.eq_ignore_ascii_case("Amount") => {
+            query.order_by_asc(payment::Column::Amount)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => query.order_by_desc(payment::Column::Datetime),
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(payment::Column::Datetime)
+        }
+        _ => query.order_by_desc(payment::Column::Datetime),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -215,8 +228,25 @@ async fn query_batch_payment_rows(
     db: &sea_orm::DatabaseConnection,
     page_num: u32,
     timezone: &str,
+    sort: Option<&str>,
 ) -> (ObjectList<PaymentRow>, ObjectList<PaymentBatchRow>) {
-    let query = PaymentBatchEntity::find().order_by_desc(payment_batch::Column::Datetime);
+    let mut query = PaymentBatchEntity::find();
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(payment_batch::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(payment_batch::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Total DESC") => {
+            query.order_by_desc(payment_batch::Column::TotalAmount)
+        }
+        s if s.eq_ignore_ascii_case("Total ASC") || s.eq_ignore_ascii_case("Total") => {
+            query.order_by_asc(payment_batch::Column::TotalAmount)
+        }
+        _ => query.order_by_desc(payment_batch::Column::Datetime),
+    };
     let paginator = query.paginate(db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -272,14 +302,15 @@ pub async fn list(
     };
     let page_num = q.page.unwrap_or(1).max(1);
     let (payments, batches) = if tab == "batches" {
-        query_batch_payment_rows(&state.db, page_num, &ctx.timezone).await
+        query_batch_payment_rows(&state.db, page_num, &ctx.timezone, q.sort.as_deref()).await
     } else {
-        query_single_payment_rows(&state.db, page_num, &ctx.timezone).await
+        query_single_payment_rows(&state.db, page_num, &ctx.timezone, q.sort.as_deref()).await
     };
     let page = PaymentListPage {
         tab: tab.to_string(),
         payments,
         batches,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -441,10 +472,25 @@ pub async fn posted_fk_select(
     Query(q): Query<ListQuery>,
 ) -> maud::Markup {
     let page_num = q.page.unwrap_or(1).max(1);
-    let query = PostedInvoiceEntity::find()
+    let mut query = PostedInvoiceEntity::find()
         .filter(crate::scope::sql_posted_not_fully_paid())
-        .filter(sql_posted_not_cancelled())
-        .order_by_desc(posted_invoice::Column::Datetime);
+        .filter(sql_posted_not_cancelled());
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => {
+            query.order_by_desc(posted_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(posted_invoice::Column::Number)
+        }
+        s if s.eq_ignore_ascii_case("Date DESC") => {
+            query.order_by_desc(posted_invoice::Column::Datetime)
+        }
+        s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
+            query.order_by_asc(posted_invoice::Column::Datetime)
+        }
+        _ => query.order_by_desc(posted_invoice::Column::Datetime),
+    };
     let paginator = query.paginate(&state.db, PAGE_SIZE as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
@@ -465,6 +511,7 @@ pub async fn posted_fk_select(
         target_input: q
             .target_input
             .unwrap_or_else(|| "PostedInvoiceID".into()),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     respond_picker_select::<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey, _>(

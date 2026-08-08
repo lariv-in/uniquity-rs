@@ -42,6 +42,8 @@ const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
 #[derive(Debug, Deserialize, Default)]
 pub struct PointsListQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<u32>,
 }
 
@@ -57,7 +59,7 @@ async fn load_rows(
     auth: &AuthContext,
 ) -> ObjectList<PointsRow> {
     let (rows, page, total) =
-        query_points(db, auth, q.page.unwrap_or(1), PAGE_SIZE).await;
+        query_points(db, auth, q.page.unwrap_or(1), PAGE_SIZE, q.sort.as_deref()).await;
     ObjectList::from_page(rows, page, PAGE_SIZE as u32, total)
 }
 
@@ -75,6 +77,7 @@ pub async fn list(
     let points = load_rows(&state.db, &q, &ctx).await;
     let page = PointsListPage {
         points,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -103,7 +106,7 @@ pub async fn detail(
     let Some(pt) = find_points_scoped(&state.db, id, &ctx).await else {
         return Redirect::to("/employees/points/").into_response();
     };
-    let rows = query_points(&state.db, &ctx, 1, 1000).await.0;
+    let rows = query_points(&state.db, &ctx, 1, 1000, None).await.0;
     let detail = rows.into_iter().find(|r| r.id == pt.id).unwrap_or(PointsRow {
         id: pt.id,
         points: pt.points,

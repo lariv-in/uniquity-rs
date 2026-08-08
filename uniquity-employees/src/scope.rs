@@ -169,10 +169,26 @@ pub async fn query_points(
     auth: &AuthContext,
     page: u32,
     page_size: u64,
+    sort: Option<&str>,
 ) -> (Vec<PointsRow>, u32, u64) {
     let mut query = PointsTransactionEntity::find();
     query = scope_points(query, auth);
-    query = query.order_by_desc(points_transaction::Column::CreatedAt);
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Points DESC") => {
+            query.order_by_desc(points_transaction::Column::Points)
+        }
+        s if s.eq_ignore_ascii_case("Points ASC") || s.eq_ignore_ascii_case("Points") => {
+            query.order_by_asc(points_transaction::Column::Points)
+        }
+        s if s.eq_ignore_ascii_case("When DESC") => {
+            query.order_by_desc(points_transaction::Column::CreatedAt)
+        }
+        s if s.eq_ignore_ascii_case("When ASC") || s.eq_ignore_ascii_case("When") => {
+            query.order_by_asc(points_transaction::Column::CreatedAt)
+        }
+        _ => query.order_by_desc(points_transaction::Column::CreatedAt),
+    };
 
     let page = page.max(1);
     let paginator = query.paginate(db, page_size);

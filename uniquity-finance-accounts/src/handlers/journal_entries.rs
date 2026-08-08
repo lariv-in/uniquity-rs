@@ -50,6 +50,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 #[derive(Debug, Deserialize, Default)]
 pub struct JournalEntrySelectQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
     pub target_input: Option<String>,
@@ -241,8 +243,14 @@ pub async fn select(
         return Redirect::to("/finance/journals").into_response();
     }
     let page = q.page.get();
-    let (rows, total) =
-        query_journal_entries_for_select(&state.db, &ctx, page, PAGE_SIZE).await;
+    let (rows, total) = query_journal_entries_for_select(
+        &state.db,
+        &ctx,
+        page,
+        PAGE_SIZE,
+        q.sort.as_deref(),
+    )
+    .await;
     let entries: Vec<JournalEntryRow> = rows
         .into_iter()
         .map(|(e, journal_name)| {
@@ -267,6 +275,7 @@ pub async fn select(
     let page = JournalEntrySelectPage {
         entries: list,
         target_input: q.target_input.unwrap_or_else(|| "JournalEntryID".to_string()),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
     respond_picker_select::<JournalEntrySelectTableKey, JournalEntrySelectModalKey, _>(&htmx, &page)

@@ -6,6 +6,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder,
 };
 use serde::Deserialize;
 
@@ -65,6 +66,8 @@ const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 #[derive(Debug, Deserialize, Default)]
 pub struct AccountDetailQuery {
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -84,6 +87,8 @@ pub struct AccountListQuery {
     pub is_group: Option<bool>,
     #[serde(default, rename = "BalanceType", alias = "balance_type")]
     pub balance_type: QueryStr,
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
 }
@@ -134,6 +139,28 @@ async fn query_accounts(
         root_only,
     );
     query = crate::scope::scope_superuser(query, auth);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Code DESC") => query.order_by_desc(account::Column::Code),
+        s if s.eq_ignore_ascii_case("Code ASC") || s.eq_ignore_ascii_case("Code") => {
+            query.order_by_asc(account::Column::Code)
+        }
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(account::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(account::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Type DESC") => query.order_by_desc(account::Column::IsGroup),
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(account::Column::IsGroup)
+        }
+        s if s.eq_ignore_ascii_case("Balance DESC") => {
+            query.order_by_desc(account::Column::BalanceType)
+        }
+        s if s.eq_ignore_ascii_case("Balance ASC") || s.eq_ignore_ascii_case("Balance") => {
+            query.order_by_asc(account::Column::BalanceType)
+        }
+        _ => query.order_by_asc(account::Column::Code),
+    };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -251,6 +278,7 @@ pub async fn list(
         filter_code: q.code.or_empty(),
         filter_is_group: q.is_group.unwrap_or(false),
         filter_balance_type: q.balance_type.or_empty(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -274,6 +302,7 @@ pub async fn detail(
     htmx: Htmx,
     uri: Uri,
     Path(id): Path<i64>,
+    Query(q): Query<AccountDetailQuery>,
 ) -> Response {
     let Some(a) = find_account_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(&FinanceDefaultRouteTag.url()).into_response();
@@ -283,7 +312,10 @@ pub async fn detail(
     let balance_total = sum_account_subtree_balance(&state.db, a.id).await;
     let mut children = ObjectList::from_page(vec![], 1, PAGE_SIZE, 0);
     if a.is_group {
-        let child_q = AccountListQuery::default();
+        let child_q = AccountListQuery {
+            sort: q.sort.clone(),
+            ..Default::default()
+        };
         children = load_account_rows(&state.db, &child_q, &ctx, Some(a.id), None, false, 100).await;
         children = prepend_parent_up_row(children);
     }
@@ -298,6 +330,7 @@ pub async fn detail(
         ancestors,
         balance_total,
         children,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -322,8 +355,15 @@ pub async fn journal_entries(
     };
     let ancestors = load_account_ancestors(&state.db, a.parent_id).await;
     let page_num = q.page.get();
-    let (entry_models, entry_total) =
-        query_journal_entries_for_account_subtree(&state.db, &ctx, a.id, page_num, PAGE_SIZE).await;
+    let (entry_models, entry_total) = query_journal_entries_for_account_subtree(
+        &state.db,
+        &ctx,
+        a.id,
+        page_num,
+        PAGE_SIZE,
+        q.sort.as_deref(),
+    )
+    .await;
     let entry_ids: Vec<i64> = entry_models.iter().map(|(e, _)| e.id).collect();
     let amounts = load_journal_entry_transfer_amounts(&state.db, &entry_ids).await;
     let mut entry_rows = Vec::with_capacity(entry_models.len());
@@ -351,6 +391,7 @@ pub async fn journal_entries(
         name: a.name,
         ancestors,
         entries,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -381,6 +422,7 @@ pub async fn journal_entry_items(
         a.id,
         page_num,
         PAGE_SIZE,
+        q.sort.as_deref(),
     )
     .await;
     let mut item_rows = Vec::with_capacity(item_models.len());
@@ -400,6 +442,7 @@ pub async fn journal_entry_items(
         name: a.name,
         ancestors,
         items,
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -663,6 +706,7 @@ pub async fn select(
         balance_type_scope: q.balance_type_scope.clone().unwrap_or_default(),
         parent_id: parent_id.unwrap_or(0),
         grandparent_id,
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input,
         exclude_account_id: q.exclude_account_id.or_zero(),

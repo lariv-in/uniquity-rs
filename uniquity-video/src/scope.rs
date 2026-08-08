@@ -152,13 +152,21 @@ pub async fn query_raw_footages(
     auth: &AuthContext,
     title: Option<&str>,
     page: u32,
+    sort: Option<&str>,
 ) -> (Vec<RawFootageRow>, u32, u64) {
     let mut query = RawFootageEntity::find();
     query = scope_raw_list(query, auth);
     if let Some(t) = title.filter(|s| !s.is_empty()) {
         query = query.filter(raw_footage::Column::Title.contains(t));
     }
-    query = query.order_by_desc(raw_footage::Column::UpdatedAt);
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(raw_footage::Column::Title),
+        s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
+            query.order_by_asc(raw_footage::Column::Title)
+        }
+        _ => query.order_by_desc(raw_footage::Column::UpdatedAt),
+    };
     let page = page.max(1);
     let paginator = query.paginate(db, PAGE_SIZE);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -266,9 +274,19 @@ pub async fn find_edited_video(db: &DatabaseConnection, id: i64) -> Option<Edite
 pub async fn query_published_videos(
     db: &DatabaseConnection,
     page: u32,
+    sort: Option<&str>,
 ) -> (Vec<PublishedVideoRow>, u32, u64) {
-    let query = PublishedVideoEntity::find()
-        .order_by_desc(published_video::Column::UpdatedAt);
+    let mut query = PublishedVideoEntity::find();
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("YouTubeID DESC") => {
+            query.order_by_desc(published_video::Column::YouTubeVideoId)
+        }
+        s if s.eq_ignore_ascii_case("YouTubeID ASC") || s.eq_ignore_ascii_case("YouTubeID") => {
+            query.order_by_asc(published_video::Column::YouTubeVideoId)
+        }
+        _ => query.order_by_desc(published_video::Column::UpdatedAt),
+    };
     let page = page.max(1);
     let paginator = query.paginate(db, PAGE_SIZE);
     let total = paginator.num_items().await.unwrap_or(0);

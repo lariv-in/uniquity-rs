@@ -3,8 +3,8 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        FieldText, ObjectList, ShellChrome, TableColumnHeader, TableRow, data_table_list,
-        field_text, row_attr_select,
+        FieldText, ObjectList, ShellChrome, TableColumnHeader, TableRow, column_sort_url,
+        data_table_list_refresh, field_text, row_attr_select, sort_indicator,
     },
     picker::RenderPickerSelect,
     template::RenderTemplate,
@@ -26,15 +26,35 @@ pub struct SourceDocRow {
 pub struct SourceDocSelectPage {
     pub docs: ObjectList<SourceDocRow>,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
 }
 
 impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for SourceDocSelectPage {
     fn render_table(&self) -> Markup {
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
+        let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
         let headers = [
-            TableColumnHeader { label: "Type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Reference", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Label", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Reference",
+                label: &reference_label,
+                sort_url: Some(&reference_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Label",
+                label: "Label",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .docs
@@ -57,12 +77,13 @@ impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for So
             self.docs.number,
             self.docs.num_pages,
         );
-        data_table_list::<SourceDocSelectTableKey>(
+        data_table_list_refresh::<SourceDocSelectTableKey>(
             "Select Source Document",
             html! {},
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }

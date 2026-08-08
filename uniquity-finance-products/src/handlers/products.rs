@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
 };
 use serde::Deserialize;
 use uniquity_common::decimal::{self, parse_decimal};
@@ -52,6 +52,8 @@ pub struct ProductListQuery {
     #[serde(default, rename = "Reference", alias = "reference")]
     pub reference: Option<String>,
     #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
     pub page: QueryPage,
 }
 
@@ -93,6 +95,42 @@ async fn query_products(
     let mut query = ProductEntity::find();
     query = apply_product_filters(query, q.name.as_deref(), q.reference.as_deref());
     query = scope_products(query, auth);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(product::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(product::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Type DESC") => {
+            query.order_by_desc(product::Column::ProductType)
+        }
+        s if s.eq_ignore_ascii_case("Type ASC") || s.eq_ignore_ascii_case("Type") => {
+            query.order_by_asc(product::Column::ProductType)
+        }
+        s if s.eq_ignore_ascii_case("Reference DESC") => {
+            query.order_by_desc(product::Column::Reference)
+        }
+        s if s.eq_ignore_ascii_case("Reference ASC") || s.eq_ignore_ascii_case("Reference") => {
+            query.order_by_asc(product::Column::Reference)
+        }
+        s if s.eq_ignore_ascii_case("BaseCost DESC") => {
+            query.order_by_desc(product::Column::BaseCost)
+        }
+        s if s.eq_ignore_ascii_case("BaseCost ASC") || s.eq_ignore_ascii_case("BaseCost") => {
+            query.order_by_asc(product::Column::BaseCost)
+        }
+        s if s.eq_ignore_ascii_case("SalesPrice DESC") => {
+            query.order_by_desc(product::Column::SalesPrice)
+        }
+        s if s.eq_ignore_ascii_case("SalesPrice ASC") || s.eq_ignore_ascii_case("SalesPrice") => {
+            query.order_by_asc(product::Column::SalesPrice)
+        }
+        s if s.eq_ignore_ascii_case("HSN DESC") => query.order_by_desc(product::Column::HsnCode),
+        s if s.eq_ignore_ascii_case("HSN ASC") || s.eq_ignore_ascii_case("HSN") => {
+            query.order_by_asc(product::Column::HsnCode)
+        }
+        _ => query,
+    };
 
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);
@@ -131,6 +169,7 @@ pub async fn list(
         products,
         filter_name: q.name.clone().unwrap_or_default(),
         filter_reference: q.reference.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };
@@ -425,6 +464,7 @@ pub async fn select(
         filter_name: q.filter.name.clone().unwrap_or_default(),
         filter_reference: q.filter.reference.clone().unwrap_or_default(),
         target_input: q.target_input.unwrap_or_else(|| "ProductID".to_string()),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: require_superuser(&ctx),
     };

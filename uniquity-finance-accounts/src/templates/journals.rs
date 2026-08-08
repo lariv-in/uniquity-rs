@@ -6,11 +6,11 @@ use lariv_rs::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText,
         FieldTitle, FormOpts, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
         TableRow, breadcrumbs, button_clear, button_delete, button_modal_form, button_submit,
-        container_column, container_row, data_table_list, data_table_list_refresh,
+        column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
         delete_confirmation, detail, field_link, field_text, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_post_main, form_hx_post_redirect,
         form_hx_post_url, label_inline, modal_keyed, row_attr_navigate_route, row_attr_select,
-        table_button_filter,
+        sort_indicator, table_button_filter,
     },
     html_form::{FormCtx, HtmlForm},
     picker::RenderPickerSelect,
@@ -222,17 +222,44 @@ pub struct JournalListPage {
     pub filter_is_active: bool,
     pub filter_currency_id: String,
     pub filter_journal_type: String,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl JournalListPage {
     pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let active_sort = column_sort_url(&self.path_and_query, "Active", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let active_label = format!("Active{}", sort_indicator(&self.sort, "Active"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Active", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Currency", sort_url: None, push_url: true },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: true },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Active",
+                label: &active_label,
+                sort_url: Some(&active_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Currency",
+                label: "Currency",
+                sort_url: None,
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: true,
+            },
         ];
         let rows: Vec<TableRow> = self
             .journals
@@ -327,18 +354,52 @@ pub struct JournalDetailPage {
     pub currency_label: String,
     pub journal_type: String,
     pub entries: ObjectList<JournalEntryRow>,
+    pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
 }
 
 impl JournalDetailPage {
+    pub fn render_entries_table(&self) -> Markup {
+        self.entries_table()
+    }
+
     fn entries_table(&self) -> Markup {
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
+        let datetime_sort = column_sort_url(&self.path_and_query, "DateTime", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
+        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "DateTime"));
         let headers = [
-            TableColumnHeader { label: "ID", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Source document type", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Source document", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "DateTime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "SourceDocumentType",
+                label: "Source document type",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "SourceDocument",
+                label: "Source document",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Amount",
+                label: "Amount",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .entries
@@ -578,16 +639,36 @@ pub struct JournalSelectPage {
     pub filter_is_active: bool,
     pub filter_currency_id: String,
     pub filter_journal_type: String,
+    pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
 }
 
 impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for JournalSelectPage {
     fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let type_label = format!("Type{}", sort_indicator(&self.sort, "Type"));
         let headers = [
-            TableColumnHeader { label: "Name", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Currency", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Type", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Currency",
+                label: "Currency",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Type",
+                label: &type_label,
+                sort_url: Some(&type_sort),
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .journals
@@ -643,12 +724,13 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
             self.journals.number,
             self.journals.num_pages,
         );
-        data_table_list::<JournalSelectTableKey>(
+        data_table_list_refresh::<JournalSelectTableKey>(
             "Select Journal",
             actions,
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -749,9 +831,9 @@ pub struct JournalEntryDetailPage {
 impl JournalEntryDetailPage {
     fn items_table(&self) -> Markup {
         let headers = [
-            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Account", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Amount", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "DateTime",label: "Date & time", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "Account",label: "Account", sort_url: None, push_url: false },
+            TableColumnHeader {  key: "Amount",label: "Amount", sort_url: None, push_url: false },
         ];
         let rows: Vec<TableRow> = self
             .items
@@ -905,6 +987,7 @@ impl RenderTemplate for JournalEntryDeletePage {
 pub struct JournalEntrySelectPage {
     pub entries: ObjectList<JournalEntryRow>,
     pub target_input: String,
+    pub sort: String,
     pub path_and_query: String,
 }
 
@@ -912,10 +995,29 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
     for JournalEntrySelectPage
 {
     fn render_table(&self) -> Markup {
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
+        let datetime_sort = column_sort_url(&self.path_and_query, "DateTime", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
+        let datetime_label = format!("Date & time{}", sort_indicator(&self.sort, "DateTime"));
         let headers = [
-            TableColumnHeader { label: "ID", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Date & time", sort_url: None, push_url: false },
-            TableColumnHeader { label: "Journal", sort_url: None, push_url: false },
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "DateTime",
+                label: &datetime_label,
+                sort_url: Some(&datetime_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Journal",
+                label: "Journal",
+                sort_url: None,
+                push_url: false,
+            },
         ];
         let rows: Vec<TableRow> = self
             .entries
@@ -942,12 +1044,13 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
             self.entries.number,
             self.entries.num_pages,
         );
-        data_table_list::<JournalEntrySelectTableKey>(
+        data_table_list_refresh::<JournalEntrySelectTableKey>(
             "Select Journal Entry",
             html! {},
             &headers,
             &rows,
             pagination,
+            &self.path_and_query,
         )
     }
 }
