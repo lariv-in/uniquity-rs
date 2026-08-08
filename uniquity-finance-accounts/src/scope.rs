@@ -8,7 +8,7 @@ use sea_orm::{
 
 use lariv_rs::plugins::users::state::AuthContext;
 
-use uniquity_common::{decimal::decimal_display, is_superuser};
+use uniquity_common::{decimal::decimal_display_currency, is_superuser};
 
 use crate::{
     account_validation::{account_descendant_ids, BALANCE_TYPE_SCOPE_QUERY_PARAM},
@@ -21,7 +21,35 @@ use crate::{
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
         source_doc::{self, Entity as SourceDocEntity},
     },
+    preferences::load_accounting_preferences,
 };
+
+/// Symbol + minor-unit pair used for monetary display formatting.
+#[derive(Clone, Debug, Default)]
+pub struct CurrencyFormat {
+    pub symbol: String,
+    pub minor_unit: i32,
+}
+
+impl CurrencyFormat {
+    pub fn fallback() -> Self {
+        Self {
+            symbol: String::new(),
+            minor_unit: 2,
+        }
+    }
+
+    pub fn from_currency(c: &currency::Model) -> Self {
+        Self {
+            symbol: c.symbol.clone(),
+            minor_unit: c.minor_unit,
+        }
+    }
+
+    pub fn display(&self, amount: Decimal) -> String {
+        decimal_display_currency(amount, self.minor_unit, &self.symbol)
+    }
+}
 
 pub fn scope_superuser<E>(query: Select<E>, auth: &AuthContext) -> Select<E>
 where
@@ -253,13 +281,44 @@ pub fn currency_summary(c: &currency::Model) -> String {
     format!("{} — {} ({})", c.symbol, c.name, c.code)
 }
 
-/// Currency symbol for a journal entry via its journal (`""` if unresolved).
-pub async fn load_journal_entry_currency_symbol(
+pub async fn load_default_currency_format(db: &DatabaseConnection) -> CurrencyFormat {
+    let prefs = load_accounting_preferences(db).await;
+    match prefs.default_currency_id.filter(|&id| id > 0) {
+        Some(id) => load_currency_by_id(db, id)
+            .await
+            .map(|c| CurrencyFormat::from_currency(&c))
+            .unwrap_or_else(CurrencyFormat::fallback),
+        None => CurrencyFormat::fallback(),
+    }
+}
+
+pub async fn load_journal_currency_format(
+    db: &DatabaseConnection,
+    journal_id: i64,
+) -> CurrencyFormat {
+    if journal_id <= 0 {
+        return load_default_currency_format(db).await;
+    }
+    let Some(journal) = JournalEntity::find_by_id(journal_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return load_default_currency_format(db).await;
+    };
+    load_currency_by_id(db, journal.currency_id)
+        .await
+        .map(|c| CurrencyFormat::from_currency(&c))
+        .unwrap_or_else(CurrencyFormat::fallback)
+}
+
+pub async fn load_journal_entry_currency_format(
     db: &DatabaseConnection,
     journal_entry_id: i64,
-) -> String {
+) -> CurrencyFormat {
     if journal_entry_id <= 0 {
-        return String::new();
+        return load_default_currency_format(db).await;
     }
     let Some(entry) = JournalEntryEntity::find_by_id(journal_entry_id)
         .one(db)
@@ -267,20 +326,99 @@ pub async fn load_journal_entry_currency_symbol(
         .ok()
         .flatten()
     else {
-        return String::new();
+        return load_default_currency_format(db).await;
     };
-    let Some(journal) = JournalEntity::find_by_id(entry.journal_id)
-        .one(db)
+    load_journal_currency_format(db, entry.journal_id).await
+}
+
+/// Currency symbol for a journal entry via its journal (`""` if unresolved).
+pub async fn load_journal_entry_currency_symbol(
+    db: &DatabaseConnection,
+    journal_entry_id: i64,
+) -> String {
+    load_journal_entry_currency_format(db, journal_entry_id)
         .await
-        .ok()
-        .flatten()
-    else {
-        return String::new();
-    };
-    load_currency_by_id(db, journal.currency_id)
+        .symbol
+}
+
+/// Batch-load currency formats for journals (`journal_id → format`).
+pub async fn load_journal_currency_formats(
+    db: &DatabaseConnection,
+    journal_ids: &[i64],
+) -> HashMap<i64, CurrencyFormat> {
+    let mut out = HashMap::new();
+    let ids: Vec<i64> = journal_ids
+        .iter()
+        .copied()
+        .filter(|&id| id > 0)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    if ids.is_empty() {
+        return out;
+    }
+    let journals = JournalEntity::find()
+        .filter(journal::Column::Id.is_in(ids))
+        .all(db)
         .await
-        .map(|c| c.symbol)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let currency_ids: Vec<i64> = journals
+        .iter()
+        .map(|j| j.currency_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    let currencies = CurrencyEntity::find()
+        .filter(currency::Column::Id.is_in(currency_ids))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let currency_by_id: HashMap<i64, CurrencyFormat> = currencies
+        .into_iter()
+        .map(|c| (c.id, CurrencyFormat::from_currency(&c)))
+        .collect();
+    for j in journals {
+        let fmt = currency_by_id
+            .get(&j.currency_id)
+            .cloned()
+            .unwrap_or_else(CurrencyFormat::fallback);
+        out.insert(j.id, fmt);
+    }
+    out
+}
+
+/// Batch-load currency formats for journal entries (`journal_entry_id → format`).
+pub async fn load_journal_entry_currency_formats(
+    db: &DatabaseConnection,
+    entry_ids: &[i64],
+) -> HashMap<i64, CurrencyFormat> {
+    let mut out = HashMap::new();
+    let ids: Vec<i64> = entry_ids
+        .iter()
+        .copied()
+        .filter(|&id| id > 0)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    if ids.is_empty() {
+        return out;
+    }
+    let entries = JournalEntryEntity::find()
+        .filter(journal_entry::Column::Id.is_in(ids))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let journal_ids: Vec<i64> = entries.iter().map(|e| e.journal_id).collect();
+    let journal_fmts = load_journal_currency_formats(db, &journal_ids).await;
+    let fallback = CurrencyFormat::fallback();
+    for e in entries {
+        let fmt = journal_fmts
+            .get(&e.journal_id)
+            .cloned()
+            .unwrap_or_else(|| fallback.clone());
+        out.insert(e.id, fmt);
+    }
+    out
 }
 
 pub async fn load_journal_entries_for_journal(
@@ -361,9 +499,13 @@ pub async fn load_journal_entry_transfer_amounts(
             *sums.entry(item.journal_entry_id).or_insert(Decimal::ZERO) += item.amount;
         }
     }
-    sums
-        .into_iter()
-        .map(|(id, amount)| (id, decimal_display(amount)))
+    let fmts = load_journal_entry_currency_formats(db, entry_ids).await;
+    let fallback = CurrencyFormat::fallback();
+    sums.into_iter()
+        .map(|(id, amount)| {
+            let fmt = fmts.get(&id).unwrap_or(&fallback);
+            (id, fmt.display(amount))
+        })
         .collect()
 }
 
@@ -384,7 +526,9 @@ pub async fn sum_account_subtree_balance(db: &DatabaseConnection, account_id: i6
         .await
         .ok()
         .flatten();
-    sum.map(|d| d.to_string()).unwrap_or_else(|| "—".into())
+    let fmt = load_default_currency_format(db).await;
+    sum.map(|d| fmt.display(d))
+        .unwrap_or_else(|| "—".into())
 }
 
 pub fn balance_type_scope_param() -> &'static str {

@@ -4,11 +4,9 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use rust_decimal::Decimal;
 use sea_orm::{DatabaseConnection, EntityTrait};
-use uniquity_common::decimal::decimal_display;
 use uniquity_finance_accounts::{
-    scope::load_journal_entry_currency_symbol, SourceDocInstance, SourceDocRegistrar,
+    scope::load_journal_entry_currency_format, SourceDocInstance, SourceDocRegistrar,
     SourceDocRegistry, SourceDocType,
 };
 
@@ -100,8 +98,7 @@ struct PaymentSourceDocType;
 
 struct PaymentInstance {
     id: i64,
-    amount: Decimal,
-    currency_symbol: String,
+    amount_display: String,
 }
 
 impl SourceDocInstance for PaymentInstance {
@@ -114,12 +111,7 @@ impl SourceDocInstance for PaymentInstance {
     }
 
     fn display_name(&self) -> String {
-        let amount = decimal_display(self.amount);
-        if self.currency_symbol.is_empty() {
-            format!("Payment of {amount}")
-        } else {
-            format!("Payment of {amount} {}", self.currency_symbol)
-        }
+        format!("Payment of {}", self.amount_display)
     }
 
     fn detail_url(&self) -> String {
@@ -150,12 +142,10 @@ impl SourceDocType for PaymentSourceDocType {
             .one(db)
             .await?
             .with_context(|| format!("payment {id} not found"))?;
-        let currency_symbol =
-            load_journal_entry_currency_symbol(db, model.journal_entry_id).await;
+        let currency = load_journal_entry_currency_format(db, model.journal_entry_id).await;
         Ok(Arc::new(PaymentInstance {
             id: model.id,
-            amount: model.amount,
-            currency_symbol,
+            amount_display: currency.display(model.amount),
         }))
     }
 }

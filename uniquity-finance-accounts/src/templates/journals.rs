@@ -843,7 +843,7 @@ impl JournalEntryDetailPage {
                 cells: vec![
                     field_text(FieldText { value: &item.datetime, classes: "" }),
                     field_text(FieldText { value: &item.account_label, classes: "" }),
-                    field_text(FieldText { value: &item.amount, classes: "text-end tabular-nums" }),
+                    field_text(FieldText { value: &item.amount, classes: "tabular-nums" }),
                 ],
             })
             .collect();

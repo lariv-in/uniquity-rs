@@ -1,6 +1,6 @@
 use lariv_rs::html_form::{
     html_form, FormFieldKey,
-    widgets::{Checkbox, Datetime, Number, Select, Text, Textarea},
+    widgets::{Checkbox, Datetime, Number, Select, Text},
 };
 
 use crate::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};
@@ -239,9 +239,12 @@ pub struct JournalEntryForm {
 
 #[html_form]
 pub struct AccountingPreferencesForm {
-    #[form(label = "Invoice number format", widget = Text)]
-    pub invoice_number_format: String,
-
-    #[form(label = "Invoice PDF template (Typst + Minijinja)", widget = Textarea, rows = 16)]
-    pub invoice_pdf_template: String,
+    #[form(
+        label = "Default currency",
+        widget = ForeignKey,
+        route = CurrencySelectRouteTag,
+        display = "default_currency_display",
+        placeholder = "Select currency…"
+    )]
+    pub default_currency_id: String,
 }

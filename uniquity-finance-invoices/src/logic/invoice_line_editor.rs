@@ -5,6 +5,9 @@ use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Que
 use serde::Serialize;
 
 use uniquity_common::decimal;
+use uniquity_finance_accounts::scope::{
+    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
+};
 use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
 use uniquity_finance_products::{
     entities::product::Entity as ProductEntity,
@@ -16,9 +19,12 @@ use uniquity_finance_taxes::{
 };
 
 use crate::entities::{
+    cancelled_invoice::Entity as CancelledInvoiceEntity,
     draft_invoice_line::{self, Entity as DraftInvoiceLineEntity},
+    posted_invoice::Entity as PostedInvoiceEntity,
     posted_invoice_line::{self, Entity as PostedInvoiceLineEntity},
 };
+use crate::logic::preferences::load_invoice_preferences;
 use crate::logic::tax_assoc::{
     load_cancelled_line_tax_ids, load_draft_line_tax_ids, load_posted_line_tax_ids,
 };
@@ -161,11 +167,13 @@ pub struct InvoiceLineDisplayRow {
     pub line_total: String,
 }
 
-fn format_withholding(d: Decimal) -> String {
-    if decimal::dec_is_zero(d) {
-        "—".to_string()
-    } else {
-        format!("({})", decimal::decimal_display(d))
+async fn currency_for_journal_or_default(
+    db: &DatabaseConnection,
+    journal_id: Option<i64>,
+) -> CurrencyFormat {
+    match journal_id.filter(|&id| id > 0) {
+        Some(id) => load_journal_currency_format(db, id).await,
+        None => load_default_currency_format(db).await,
     }
 }
 
@@ -207,6 +215,7 @@ async fn build_line_display_row(
     quantity: Decimal,
     rate: Decimal,
     tax_ids: &[i64],
+    currency: &CurrencyFormat,
 ) -> InvoiceLineDisplayRow {
     let product_name = product_display_name(db, product_id).await;
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
@@ -220,12 +229,16 @@ async fn build_line_display_row(
     InvoiceLineDisplayRow {
         product: product_name,
         quantity: decimal::decimal_display(quantity),
-        rate: decimal::decimal_display(rate),
+        rate: currency.display(rate),
         line_taxes,
-        untaxed_amount: decimal::decimal_display(untaxed),
-        levied_tax_amount: decimal::decimal_display(levied),
-        withholding_amount: format_withholding(withholding),
-        line_total: decimal::decimal_display(net),
+        untaxed_amount: currency.display(untaxed),
+        levied_tax_amount: currency.display(levied),
+        withholding_amount: decimal::decimal_display_withholding(
+            withholding,
+            currency.minor_unit,
+            &currency.symbol,
+        ),
+        line_total: currency.display(net),
     }
 }
 
@@ -238,12 +251,15 @@ pub async fn draft_invoice_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
+    let prefs = load_invoice_preferences(db).await;
+    let currency = currency_for_journal_or_default(db, prefs.journal_id).await;
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids).await,
+            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
+                .await,
         );
     }
     rows
@@ -258,12 +274,20 @@ pub async fn posted_invoice_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
+    let journal_id = PostedInvoiceEntity::find_by_id(posted_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.journal_id);
+    let currency = currency_for_journal_or_default(db, journal_id).await;
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let tax_ids = load_posted_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids).await,
+            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
+                .await,
         );
     }
     rows
@@ -307,13 +331,21 @@ pub async fn cancelled_invoice_line_display_rows(
     cancelled_id: i64,
 ) -> Vec<InvoiceLineDisplayRow> {
     let lines = load_cancelled_invoice_lines(db, cancelled_id).await;
+    let journal_id = CancelledInvoiceEntity::find_by_id(cancelled_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|c| c.journal_id);
+    let currency = currency_for_journal_or_default(db, journal_id).await;
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let tax_ids = load_cancelled_line_tax_ids(db, ln.id)
             .await
             .unwrap_or_default();
         rows.push(
-            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids).await,
+            build_line_display_row(db, ln.product_id, ln.quantity, ln.rate, &tax_ids, &currency)
+                .await,
         );
     }
     rows

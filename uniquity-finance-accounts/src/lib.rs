@@ -16,6 +16,7 @@ pub mod journal_type;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod preferences;
 pub mod routes;
 pub mod scope;
 pub mod source_doc_label;

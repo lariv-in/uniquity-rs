@@ -229,6 +229,7 @@ pub async fn detail(
 }
 
 pub async fn create_get(
+    Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
@@ -236,13 +237,24 @@ pub async fn create_get(
     if !require_superuser(&ctx) {
         return maud::html! { div class="alert alert-error" { "Forbidden" } };
     }
+    let prefs = crate::preferences::load_accounting_preferences(&state.db).await;
+    let (currency_id, currency_display) = match prefs.default_currency_id.filter(|&id| id > 0) {
+        Some(id) => {
+            let display = load_currency_by_id(&state.db, id)
+                .await
+                .map(|c| currency_summary(&c))
+                .unwrap_or_default();
+            (id.to_string(), display)
+        }
+        None => (String::new(), String::new()),
+    };
     let page = JournalCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         name: String::new(),
         is_active: true,
-        currency_id: String::new(),
-        currency_display: String::new(),
+        currency_id,
+        currency_display,
         journal_type: "Debit".to_string(),
         error: String::new(),
     };

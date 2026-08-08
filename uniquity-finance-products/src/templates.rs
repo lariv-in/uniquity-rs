@@ -197,6 +197,8 @@ pub struct ProductRow {
     pub name: String,
     pub base_cost: String,
     pub sales_price: String,
+    /// Plain numeric sales price for picker → rate fill (no currency symbol).
+    pub sales_price_value: String,
     pub hsn_code: String,
 }
 
@@ -590,7 +592,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
                     &self.target_input,
                     &p.id.to_string(),
                     &p.name,
-                    &[("sales_price", p.sales_price.as_str())],
+                    &[("sales_price", p.sales_price_value.as_str())],
                 ),
                 cells: vec![
                     field_text(FieldText { value: &p.name, classes: "" }),

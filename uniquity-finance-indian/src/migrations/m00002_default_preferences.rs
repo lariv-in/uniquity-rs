@@ -66,6 +66,15 @@ enum PaymentPreferences {
     PaymentAccountId,
 }
 
+#[derive(DeriveIden)]
+enum AccountingPreferences {
+    Table,
+    Id,
+    CreatedAt,
+    UpdatedAt,
+    DefaultCurrencyId,
+}
+
 fn account_id_by_code(code: i32) -> SelectStatement {
     Query::select()
         .column(Accounts::Id)
@@ -79,6 +88,15 @@ fn default_journal_id() -> SelectStatement {
     Query::select()
         .column(Journals::Id)
         .from(Journals::Table)
+        .limit(1)
+        .to_owned()
+}
+
+fn currency_id_by_code(code: i32) -> SelectStatement {
+    Query::select()
+        .column(Currencies::Id)
+        .from(Currencies::Table)
+        .and_where(Expr::col(Currencies::Code).eq(code))
         .limit(1)
         .to_owned()
 }
@@ -214,6 +232,32 @@ impl MigrationTrait for Migration {
             )
             .to_owned();
         conn.execute(backend.build(&payment_prefs)).await?;
+
+        // INR (ISO 4217 numeric code 356)
+        let accounting_prefs = Query::insert()
+            .into_table(AccountingPreferences::Table)
+            .columns([
+                AccountingPreferences::Id,
+                AccountingPreferences::CreatedAt,
+                AccountingPreferences::UpdatedAt,
+                AccountingPreferences::DefaultCurrencyId,
+            ])
+            .values_panic([
+                1.into(),
+                Expr::current_timestamp().into(),
+                Expr::current_timestamp().into(),
+                subquery_expr(currency_id_by_code(356)).into(),
+            ])
+            .on_conflict(
+                OnConflict::column(AccountingPreferences::Id)
+                    .update_columns([
+                        AccountingPreferences::DefaultCurrencyId,
+                        AccountingPreferences::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .to_owned();
+        conn.execute(backend.build(&accounting_prefs)).await?;
 
         Ok(())
     }

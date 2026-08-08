@@ -23,7 +23,7 @@ use lariv_rs::{
     },
 };
 
-use uniquity_common::{decimal::decimal_display, require_superuser};
+use uniquity_common::require_superuser;
 
 use crate::{
     account_validation::{
@@ -45,9 +45,10 @@ use crate::{
     },
     scope::{
         apply_account_filters, find_account_scoped, load_account_ancestors,
-        load_account_parent_label, load_journal_entry_transfer_amounts,
-        query_journal_entries_for_account_subtree, query_journal_entry_items_for_account_subtree,
-        sum_account_subtree_balance,
+        load_account_parent_label, load_journal_entry_currency_formats,
+        load_journal_entry_transfer_amounts, query_journal_entries_for_account_subtree,
+        query_journal_entry_items_for_account_subtree, sum_account_subtree_balance,
+        CurrencyFormat,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -425,13 +426,22 @@ pub async fn journal_entry_items(
         q.sort.as_deref(),
     )
     .await;
+    let entry_ids: Vec<i64> = item_models
+        .iter()
+        .map(|(item, _)| item.journal_entry_id)
+        .collect();
+    let currency_fmts = load_journal_entry_currency_formats(&state.db, &entry_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let mut item_rows = Vec::with_capacity(item_models.len());
     for (item, source_doc_id) in item_models {
         let source_doc =
             resolve_source_doc_display(&state.db, &source_docs, source_doc_id).await;
+        let fmt = currency_fmts
+            .get(&item.journal_entry_id)
+            .unwrap_or(&fallback);
         item_rows.push(AccountJournalEntryItemRow {
             datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
-            amount: decimal_display(item.amount),
+            amount: fmt.display(item.amount),
             source_doc_instance_name: source_doc.instance_name,
             source_doc_url: source_doc.detail_url,
         });

@@ -6,12 +6,11 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use uniquity_common::decimal::decimal_display;
 use uniquity_finance_accounts::{
     entities::{
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
     },
-    scope::load_journal_entry_currency_symbol,
+    scope::load_journal_entry_currency_format,
     SourceDocInstance, SourceDocRegistrar, SourceDocRegistry, SourceDocType,
 };
 
@@ -33,8 +32,7 @@ struct CreditNoteSourceDocType;
 
 struct CreditNoteInstance {
     id: i64,
-    amount: Decimal,
-    currency_symbol: String,
+    amount_display: String,
 }
 
 impl SourceDocInstance for CreditNoteInstance {
@@ -47,12 +45,7 @@ impl SourceDocInstance for CreditNoteInstance {
     }
 
     fn display_name(&self) -> String {
-        let amount = decimal_display(self.amount);
-        if self.currency_symbol.is_empty() {
-            format!("Credit Note of {amount}")
-        } else {
-            format!("Credit Note of {amount} {}", self.currency_symbol)
-        }
+        format!("Credit Note of {}", self.amount_display)
     }
 
     fn detail_url(&self) -> String {
@@ -84,12 +77,11 @@ impl SourceDocType for CreditNoteSourceDocType {
             .await?
             .with_context(|| format!("credit note {id} not found"))?;
         let amount = journal_entry_transfer_amount(db, model.reversed_journal_entry_id).await;
-        let currency_symbol =
-            load_journal_entry_currency_symbol(db, model.reversed_journal_entry_id).await;
+        let currency =
+            load_journal_entry_currency_format(db, model.reversed_journal_entry_id).await;
         Ok(Arc::new(CreditNoteInstance {
             id: model.id,
-            amount,
-            currency_symbol,
+            amount_display: currency.display(amount),
         }))
     }
 }

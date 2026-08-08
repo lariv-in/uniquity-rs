@@ -19,7 +19,9 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
-use uniquity_finance_accounts::scope::load_account_parent_label;
+use uniquity_finance_accounts::scope::{
+    load_account_parent_label, load_journal_currency_format, load_journal_entry_currency_format,
+};
 use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
 use uniquity_finance_taxes::scope::{load_all_taxes, load_taxes_by_ids, tax_label};
 
@@ -119,8 +121,10 @@ async fn build_allocations_json(
                 posted_invoice_display_label(inv.id, &inv.number)
             ));
         }
+        let currency = load_journal_currency_format(db, inv.journal_id).await;
         rows.push(PaymentBatchAllocationRow {
             posted_invoice_id: inv.id,
+            // Form input amount: plain number.
             amount: uniquity_common::decimal::decimal_display(open),
             tax_ids: vec![],
             invoice_number: posted_invoice_display_label(inv.id, &inv.number),
@@ -128,7 +132,7 @@ async fn build_allocations_json(
                 .get(&inv.customer_id)
                 .cloned()
                 .unwrap_or_else(|| "—".into()),
-            open_balance: uniquity_common::decimal::decimal_display(open),
+            open_balance: currency.display(open),
         });
     }
 
@@ -228,7 +232,8 @@ async fn enrich_allocations_json(
             }
             if open_balance.is_empty() {
                 if let Ok(open) = posted_invoice_open_balance(db, inv.id).await {
-                    open_balance = uniquity_common::decimal::decimal_display(open);
+                    let currency = load_journal_currency_format(db, inv.journal_id).await;
+                    open_balance = currency.display(open);
                 }
             }
         }
@@ -409,6 +414,8 @@ pub async fn detail(
                 .collect::<Vec<_>>()
                 .join(", ");
 
+            let pay_currency =
+                load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
             payment_rows.push(PaymentBatchPaymentRow {
                 id: p.id,
                 href: PaymentDetailRouteTag::new(p.id).url(),
@@ -417,7 +424,7 @@ pub async fn detail(
                     .cloned()
                     .unwrap_or_else(|| "—".into()),
                 invoice_href: PostedInvoiceDetailRouteTag::new(p.posted_invoice_id).url(),
-                amount: uniquity_common::decimal::decimal_display(p.amount),
+                amount: pay_currency.display(p.amount),
                 tax_labels: if tax_labels.is_empty() {
                     "—".into()
                 } else {
@@ -426,11 +433,13 @@ pub async fn detail(
             });
         }
 
+        let batch_currency =
+            load_journal_entry_currency_format(&state.db, b.journal_entry_id).await;
         PaymentBatchDetailPage {
             id: b.id,
             datetime: ctx.format_datetime_short(b.datetime).into_string(),
             account_label,
-            total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
+            total_amount: batch_currency.display(b.total_amount),
             journal_entry_id: b.journal_entry_id,
             payments: payment_rows,
             can_edit: require_superuser(&ctx),

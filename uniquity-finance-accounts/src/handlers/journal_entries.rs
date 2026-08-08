@@ -31,8 +31,8 @@ use crate::{
         JournalDetailRouteTag, JournalEntryDeleteGetRouteTag, JournalEntryDetailRouteTag,
     },
     scope::{
-        find_journal_entry_scoped, find_journal_scoped, load_journal_entry_items,
-        query_journal_entries_for_select,
+        find_journal_entry_scoped, find_journal_scoped, load_journal_currency_format,
+        load_journal_entry_items, query_journal_entries_for_select,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -158,12 +158,13 @@ pub async fn detail(
     let source_doc =
         resolve_source_doc_display(&state.db, &source_docs, entry.source_doc_id).await;
     let items_raw = load_journal_entry_items(&state.db, entry.id).await;
+    let currency = load_journal_currency_format(&state.db, entry.journal_id).await;
     let items: Vec<JournalEntryItemRow> = items_raw
         .into_iter()
         .map(|(item, acct)| JournalEntryItemRow {
             datetime: ctx.format_datetime_seconds(item.datetime).into_string(),
             account_label: format!("{} — {}", acct.code, acct.name),
-            amount: item.amount.to_string(),
+            amount: currency.display(item.amount),
         })
         .collect();
     let page = JournalEntryDetailPage {

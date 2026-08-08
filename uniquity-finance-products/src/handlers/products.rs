@@ -24,6 +24,7 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
+use uniquity_finance_accounts::scope::load_default_currency_format;
 use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -140,6 +141,7 @@ async fn query_products(
         .await
         .unwrap_or_default();
 
+    let currency = load_default_currency_format(db).await;
     let mut rows = Vec::with_capacity(models.len());
     for p in models {
         rows.push(ProductRow {
@@ -147,8 +149,10 @@ async fn query_products(
             product_type: p.product_type.as_str().to_string(),
             reference: p.reference.unwrap_or_default(),
             name: p.name,
-            base_cost: decimal::decimal_display(p.base_cost),
-            sales_price: decimal::decimal_display(p.sales_price),
+            base_cost: currency.display(p.base_cost),
+            sales_price: currency.display(p.sales_price),
+            // Plain number for picker → rate fill (no currency symbol).
+            sales_price_value: decimal::decimal_display(p.sales_price),
             hsn_code: p.hsn_code.to_string(),
         });
     }
@@ -199,14 +203,15 @@ pub async fn detail(
     let tax_ids = load_product_tax_ids(&state.db, id).await;
     let taxes = load_taxes_by_ids(&state.db, &tax_ids).await.unwrap_or_default();
     let tax_labels: Vec<String> = taxes.iter().map(tax_label).collect();
+    let currency = load_default_currency_format(&state.db).await;
     let page = ProductDetailPage {
         id: p.id,
         name: p.name,
         product_type: p.product_type.as_str().to_string(),
         reference: p.reference.unwrap_or_default(),
         remarks: p.remarks.unwrap_or_default(),
-        base_cost: decimal::decimal_display(p.base_cost),
-        sales_price: decimal::decimal_display(p.sales_price),
+        base_cost: currency.display(p.base_cost),
+        sales_price: currency.display(p.sales_price),
         hsn_code: p.hsn_code.to_string(),
         taxes: tax_labels.join(", "),
         can_edit: require_superuser(&ctx),

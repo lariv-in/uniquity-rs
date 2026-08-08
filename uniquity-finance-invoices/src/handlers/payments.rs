@@ -21,7 +21,10 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
-use uniquity_finance_accounts::scope::load_account_parent_label;
+use uniquity_finance_accounts::scope::{
+    load_account_parent_label, load_journal_entry_currency_format,
+    load_journal_entry_currency_formats, CurrencyFormat,
+};
 use uniquity_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -206,16 +209,25 @@ async fn query_single_payment_rows(
             })
             .collect()
     };
+    let je_ids: Vec<i64> = models.iter().map(|p| p.journal_entry_id).collect();
+    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let rows: Vec<PaymentRow> = models
         .into_iter()
-        .map(|p| PaymentRow {
-            id: p.id,
-            invoice_label: invoice_labels
-                .get(&p.posted_invoice_id)
-                .cloned()
-                .unwrap_or_else(|| "—".into()),
-            amount: uniquity_common::decimal::decimal_display(p.amount),
-            datetime: lariv_rs::datetime::DatetimeLabel::short(p.datetime, timezone).into_string(),
+        .map(|p| {
+            let fmt = currency_fmts
+                .get(&p.journal_entry_id)
+                .unwrap_or(&fallback);
+            PaymentRow {
+                id: p.id,
+                invoice_label: invoice_labels
+                    .get(&p.posted_invoice_id)
+                    .cloned()
+                    .unwrap_or_else(|| "—".into()),
+                amount: fmt.display(p.amount),
+                datetime: lariv_rs::datetime::DatetimeLabel::short(p.datetime, timezone)
+                    .into_string(),
+            }
         })
         .collect();
     (
@@ -272,13 +284,22 @@ async fn query_batch_payment_rows(
             })
     };
 
+    let je_ids: Vec<i64> = models.iter().map(|b| b.journal_entry_id).collect();
+    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let rows: Vec<PaymentBatchRow> = models
         .into_iter()
-        .map(|b| PaymentBatchRow {
-            id: b.id,
-            datetime: lariv_rs::datetime::DatetimeLabel::short(b.datetime, timezone).into_string(),
-            total_amount: uniquity_common::decimal::decimal_display(b.total_amount),
-            payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
+        .map(|b| {
+            let fmt = currency_fmts
+                .get(&b.journal_entry_id)
+                .unwrap_or(&fallback);
+            PaymentBatchRow {
+                id: b.id,
+                datetime: lariv_rs::datetime::DatetimeLabel::short(b.datetime, timezone)
+                    .into_string(),
+                total_amount: fmt.display(b.total_amount),
+                payment_count: payment_counts.get(&b.id).copied().unwrap_or(0),
+            }
         })
         .collect();
 
@@ -337,6 +358,7 @@ pub async fn create_get(
         return Redirect::to("/finance-invoices/payments/").into_response();
     }
     let posted_invoice_id = q.posted_invoice_id.filter(|id| *id > 0).unwrap_or(0);
+    // Form input: plain number (no currency symbol).
     let amount = if posted_invoice_id > 0 {
         let open = posted_invoice_open_balance(&state.db, posted_invoice_id)
             .await
@@ -433,11 +455,12 @@ pub async fn detail(
             .await
             .unwrap_or_default();
         let tax_labels = invoice_header_tax_labels(&state.db, &tax_ids).await;
+        let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
         PaymentDetailPage {
             id: p.id,
             posted_invoice_label,
             posted_invoice_href,
-            amount: uniquity_common::decimal::decimal_display(p.amount),
+            amount: currency.display(p.amount),
             tax_labels,
             datetime: ctx.format_datetime_short(p.datetime).into_string(),
             journal_entry_id: p.journal_entry_id,

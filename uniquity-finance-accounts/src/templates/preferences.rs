@@ -22,9 +22,10 @@ fn accounting_preferences_crumbs() -> Markup {
     }])
 }
 
-/// Shell page: domain fields are patched in via [`crate::accounting_preferences_patch`].
+/// Shell page: accounts-owned fields first, then addon patches.
 #[derive(Generic)]
 pub struct AccountingPreferencesPage {
+    pub accounts_inputs: Markup,
     pub addon_inputs: Markup,
 }
 
@@ -36,6 +37,7 @@ impl AccountingPreferencesPage {
                 (form(FormOpts {
                     attrs: form_hx_post_main(AccountingPreferencesPostRouteTag),
                     inputs: html! {
+                        (self.accounts_inputs)
                         (self.addon_inputs)
                     },
                     actions: html! {

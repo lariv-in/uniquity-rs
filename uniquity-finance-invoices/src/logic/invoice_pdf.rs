@@ -14,7 +14,10 @@ use sea_orm::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use uniquity_common::typst;
+use uniquity_common::{decimal::decimal_display_currency, typst};
+use uniquity_finance_accounts::scope::{
+    load_default_currency_format, load_journal_currency_format, CurrencyFormat,
+};
 use uniquity_finance_customer::entities::customer::Entity as CustomerEntity;
 use uniquity_finance_products::entities::product::Entity as ProductEntity;
 use uniquity_finance_taxes::entities::tax::{self, TaxKind};
@@ -176,6 +179,11 @@ fn dec_str(d: Decimal) -> String {
     d.normalize().to_string()
 }
 
+/// Money for Typst: pad to currency minor units, no symbol (template adds ₹ / parses floats).
+fn money_str(d: Decimal, currency: &CurrencyFormat) -> String {
+    decimal_display_currency(d, currency.minor_unit, "")
+}
+
 fn tax_to_pdf(t: &tax::Model) -> PdfTax {
     PdfTax {
         id: t.id,
@@ -243,6 +251,7 @@ async fn load_payments_for_posted(
     db: &DatabaseConnection,
     posted_id: i64,
     tz: &str,
+    currency: &CurrencyFormat,
 ) -> Result<Vec<PdfPayment>, InvoicePdfError> {
     let rows = PaymentEntity::find()
         .filter(payment::Column::PostedInvoiceId.eq(posted_id))
@@ -256,7 +265,7 @@ async fn load_payments_for_posted(
             let datetime_display = invoice_date_display(p.datetime, tz);
             PdfPayment {
                 id: p.id,
-                amount: dec_str(p.amount),
+                amount: money_str(p.amount, currency),
                 datetime: p.datetime,
                 datetime_display,
             }
@@ -362,6 +371,7 @@ async fn build_pdf_lines(
     db: &DatabaseConnection,
     rows: &[LineRow],
     tax_source: LineTaxSource,
+    currency: &CurrencyFormat,
 ) -> Result<Vec<PdfLine>, InvoicePdfError> {
     let mut lines = Vec::with_capacity(rows.len());
     for row in rows {
@@ -377,7 +387,7 @@ async fn build_pdf_lines(
             id: row.id,
             product_id: row.product_id,
             product,
-            rate: dec_str(row.rate),
+            rate: money_str(row.rate, currency),
             quantity: dec_str(row.quantity),
             taxes,
         });
@@ -401,6 +411,7 @@ async fn build_pdf_root(
     tax_source: LineTaxSource,
     payments: Vec<PdfPayment>,
     tz: &str,
+    currency: &CurrencyFormat,
 ) -> Result<PdfRoot, InvoicePdfError> {
     let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
         .await
@@ -408,7 +419,7 @@ async fn build_pdf_root(
         .into_iter()
         .map(|t| tax_to_pdf(&t))
         .collect();
-    let lines = build_pdf_lines(db, &line_rows, tax_source).await?;
+    let lines = build_pdf_lines(db, &line_rows, tax_source, currency).await?;
     let (datetime_display, datetime_year, datetime_month, datetime_day) = invoice_date_parts(datetime, tz);
     Ok(PdfRoot {
         id,
@@ -447,6 +458,11 @@ pub async fn render_draft_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_draft_lines(db, draft.id).await?;
+    let prefs = load_invoice_preferences(db).await;
+    let currency = match prefs.journal_id.filter(|&id| id > 0) {
+        Some(jid) => load_journal_currency_format(db, jid).await,
+        None => load_default_currency_format(db).await,
+    };
     let root = build_pdf_root(
         db,
         draft.id,
@@ -463,6 +479,7 @@ pub async fn render_draft_invoice_pdf(
         LineTaxSource::Draft,
         vec![],
         tz,
+        &currency,
     )
     .await?;
     let base = pdf_filename_base(draft.number.as_deref(), &format!("draft-invoice-{}", draft.id));
@@ -478,7 +495,8 @@ pub async fn render_posted_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_posted_lines(db, posted.id).await?;
-    let payments = load_payments_for_posted(db, posted.id, tz).await?;
+    let currency = load_journal_currency_format(db, posted.journal_id).await;
+    let payments = load_payments_for_posted(db, posted.id, tz, &currency).await?;
     let root = build_pdf_root(
         db,
         posted.id,
@@ -495,6 +513,7 @@ pub async fn render_posted_invoice_pdf(
         LineTaxSource::Posted,
         payments,
         tz,
+        &currency,
     )
     .await?;
     let base = pdf_filename_base(Some(&posted.number), &format!("invoice-{}", posted.id));
@@ -515,7 +534,8 @@ pub async fn render_cancelled_invoice_pdf(
         .await
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_cancelled_lines(db, inv.id).await?;
-    let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz).await?;
+    let currency = load_journal_currency_format(db, inv.journal_id).await;
+    let payments = load_payments_for_posted(db, inv.posted_invoice_id, tz, &currency).await?;
     let root = build_pdf_root(
         db,
         inv.id,
@@ -532,6 +552,7 @@ pub async fn render_cancelled_invoice_pdf(
         LineTaxSource::Cancelled,
         payments,
         tz,
+        &currency,
     )
     .await?;
     let base = pdf_filename_base(

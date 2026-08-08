@@ -15,6 +15,9 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
+use uniquity_finance_accounts::scope::{
+    load_journal_currency_formats, load_journal_entry_currency_formats, CurrencyFormat,
+};
 use uniquity_finance_customer::entities::customer::{self, Entity as CustomerEntity};
 
 use crate::{
@@ -188,11 +191,15 @@ async fn query_posted_rows(
             .map(|c| (c.id, c.name))
             .collect()
     };
+    let journal_ids: Vec<i64> = models.iter().map(|p| p.journal_id).collect();
+    let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let mut rows = Vec::with_capacity(models.len());
     for p in models {
         let open = posted_invoice_open_balance(db, p.id)
             .await
             .unwrap_or(rust_decimal::Decimal::ZERO);
+        let fmt = currency_fmts.get(&p.journal_id).unwrap_or(&fallback);
         rows.push(InvoiceRow {
             id: p.id,
             number: p.number,
@@ -203,7 +210,7 @@ async fn query_posted_rows(
                 .get(&p.customer_id)
                 .cloned()
                 .unwrap_or_else(|| "—".into()),
-            open_balance: uniquity_common::decimal::decimal_display(open),
+            open_balance: fmt.display(open),
             selectable: true,
         });
     }
@@ -334,6 +341,9 @@ async fn query_paid_rows(
         .into_iter()
         .map(|p| (p.id, p))
         .collect::<HashMap<_, _>>();
+    let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
+    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let rows = models
         .into_iter()
@@ -343,12 +353,12 @@ async fn query_paid_rows(
                 .cloned()
                 .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
             let (datetime, status) = if let Some(pay) = payments.get(&paid.payment_id) {
+                let fmt = currency_fmts
+                    .get(&pay.journal_entry_id)
+                    .unwrap_or(&fallback);
                 (
                     lariv_rs::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
-                    format!(
-                        "Paid · {}",
-                        uniquity_common::decimal::decimal_display(pay.amount)
-                    ),
+                    format!("Paid · {}", fmt.display(pay.amount)),
                 )
             } else {
                 ("—".to_string(), "Paid".to_string())
@@ -409,6 +419,9 @@ async fn query_partial_rows(
         .into_iter()
         .map(|p| (p.id, p))
         .collect::<HashMap<_, _>>();
+    let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
+    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
+    let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let rows = models
         .into_iter()
@@ -418,12 +431,12 @@ async fn query_partial_rows(
                 .cloned()
                 .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
             let (datetime, status) = if let Some(pay) = payments.get(&partial.payment_id) {
+                let fmt = currency_fmts
+                    .get(&pay.journal_entry_id)
+                    .unwrap_or(&fallback);
                 (
                     lariv_rs::datetime::DatetimeLabel::short(pay.datetime, tz).into_string(),
-                    format!(
-                        "Partial · {}",
-                        uniquity_common::decimal::decimal_display(pay.amount)
-                    ),
+                    format!("Partial · {}", fmt.display(pay.amount)),
                 )
             } else {
                 ("—".to_string(), "Partially paid".to_string())

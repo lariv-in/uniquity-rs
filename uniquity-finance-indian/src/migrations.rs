@@ -7,6 +7,7 @@ mod m00002_default_preferences;
 mod m00003_default_ledger;
 mod m00004_default_product_taxes;
 mod m00005_remove_default_igst_product_tax;
+mod m00006_default_accounting_currency;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -20,6 +21,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00003_default_ledger::Migration),
             Box::new(m00004_default_product_taxes::Migration),
             Box::new(m00005_remove_default_igst_product_tax::Migration),
+            Box::new(m00006_default_accounting_currency::Migration),
         ]
     }
 }

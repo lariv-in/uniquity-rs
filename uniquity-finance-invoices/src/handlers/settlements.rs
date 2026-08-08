@@ -12,6 +12,7 @@ use lariv_rs::{
 };
 
 use uniquity_common::require_superuser;
+use uniquity_finance_accounts::scope::load_journal_entry_currency_format;
 
 use crate::{
     entities::{
@@ -64,7 +65,8 @@ async fn load_settlement_context(
         format!("#{}", posted.payment_term_id)
     };
     let line_rows = posted_invoice_line_display_rows(db, posted.id).await;
-    let payment_amount = uniquity_common::decimal::decimal_display(payment.amount);
+    let currency = load_journal_entry_currency_format(db, payment.journal_entry_id).await;
+    let payment_amount = currency.display(payment.amount);
     let payment_label = format!("#{} · {payment_amount}", payment.id);
     let payment_href = format!("/finance-invoices/payments/{}/", payment.id);
     let prior_partial_label = prior_partially_paid_invoice_id

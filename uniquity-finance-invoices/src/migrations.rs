@@ -15,6 +15,7 @@ mod m00012_invoice_reference_and_payment_fields;
 mod m00013_payment_batches;
 mod m00014_invoices_drop_deleted_at;
 mod m00015_invoice_preferences_presentation;
+mod m00016_recreate_accounting_preferences;
 
 use crate::UniquityFinanceInvoicesTag;
 
@@ -40,6 +41,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00013_payment_batches::Migration),
             Box::new(m00014_invoices_drop_deleted_at::Migration),
             Box::new(m00015_invoice_preferences_presentation::Migration),
+            Box::new(m00016_recreate_accounting_preferences::Migration),
         ]
     }
 }
