@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: deployments/uniquity-rs -> target
+
+      - name: Build release binary
+        working-directory: deployments/uniquity-rs
+        run: cargo build --release --bin uniquity-rs
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deployments/uniquity-rs/target/release/uniquity-rs
+          generate_release_notes: true
