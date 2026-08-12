@@ -26,5 +26,5 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/uniquity-rs
+          files: target/release/uniquity-ventures-rs
           generate_release_notes: true
