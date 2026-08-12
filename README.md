@@ -37,7 +37,8 @@ Invoice PDF templates in Accounting preferences use [Minijinja](https://github.c
 | Plugin | URL prefix | Notes |
 |--------|------------|-------|
 | `uniquity-finance-accounts` | `/finance/` | Chart of accounts, journals, preferences |
-| `uniquity-finance-customer` | `/finance-customers/` | Customer CRUD |
+| `customer` | `/customers/` | Customer CRUD |
+| `crm` | `/crm/leads` | Leads, companies, contacts, deals |
 | `uniquity-finance-creditnotes` | `/finance-creditnotes/` | Credit notes with auto-reversing JE |
 | `uniquity-finance-fiscal-year` | `/finance-fiscal-years/` | Fiscal period management |
 | `uniquity-finance-taxes` | `/finance-taxes/` | Tax configuration |
@@ -62,6 +63,6 @@ Core lariv-rs plugins: `users`, `filesystem`, `llm_assistant`, `otp`, `pwa`, `da
 ## Tests
 
 ```bash
-cargo test -p uniquity-bin                    # mount smoke (sqlite memory)
-DATABASE_URL=postgres://... cargo test -p uniquity-bin -- --ignored  # Postgres integration
+cargo test                                    # mount smoke (sqlite memory)
+DATABASE_URL=postgres://... cargo test -- --ignored  # Postgres integration
 ```

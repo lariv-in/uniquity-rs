@@ -2512,23 +2512,28 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "clap",
+ "comemo",
  "cookie",
  "form_urlencoded",
  "frunk",
  "frunk_core",
  "futures-util",
+ "hex",
  "http",
  "jsonwebtoken",
  "lariv-rs-macros",
  "lettre",
  "maud",
  "mime_guess",
+ "minijinja",
+ "num2words",
  "paste",
  "phonenumber",
  "pulldown-cmark",
  "rand 0.8.7",
  "reqwest",
  "rune",
+ "rust_decimal",
  "scrypt",
  "sea-orm",
  "sea-orm-migration",
@@ -2545,6 +2550,10 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "typst",
+ "typst-kit",
+ "typst-pdf",
+ "typst-syntax",
  "uuid",
  "zip",
 ]
@@ -6230,36 +6239,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "uniquity-bin"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "frunk",
- "lariv-rs",
- "libc",
- "rust_decimal",
- "sea-orm",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uniquity-employees",
- "uniquity-finance-accounts",
- "uniquity-finance-creditnotes",
- "uniquity-finance-customer",
- "uniquity-finance-fiscal-year",
- "uniquity-finance-indian",
- "uniquity-finance-invoices",
- "uniquity-finance-products",
- "uniquity-finance-taxes",
- "uniquity-video",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
 name = "uniquity-common"
 version = "0.1.0"
 dependencies = [
@@ -6296,169 +6275,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "uniquity-finance-accounts"
+name = "uniquity-ventures-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "axum",
  "chrono",
  "frunk",
- "frunk_core",
  "lariv-rs",
- "maud",
+ "libc",
  "rust_decimal",
  "sea-orm",
- "sea-orm-migration",
- "serde",
- "thiserror",
+ "tokio",
+ "tower",
  "tracing",
- "uniquity-common",
-]
-
-[[package]]
-name = "uniquity-finance-creditnotes"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-rs",
- "maud",
- "rust_decimal",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "thiserror",
- "tracing",
- "uniquity-common",
- "uniquity-finance-accounts",
-]
-
-[[package]]
-name = "uniquity-finance-customer"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-rs",
- "maud",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "uniquity-common",
- "uniquity-finance-accounts",
-]
-
-[[package]]
-name = "uniquity-finance-fiscal-year"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-rs",
- "maud",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "tracing",
- "uniquity-common",
- "uniquity-finance-accounts",
-]
-
-[[package]]
-name = "uniquity-finance-indian"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "frunk",
- "lariv-rs",
- "sea-orm-migration",
- "uniquity-common",
-]
-
-[[package]]
-name = "uniquity-finance-invoices"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "hex",
- "lariv-rs",
- "maud",
- "minijinja",
- "num2words",
- "reqwest",
- "rust_decimal",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "tracing",
- "uniquity-common",
- "uniquity-finance-accounts",
- "uniquity-finance-creditnotes",
- "uniquity-finance-customer",
- "uniquity-finance-fiscal-year",
- "uniquity-finance-products",
- "uniquity-finance-taxes",
-]
-
-[[package]]
-name = "uniquity-finance-products"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-rs",
- "maud",
- "rust_decimal",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "tracing",
- "uniquity-common",
- "uniquity-finance-accounts",
- "uniquity-finance-taxes",
-]
-
-[[package]]
-name = "uniquity-finance-taxes"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "lariv-rs",
- "maud",
- "rust_decimal",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "uniquity-common",
- "uniquity-finance-accounts",
+ "tracing-subscriber",
+ "uniquity-employees",
+ "uniquity-video",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]

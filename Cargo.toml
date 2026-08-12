@@ -2,19 +2,9 @@
 members = [
     "uniquity-common",
     "uniquity-employees",
-    "uniquity-finance-accounts",
-    "uniquity-finance-customer",
-    "uniquity-finance-creditnotes",
-    "uniquity-finance-fiscal-year",
-    "uniquity-finance-taxes",
-    "uniquity-finance-products",
-    "uniquity-finance-invoices",
-    "uniquity-finance-indian",
     "uniquity-video",
-    "uniquity-bin",
 ]
 resolver = "2"
-default-members = ["uniquity-bin"]
 
 [workspace.package]
 version = "0.1.0"
@@ -29,6 +19,8 @@ lariv-rs = { path = "../../lariv-rs", default-features = false, features = [
     "plugin-pwa",
     "plugin-llm-assistant",
     "plugin-no-signup",
+    "plugin-finance",
+    "plugin-crm",
 ] }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 frunk_core = "0.5.0"
@@ -74,15 +66,38 @@ comemo = "0.5.1"
 
 uniquity-common = { path = "uniquity-common" }
 uniquity-employees = { path = "uniquity-employees" }
-uniquity-finance-accounts = { path = "uniquity-finance-accounts" }
-uniquity-finance-customer = { path = "uniquity-finance-customer" }
-uniquity-finance-creditnotes = { path = "uniquity-finance-creditnotes" }
-uniquity-finance-fiscal-year = { path = "uniquity-finance-fiscal-year" }
-uniquity-finance-taxes = { path = "uniquity-finance-taxes" }
-uniquity-finance-products = { path = "uniquity-finance-products" }
-uniquity-finance-invoices = { path = "uniquity-finance-invoices" }
-uniquity-finance-indian = { path = "uniquity-finance-indian" }
 uniquity-video = { path = "uniquity-video" }
+
+[package]
+name = "uniquity-ventures-rs"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "uniquity-ventures-rs"
+path = "src/main.rs"
+
+[dependencies]
+lariv-rs = { workspace = true }
+libc = "0.2"
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uniquity-employees = { workspace = true }
+uniquity-video = { workspace = true }
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
+tokio = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+axum = { workspace = true }
+sea-orm = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+urlencoding = "2"
+lariv-rs = { workspace = true }
+frunk = { workspace = true }
 
 [profile.release]
 lto = "thin"
