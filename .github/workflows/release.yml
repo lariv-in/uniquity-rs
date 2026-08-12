@@ -21,7 +21,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
-        working-directory: deployments/uniquity-rs
         run: cargo build --release
 
       - name: Create release
