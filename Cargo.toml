@@ -10,7 +10,7 @@ edition = "2024"
 
 [workspace.dependencies]
 lariv-rs = { 
-	git = "https://github.com/lariv-in/lariv-rs", rev = "5577a2fe21db7960e895dd252f6984d93787c663",
+	git = "https://github.com/lariv-in/lariv-rs", rev = "346fd02f072ba57065dca6549ac1b03911880837",
 	# path = "../../lariv-rs",
 	default-features = false, features = [
 		"plugin-users",
