@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "uniquity-common",
-    "uniquity-employees",
-    "uniquity-video",
 ]
 resolver = "2"
 
@@ -68,8 +66,6 @@ typst-syntax = "0.15.1"
 comemo = "0.5.1"
 
 uniquity-common = { path = "uniquity-common" }
-uniquity-employees = { path = "uniquity-employees" }
-uniquity-video = { path = "uniquity-video" }
 
 [package]
 name = "uniquity-ventures-rs"
@@ -87,8 +83,6 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-uniquity-employees = { workspace = true }
-uniquity-video = { workspace = true }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }

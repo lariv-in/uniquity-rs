@@ -2,7 +2,7 @@
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    crm, dashboard, filesystem, finance_accounts, finance_creditnotes, customer, finance_customer,
+    crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
     llm_assistant, no_signup, otp, pwa, users,
 };
@@ -57,8 +57,6 @@ async fn run() -> anyhow::Result<()> {
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
-    let app = uniquity_employees::install(app);
-    let app = uniquity_video::install(app);
     let app = otp::install(app);
     let app = no_signup::install(app);
     let app = pwa::install(app);
