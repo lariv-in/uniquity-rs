@@ -1,0 +1,551 @@
+use axum::{
+    Form,
+    extract::{Path, Query},
+    http::Uri,
+    response::{IntoResponse, Redirect, Response},
+};
+use chrono::{NaiveDate, Utc};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+
+use lariv_rs::{
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    http::Cap,
+    picker::respond_picker_select,
+    plugins::users::{middleware::RequireAuth, state::AuthContext},
+    template::RenderAppPane,
+    web::{
+        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done_fk, respond_edit_modal_done,
+    },
+};
+
+use crate::{
+    entities::site::{self, Entity as SiteEntity},
+    forms::SiteForm,
+    handlers::ModalNameQuery,
+    keys::{
+        SiteCreateModalKey, SiteEditModalKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+    },
+    routes::SiteDetailRouteTag,
+    scope::{
+        apply_name_filter_sites, customer_name, find_site_scoped, gandola_items_for_site,
+        gandola_items_from_ids, is_superuser, load_gandolas_for_site, opt_string, scope_sites,
+        sync_site_gandolas,
+    },
+    site_status::SiteStatus,
+    state::GandolaManagerState,
+    templates::{
+        RelatedName, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage, SiteListPage,
+        SiteRow, SiteSelectPage,
+    },
+};
+
+const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
+const LIST_URL: &str = "/gandola/sites/";
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SiteListQuery {
+    #[serde(default, rename = "Name", alias = "name")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SiteSelectQuery {
+    #[serde(flatten)]
+    pub filter: SiteListQuery,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
+}
+
+fn parse_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .map(Some)
+        .map_err(|_| "invalid date")
+}
+
+fn format_date(d: Option<NaiveDate>) -> String {
+    d.map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRow {
+    let gandolas = load_gandolas_for_site(db, s.id).await;
+    SiteRow {
+        id: s.id,
+        name: s.name,
+        address: s.address.unwrap_or_default(),
+        start_date: format_date(s.start_date),
+        end_date: format_date(s.end_date),
+        status: s.status.as_str().to_string(),
+        status_label: s.status.label().to_string(),
+        gandola_names: gandolas.into_iter().map(|g| g.name).collect(),
+    }
+}
+
+async fn query_sites(
+    db: &sea_orm::DatabaseConnection,
+    q: &SiteListQuery,
+    auth: &AuthContext,
+    page_size: u32,
+) -> ObjectList<SiteRow> {
+    let mut query = SiteEntity::find();
+    query = apply_name_filter_sites(query, q.name.as_deref());
+    query = scope_sites(query, auth);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(site::Column::Name),
+        s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
+            query.order_by_asc(site::Column::Name)
+        }
+        s if s.eq_ignore_ascii_case("Status DESC") => query.order_by_desc(site::Column::Status),
+        s if s.eq_ignore_ascii_case("Status ASC") || s.eq_ignore_ascii_case("Status") => {
+            query.order_by_asc(site::Column::Status)
+        }
+        _ => query
+            .order_by_desc(site::Column::CreatedAt)
+            .order_by_desc(site::Column::Id),
+    };
+    let page = q.page.get();
+    let paginator = query.paginate(db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    let mut rows = Vec::with_capacity(models.len());
+    for model in models {
+        rows.push(site_to_row(db, model).await);
+    }
+    ObjectList::from_page(rows, page, page_size, total)
+}
+
+pub async fn list(
+    Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<SiteListQuery>,
+) -> maud::Markup {
+    let sites = query_sites(&state.db, &q, &ctx, PAGE_SIZE).await;
+    let page = SiteListPage {
+        sites,
+        filter_name: q.name.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        can_edit: is_superuser(&ctx),
+    };
+    let slot_ctx = SlotCtx::from_auth(&ctx);
+    if htmx.targets::<SiteTableKey>() {
+        return page.render_table();
+    }
+    if htmx.wants_main_content() {
+        return page.render_main().into();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane().into();
+    }
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
+}
+
+pub async fn detail(
+    Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(LIST_URL).into_response();
+    };
+    let gandolas = load_gandolas_for_site(&state.db, s.id).await;
+    let page = SiteDetailPage {
+        id: s.id,
+        name: s.name,
+        customer_id: s.customer_id,
+        customer_name: customer_name(&state.db, s.customer_id).await,
+        status_label: s.status.label().to_string(),
+        status: s.status.as_str().to_string(),
+        start_date: format_date(s.start_date),
+        end_date: format_date(s.end_date),
+        address: s.address.unwrap_or_default(),
+        po_rent: s.po_rent.unwrap_or_default(),
+        po_dti: s.po_dti.unwrap_or_default(),
+        po_tpi: s.po_tpi.unwrap_or_default(),
+        po_extn1: s.po_extn1.unwrap_or_default(),
+        po_extn2: s.po_extn2.unwrap_or_default(),
+        po_extn3: s.po_extn3.unwrap_or_default(),
+        gandolas: gandolas
+            .into_iter()
+            .map(|g| RelatedName {
+                id: g.id,
+                name: g.name,
+            })
+            .collect(),
+        can_edit: is_superuser(&ctx),
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+struct ParsedSite {
+    name: String,
+    customer_id: i64,
+    status: SiteStatus,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+    address: Option<String>,
+    po_rent: Option<String>,
+    po_dti: Option<String>,
+    po_tpi: Option<String>,
+    po_extn1: Option<String>,
+    po_extn2: Option<String>,
+    po_extn3: Option<String>,
+}
+
+fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
+    if form.name.trim().is_empty() {
+        return Err("Name is required".into());
+    }
+    if form.customer_id <= 0 {
+        return Err("Customer is required".into());
+    }
+    let status = SiteStatus::parse(&form.status).unwrap_or_default();
+    let start_date = parse_date(&form.start_date).map_err(|e| e.to_string())?;
+    let end_date = parse_date(&form.end_date).map_err(|e| e.to_string())?;
+    Ok(ParsedSite {
+        name: form.name.trim().to_string(),
+        customer_id: form.customer_id,
+        status,
+        start_date,
+        end_date,
+        address: opt_string(form.address.clone()),
+        po_rent: opt_string(form.po_rent.clone()),
+        po_dti: opt_string(form.po_dti.clone()),
+        po_tpi: opt_string(form.po_tpi.clone()),
+        po_extn1: opt_string(form.po_extn1.clone()),
+        po_extn2: opt_string(form.po_extn2.clone()),
+        po_extn3: opt_string(form.po_extn3.clone()),
+    })
+}
+
+async fn create_page_from_form(
+    db: &sea_orm::DatabaseConnection,
+    form: &SiteForm,
+    gandolas: Vec<ManyToManyItem>,
+    form_name: String,
+    refresh_table: String,
+    target_input: String,
+    error: String,
+) -> SiteCreateModalPage {
+    SiteCreateModalPage {
+        form_name,
+        refresh_table,
+        target_input,
+        name: form.name.clone(),
+        customer_id: form.customer_id,
+        customer_display: customer_name(db, form.customer_id).await,
+        status: form.status.clone(),
+        start_date: form.start_date.clone(),
+        end_date: form.end_date.clone(),
+        address: form.address.clone(),
+        po_rent: form.po_rent.clone(),
+        po_dti: form.po_dti.clone(),
+        po_tpi: form.po_tpi.clone(),
+        po_extn1: form.po_extn1.clone(),
+        po_extn2: form.po_extn2.clone(),
+        po_extn3: form.po_extn3.clone(),
+        gandolas,
+        error,
+    }
+}
+
+pub async fn create_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+) -> Response {
+    if !is_superuser(&ctx) {
+        return Redirect::to(LIST_URL).into_response();
+    }
+    let page = SiteCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        target_input: q.target_input(),
+        name: String::new(),
+        customer_id: 0,
+        customer_display: String::new(),
+        status: SiteStatus::default().as_str().to_string(),
+        start_date: String::new(),
+        end_date: String::new(),
+        address: String::new(),
+        po_rent: String::new(),
+        po_dti: String::new(),
+        po_tpi: String::new(),
+        po_extn1: String::new(),
+        po_extn2: String::new(),
+        po_extn3: String::new(),
+        gandolas: Vec::new(),
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn create_post(
+    Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
+    Form(form): Form<SiteForm>,
+) -> Response {
+    if !is_superuser(&ctx) {
+        return Redirect::to(LIST_URL).into_response();
+    }
+    let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
+    let parsed = match parse_site_form(&form) {
+        Ok(p) => p,
+        Err(e) => {
+            let page = create_page_from_form(
+                &state.db,
+                &form,
+                gandolas,
+                q.form_name(),
+                q.refresh_table(),
+                q.target_input(),
+                e,
+            )
+            .await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let now = Utc::now();
+    let model = site::ActiveModel {
+        name: Set(parsed.name),
+        customer_id: Set(parsed.customer_id),
+        status: Set(parsed.status),
+        start_date: Set(parsed.start_date),
+        end_date: Set(parsed.end_date),
+        address: Set(parsed.address),
+        po_rent: Set(parsed.po_rent),
+        po_dti: Set(parsed.po_dti),
+        po_tpi: Set(parsed.po_tpi),
+        po_extn1: Set(parsed.po_extn1),
+        po_extn2: Set(parsed.po_extn2),
+        po_extn3: Set(parsed.po_extn3),
+        created_at: Set(Some(now)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    };
+    match model.insert(&state.db).await {
+        Ok(saved) => {
+            if let Err(e) = sync_site_gandolas(&state.db, saved.id, &form.gandolas).await {
+                let page = create_page_from_form(
+                    &state.db,
+                    &form,
+                    gandolas,
+                    q.form_name(),
+                    q.refresh_table(),
+                    q.target_input(),
+                    e,
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            respond_create_modal_done_fk::<SiteCreateModalKey>(
+                &htmx,
+                &q.refresh_table(),
+                &SiteDetailRouteTag::new(saved.id).url(),
+                saved.id,
+                &saved.name,
+                &q.target_input(),
+            )
+        }
+        Err(e) => {
+            let page = create_page_from_form(
+                &state.db,
+                &form,
+                gandolas,
+                q.form_name(),
+                q.refresh_table(),
+                q.target_input(),
+                e.to_string(),
+            )
+            .await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
+}
+
+pub async fn edit_get(
+    Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
+) -> Response {
+    if !is_superuser(&ctx) {
+        return Redirect::to(LIST_URL).into_response();
+    }
+    let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(LIST_URL).into_response();
+    };
+    let page = SiteEditModalPage {
+        id: s.id,
+        form_name: q.form_name(),
+        name: s.name,
+        customer_id: s.customer_id,
+        customer_display: customer_name(&state.db, s.customer_id).await,
+        status: s.status.as_str().to_string(),
+        start_date: format_date(s.start_date),
+        end_date: format_date(s.end_date),
+        address: s.address.unwrap_or_default(),
+        po_rent: s.po_rent.unwrap_or_default(),
+        po_dti: s.po_dti.unwrap_or_default(),
+        po_tpi: s.po_tpi.unwrap_or_default(),
+        po_extn1: s.po_extn1.unwrap_or_default(),
+        po_extn2: s.po_extn2.unwrap_or_default(),
+        po_extn3: s.po_extn3.unwrap_or_default(),
+        gandolas: gandola_items_for_site(&state.db, s.id).await,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn edit_page_from_form(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+    form: &SiteForm,
+    gandolas: Vec<ManyToManyItem>,
+    form_name: String,
+    error: String,
+) -> SiteEditModalPage {
+    SiteEditModalPage {
+        id,
+        form_name,
+        name: form.name.clone(),
+        customer_id: form.customer_id,
+        customer_display: customer_name(db, form.customer_id).await,
+        status: form.status.clone(),
+        start_date: form.start_date.clone(),
+        end_date: form.end_date.clone(),
+        address: form.address.clone(),
+        po_rent: form.po_rent.clone(),
+        po_dti: form.po_dti.clone(),
+        po_tpi: form.po_tpi.clone(),
+        po_extn1: form.po_extn1.clone(),
+        po_extn2: form.po_extn2.clone(),
+        po_extn3: form.po_extn3.clone(),
+        gandolas,
+        error,
+    }
+}
+
+pub async fn edit_post(
+    Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
+    Form(form): Form<SiteForm>,
+) -> Response {
+    if !is_superuser(&ctx) {
+        return Redirect::to(LIST_URL).into_response();
+    }
+    let Some(existing) = find_site_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(LIST_URL).into_response();
+    };
+    let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
+    let parsed = match parse_site_form(&form) {
+        Ok(p) => p,
+        Err(e) => {
+            let page = edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e).await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    let now = Utc::now();
+    let model = site::ActiveModel {
+        id: Set(existing.id),
+        name: Set(parsed.name),
+        customer_id: Set(parsed.customer_id),
+        status: Set(parsed.status),
+        start_date: Set(parsed.start_date),
+        end_date: Set(parsed.end_date),
+        address: Set(parsed.address),
+        po_rent: Set(parsed.po_rent),
+        po_dti: Set(parsed.po_dti),
+        po_tpi: Set(parsed.po_tpi),
+        po_extn1: Set(parsed.po_extn1),
+        po_extn2: Set(parsed.po_extn2),
+        po_extn3: Set(parsed.po_extn3),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    };
+    match model.update(&state.db).await {
+        Ok(_) => {
+            if let Err(e) = sync_site_gandolas(&state.db, id, &form.gandolas).await {
+                let page =
+                    edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e).await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            respond_edit_modal_done::<SiteEditModalKey>(&htmx, &SiteDetailRouteTag::new(id).url())
+        }
+        Err(e) => {
+            let page =
+                edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e.to_string())
+                    .await;
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
+}
+
+pub async fn delete_post(
+    Cap(state): Cap<GandolaManagerState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if !is_superuser(&ctx) {
+        return Redirect::to(LIST_URL).into_response();
+    }
+    if find_site_scoped(&state.db, id, &ctx).await.is_some() {
+        let _ = SiteEntity::delete_by_id(id).exec(&state.db).await;
+    }
+    Redirect::to(LIST_URL).into_response()
+}
+
+pub async fn select(
+    Cap(state): Cap<GandolaManagerState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<SiteSelectQuery>,
+) -> maud::Markup {
+    let sites = query_sites(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let page = SiteSelectPage {
+        sites,
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        target_input: q.target_input.clone().unwrap_or_else(|| "Sites".into()),
+        can_edit: is_superuser(&ctx),
+    };
+    respond_picker_select::<SiteSelectTableKey, SiteSelectModalKey, _>(&htmx, &page)
+}

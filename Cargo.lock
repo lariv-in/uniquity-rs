@@ -2477,7 +2477,6 @@ dependencies = [
 [[package]]
 name = "lariv-rs"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=bfc63e0955278db5cbc9a1e273c06e675a6f0448#bfc63e0955278db5cbc9a1e273c06e675a6f0448"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2538,7 +2537,6 @@ dependencies = [
 [[package]]
 name = "lariv-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=bfc63e0955278db5cbc9a1e273c06e675a6f0448#bfc63e0955278db5cbc9a1e273c06e675a6f0448"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6201,6 +6199,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "uniquity-gandola-manager"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "lariv-rs",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+]
+
+[[package]]
 name = "uniquity-ventures-rs"
 version = "0.1.0"
 dependencies = [
@@ -6216,6 +6231,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "uniquity-gandola-manager",
  "urlencoding",
  "uuid",
 ]

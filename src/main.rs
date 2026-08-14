@@ -4,7 +4,7 @@ use lariv_rs::app::App;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, no_signup, otp, pwa, users,
+    llm_assistant, otp, pwa, users,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -57,8 +57,8 @@ async fn run() -> anyhow::Result<()> {
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
+    let app = uniquity_gandola_manager::install(app);
     let app = otp::install(app);
-    let app = no_signup::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
 

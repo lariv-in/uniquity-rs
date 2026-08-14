@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "uniquity-common",
+    "uniquity-gandola-manager",
 ]
 resolver = "2"
 
@@ -10,8 +11,8 @@ edition = "2024"
 
 [workspace.dependencies]
 lariv-rs = { 
-	git = "https://github.com/lariv-in/lariv-rs", rev = "bfc63e0955278db5cbc9a1e273c06e675a6f0448",
-	# path = "../../lariv-rs",
+	path = "../../lariv-rs",
+	# git = "https://github.com/lariv-in/lariv-rs", rev = "bfc63e0955278db5cbc9a1e273c06e675a6f0448",
 	default-features = false, features = [
 		"plugin-users",
 		"plugin-dashboard",
@@ -19,7 +20,6 @@ lariv-rs = {
 		"plugin-otp",
 		"plugin-pwa",
 		"plugin-llm-assistant",
-		"plugin-no-signup",
 		"plugin-finance",
 		"plugin-crm",
 ] }
@@ -66,6 +66,7 @@ typst-syntax = "0.15.1"
 comemo = "0.5.1"
 
 uniquity-common = { path = "uniquity-common" }
+uniquity-gandola-manager = { path = "uniquity-gandola-manager" }
 
 [package]
 name = "uniquity-ventures-rs"
@@ -78,6 +79,7 @@ path = "src/main.rs"
 
 [dependencies]
 lariv-rs = { workspace = true }
+uniquity-gandola-manager = { workspace = true }
 libc = "0.2"
 tokio = { workspace = true }
 anyhow = { workspace = true }
