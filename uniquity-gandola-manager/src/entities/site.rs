@@ -2,6 +2,8 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use lariv_rs::plugins::finance_invoices::entities::draft_invoice;
+
 use crate::site_status::SiteStatus;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -29,6 +31,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::gandola_site_link::Entity")]
     GandolaLinks,
+    #[sea_orm(has_many = "super::site_invoice_link::Entity")]
+    InvoiceLinks,
 }
 
 impl Related<super::gandola_site_link::Entity> for Entity {
@@ -44,6 +48,22 @@ impl Related<super::gandola::Entity> for Entity {
 
     fn via() -> Option<RelationDef> {
         Some(super::gandola_site_link::Relation::Site.def().rev())
+    }
+}
+
+impl Related<super::site_invoice_link::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::InvoiceLinks.def()
+    }
+}
+
+impl Related<draft_invoice::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::site_invoice_link::Relation::DraftInvoice.def()
+    }
+
+    fn via() -> Option<RelationDef> {
+        Some(super::site_invoice_link::Relation::Site.def().rev())
     }
 }
 

@@ -10,10 +10,10 @@ use lariv_rs::{
         button_clear, button_delete_post_route, button_modal_form, button_submit, column_sort_url,
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_url,
-        label_inline,
-        layout_main, layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route,
-        row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-        table_button_filter, table_create_button, table_pagination,
+        label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select_multi, shell_scaffold, sidebar_menu,
+        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
+        table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -115,10 +115,7 @@ fn gandola_menu(active: &str) -> Markup {
 }
 
 fn list_crumbs(label: &'static str) -> Markup {
-    breadcrumbs(&[Crumb {
-        label,
-        href: None,
-    }])
+    breadcrumbs(&[Crumb { label, href: None }])
 }
 
 fn entity_crumbs(
@@ -267,6 +264,13 @@ lariv_rs::define_register_items! {
 pub struct RelatedName {
     pub id: i64,
     pub name: String,
+}
+
+#[derive(Clone)]
+pub struct RelatedInvoice {
+    pub id: i64,
+    pub name: String,
+    pub href: String,
 }
 
 #[derive(Clone)]
@@ -861,6 +865,7 @@ pub struct SiteDetailPage {
     pub po_extn2: String,
     pub po_extn3: String,
     pub gandolas: Vec<RelatedName>,
+    pub invoices: Vec<RelatedInvoice>,
     pub can_edit: bool,
 }
 
@@ -888,6 +893,13 @@ impl SiteDetailPage {
                         div class="flex flex-col gap-1" {
                             @for g in &self.gandolas {
                                 a class="link" href=(GandolaDetailRouteTag::new(g.id).url()) { (g.name) }
+                            }
+                        }
+                    }))
+                    (label_inline("Invoices", html! {
+                        div class="flex flex-col gap-1" {
+                            @for inv in &self.invoices {
+                                a class="link" href=(inv.href) { (inv.name) }
                             }
                         }
                     }))
@@ -919,7 +931,11 @@ impl SiteDetailPage {
 
 impl RenderAppPane for SiteDetailPage {
     fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
-        scaffold_pane(self.menu(), site_crumbs(self.id, &self.name, None), self.body())
+        scaffold_pane(
+            self.menu(),
+            site_crumbs(self.id, &self.name, None),
+            self.body(),
+        )
     }
     fn render_main(&self) -> lariv_rs::components::MainContentHtml {
         scaffold_main(site_crumbs(self.id, &self.name, None), self.body())
@@ -953,6 +969,7 @@ fn site_form_inputs(
     po_extn2: &str,
     po_extn3: &str,
     gandolas: &[ManyToManyItem],
+    invoices: &[ManyToManyItem],
 ) -> Markup {
     let customer_id_s = fk_value(customer_id);
     let choices = choice_pairs(SiteForm::status_choices());
@@ -972,7 +989,8 @@ fn site_form_inputs(
             .value(SiteFormField::PoExtn1, po_extn1)
             .value(SiteFormField::PoExtn2, po_extn2)
             .value(SiteFormField::PoExtn3, po_extn3)
-            .m2m(SiteFormField::Gandolas, gandolas),
+            .m2m(SiteFormField::Gandolas, gandolas)
+            .m2m(SiteFormField::Invoices, invoices),
     )
 }
 
@@ -994,6 +1012,7 @@ pub struct SiteEditModalPage {
     pub po_extn2: String,
     pub po_extn3: String,
     pub gandolas: Vec<ManyToManyItem>,
+    pub invoices: Vec<ManyToManyItem>,
     pub error: String,
 }
 
@@ -1024,6 +1043,7 @@ impl RenderTemplate for SiteEditModalPage {
                         &self.po_extn2,
                         &self.po_extn3,
                         &self.gandolas,
+                        &self.invoices,
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -1062,6 +1082,7 @@ pub struct SiteCreateModalPage {
     pub po_extn2: String,
     pub po_extn3: String,
     pub gandolas: Vec<ManyToManyItem>,
+    pub invoices: Vec<ManyToManyItem>,
     pub error: String,
 }
 
@@ -1100,6 +1121,7 @@ impl RenderTemplate for SiteCreateModalPage {
                     &self.po_extn2,
                     &self.po_extn3,
                     &self.gandolas,
+                    &self.invoices,
                 ),
                 actions: html! {
                     (container_row("flex justify-end gap-2 mt-2", html! {

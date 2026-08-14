@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -9,6 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 
 use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -29,14 +29,15 @@ use crate::{
     routes::SiteDetailRouteTag,
     scope::{
         apply_name_filter_sites, customer_name, find_site_scoped, gandola_items_for_site,
-        gandola_items_from_ids, is_superuser, load_gandolas_for_site, opt_string, scope_sites,
-        sync_site_gandolas,
+        gandola_items_from_ids, invoice_items_for_site, invoice_items_from_ids, is_superuser,
+        load_gandolas_for_site, opt_string, related_invoices_for_site, scope_sites,
+        sync_site_gandolas, sync_site_invoices,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
     templates::{
-        RelatedName, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage, SiteListPage,
-        SiteRow, SiteSelectPage,
+        RelatedInvoice, RelatedName, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
+        SiteListPage, SiteRow, SiteSelectPage,
     },
 };
 
@@ -173,6 +174,7 @@ pub async fn detail(
         return Redirect::to(LIST_URL).into_response();
     };
     let gandolas = load_gandolas_for_site(&state.db, s.id).await;
+    let invoices = related_invoices_for_site(&state.db, s.id).await;
     let page = SiteDetailPage {
         id: s.id,
         name: s.name,
@@ -195,6 +197,10 @@ pub async fn detail(
                 id: g.id,
                 name: g.name,
             })
+            .collect(),
+        invoices: invoices
+            .into_iter()
+            .map(|(id, name, href)| RelatedInvoice { id, name, href })
             .collect(),
         can_edit: is_superuser(&ctx),
     };
@@ -246,6 +252,7 @@ async fn create_page_from_form(
     db: &sea_orm::DatabaseConnection,
     form: &SiteForm,
     gandolas: Vec<ManyToManyItem>,
+    invoices: Vec<ManyToManyItem>,
     form_name: String,
     refresh_table: String,
     target_input: String,
@@ -269,6 +276,7 @@ async fn create_page_from_form(
         po_extn2: form.po_extn2.clone(),
         po_extn3: form.po_extn3.clone(),
         gandolas,
+        invoices,
         error,
     }
 }
@@ -299,6 +307,7 @@ pub async fn create_get(
         po_extn2: String::new(),
         po_extn3: String::new(),
         gandolas: Vec::new(),
+        invoices: Vec::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -310,12 +319,13 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<SiteForm>,
+    HtmlFormBody(form): HtmlFormBody<SiteForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
     }
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
+    let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
         Err(e) => {
@@ -323,6 +333,7 @@ pub async fn create_post(
                 &state.db,
                 &form,
                 gandolas,
+                invoices,
                 q.form_name(),
                 q.refresh_table(),
                 q.target_input(),
@@ -358,6 +369,22 @@ pub async fn create_post(
                     &state.db,
                     &form,
                     gandolas,
+                    invoices,
+                    q.form_name(),
+                    q.refresh_table(),
+                    q.target_input(),
+                    e,
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            if let Err(e) = sync_site_invoices(&state.db, saved.id, &form.invoices).await {
+                let page = create_page_from_form(
+                    &state.db,
+                    &form,
+                    gandolas,
+                    invoices,
                     q.form_name(),
                     q.refresh_table(),
                     q.target_input(),
@@ -381,6 +408,7 @@ pub async fn create_post(
                 &state.db,
                 &form,
                 gandolas,
+                invoices,
                 q.form_name(),
                 q.refresh_table(),
                 q.target_input(),
@@ -422,6 +450,7 @@ pub async fn edit_get(
         po_extn2: s.po_extn2.unwrap_or_default(),
         po_extn3: s.po_extn3.unwrap_or_default(),
         gandolas: gandola_items_for_site(&state.db, s.id).await,
+        invoices: invoice_items_for_site(&state.db, s.id).await,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -432,6 +461,7 @@ async fn edit_page_from_form(
     id: i64,
     form: &SiteForm,
     gandolas: Vec<ManyToManyItem>,
+    invoices: Vec<ManyToManyItem>,
     form_name: String,
     error: String,
 ) -> SiteEditModalPage {
@@ -452,6 +482,7 @@ async fn edit_page_from_form(
         po_extn2: form.po_extn2.clone(),
         po_extn3: form.po_extn3.clone(),
         gandolas,
+        invoices,
         error,
     }
 }
@@ -463,7 +494,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<SiteForm>,
+    HtmlFormBody(form): HtmlFormBody<SiteForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
@@ -472,10 +503,13 @@ pub async fn edit_post(
         return Redirect::to(LIST_URL).into_response();
     };
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
+    let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
         Err(e) => {
-            let page = edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e).await;
+            let page =
+                edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
+                    .await;
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response();
         }
@@ -502,16 +536,31 @@ pub async fn edit_post(
         Ok(_) => {
             if let Err(e) = sync_site_gandolas(&state.db, id, &form.gandolas).await {
                 let page =
-                    edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e).await;
+                    edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
+                        .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            if let Err(e) = sync_site_invoices(&state.db, id, &form.invoices).await {
+                let page =
+                    edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
+                        .await;
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
             respond_edit_modal_done::<SiteEditModalKey>(&htmx, &SiteDetailRouteTag::new(id).url())
         }
         Err(e) => {
-            let page =
-                edit_page_from_form(&state.db, id, &form, gandolas, q.form_name(), e.to_string())
-                    .await;
+            let page = edit_page_from_form(
+                &state.db,
+                id,
+                &form,
+                gandolas,
+                invoices,
+                q.form_name(),
+                e.to_string(),
+            )
+            .await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }

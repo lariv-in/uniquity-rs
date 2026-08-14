@@ -4,6 +4,7 @@ use lariv_rs::html_form::{
 };
 use lariv_rs::plugins::customer::routes::CustomerFkSelectRouteTag;
 use lariv_rs::plugins::finance_invoices::forms::PaymentTermLinesDraft;
+use lariv_rs::plugins::finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
 use lariv_rs::plugins::finance_products::routes::ProductFkSelectRouteTag;
 
 use super::routes::{GandolaSelectRouteTag, SiteSelectRouteTag};
@@ -84,12 +85,33 @@ pub struct SiteForm {
         placeholder = "Select gandolas…"
     )]
     pub gandolas: Vec<i64>,
+
+    #[form(
+        label = "Invoices",
+        widget = ManyToMany,
+        route = DraftInvoiceMultiSelectRouteTag,
+        swap_key = "site-invoices",
+        placeholder = "Select invoices…"
+    )]
+    pub invoices: Vec<i64>,
 }
 
 impl SiteForm {
     pub fn status_choices() -> &'static [(&'static str, &'static str)] {
         SiteStatus::choices()
     }
+}
+
+#[html_form]
+pub struct DraftInvoiceSitesForm {
+    #[form(
+        label = "Sites",
+        widget = ManyToMany,
+        route = SiteSelectRouteTag,
+        swap_key = "invoice-sites",
+        placeholder = "Select sites…"
+    )]
+    pub sites: Vec<i64>,
 }
 
 #[html_form]

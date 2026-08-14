@@ -26,11 +26,7 @@ mod tests {
     use super::*;
     use crate::site_status::SiteStatus;
 
-    fn site(
-        id: i64,
-        start: Option<(i32, u32, u32)>,
-        end: Option<(i32, u32, u32)>,
-    ) -> site::Model {
+    fn site(id: i64, start: Option<(i32, u32, u32)>, end: Option<(i32, u32, u32)>) -> site::Model {
         fn d(y: i32, m: u32, day: u32) -> NaiveDate {
             NaiveDate::from_ymd_opt(y, m, day).unwrap()
         }

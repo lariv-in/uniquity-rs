@@ -365,10 +365,7 @@ pub async fn select(
         filter_name: q.filter.name.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        target_input: q
-            .target_input
-            .clone()
-            .unwrap_or_else(|| "Gandolas".into()),
+        target_input: q.target_input.clone().unwrap_or_else(|| "Gandolas".into()),
         can_edit: is_superuser(&ctx),
     };
     respond_picker_select::<GandolaSelectTableKey, GandolaSelectModalKey, _>(&htmx, &page)

@@ -7,6 +7,7 @@ pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod invoice_sites;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
@@ -62,6 +63,7 @@ where
     type Output = HCons<GandolaManagerStateCap, L>;
 
     fn attach_state(app: App<L>) -> App<Self::Output> {
+        crate::invoice_sites::register();
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
         app.add_capability(CapStore::with_items(GandolaManagerState::new(conn)))
     }
