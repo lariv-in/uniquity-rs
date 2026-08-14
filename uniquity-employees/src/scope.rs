@@ -232,7 +232,7 @@ pub async fn query_points(
                 to_employee_name,
                 created_at: p
                     .created_at
-                    .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                    .map(|t| t.format("%d/%m/%Y %H:%M").to_string())
                     .unwrap_or_default(),
             }
         })

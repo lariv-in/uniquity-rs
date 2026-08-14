@@ -73,13 +73,13 @@ fn parse_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
     if s.is_empty() {
         return Ok(None);
     }
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+    lariv_rs::datetime::parse_date(s)
         .map(Some)
-        .map_err(|_| "invalid date")
+        .ok_or("invalid date")
 }
 
 fn format_date(d: Option<NaiveDate>) -> String {
-    d.map(|d| d.format("%Y-%m-%d").to_string())
+    d.map(lariv_rs::datetime::format_date)
         .unwrap_or_default()
 }
 

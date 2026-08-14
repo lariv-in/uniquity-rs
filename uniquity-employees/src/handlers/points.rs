@@ -114,7 +114,7 @@ pub async fn detail(
         to_employee_name: "—".into(),
         created_at: pt
             .created_at
-            .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+            .map(|t| t.format("%d/%m/%Y %H:%M").to_string())
             .unwrap_or_default(),
     });
     let page = PointsDetailPage {

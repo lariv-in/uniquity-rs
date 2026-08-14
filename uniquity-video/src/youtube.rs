@@ -157,7 +157,7 @@ pub fn format_published_at_display(published_rfc3339: &str) -> String {
         return String::new();
     }
     if let Ok(t) = DateTime::parse_from_rfc3339(s) {
-        return t.with_timezone(&Utc).format("%Y-%m-%d %H:%M UTC").to_string();
+        return t.with_timezone(&Utc).format("%d/%m/%Y %H:%M UTC").to_string();
     }
     s.to_string()
 }
