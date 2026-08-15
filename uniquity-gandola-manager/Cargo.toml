@@ -17,4 +17,6 @@ maud = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
 anyhow = { workspace = true }
+tokio = { workspace = true }
+rune = "0.14"
 base64 = "0.22"

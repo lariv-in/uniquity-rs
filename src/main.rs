@@ -81,9 +81,11 @@ fn main() {
                 )
                 .init();
 
-            // current_thread keeps install/mount on this large-stack thread; a
-            // multi_thread runtime would resume after `.await` on ~2MB worker stacks.
-            tokio::runtime::Builder::new_current_thread()
+            // Worker stacks must match this thread: after `.await`, work resumes
+            // on a worker. `block_in_place` (Rune native DB calls) also needs
+            // the multi-thread runtime.
+            tokio::runtime::Builder::new_multi_thread()
+                .thread_stack_size(STACK_SIZE)
                 .enable_all()
                 .build()
                 .expect("tokio runtime")

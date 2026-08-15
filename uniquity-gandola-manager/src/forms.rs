@@ -210,9 +210,6 @@ pub struct PurchaseOrderForm {
 
     #[form(label = "Shipping address", widget = Textarea)]
     pub shipping_address: String,
-
-    #[form(label = "Additional notes", widget = Textarea)]
-    pub additional_notes: String,
 }
 
 #[html_form]

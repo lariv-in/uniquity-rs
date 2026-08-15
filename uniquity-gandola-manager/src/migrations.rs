@@ -15,6 +15,10 @@ mod m00010_purchase_order_additional_notes;
 mod m00011_gandola_gemini_model;
 mod m00012_purchase_order_drop_cin;
 mod m00013_purchase_order_site_id;
+mod m00014_purchase_order_drop_additional_notes;
+mod m00015_pg_trgm;
+mod m00016_purchase_order_lines_drop_product_id;
+mod m00017_pg_trgm_lower;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -36,6 +40,10 @@ impl MigratorTrait for Migrator {
             Box::new(m00011_gandola_gemini_model::Migration),
             Box::new(m00012_purchase_order_drop_cin::Migration),
             Box::new(m00013_purchase_order_site_id::Migration),
+            Box::new(m00014_purchase_order_drop_additional_notes::Migration),
+            Box::new(m00015_pg_trgm::Migration),
+            Box::new(m00016_purchase_order_lines_drop_product_id::Migration),
+            Box::new(m00017_pg_trgm_lower::Migration),
         ]
     }
 }

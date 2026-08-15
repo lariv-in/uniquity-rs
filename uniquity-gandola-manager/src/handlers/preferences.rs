@@ -63,7 +63,10 @@ async fn gemini_model_choices(
         let client = GenaiClient::new(key, String::new());
         match client.list_generate_content_models().await {
             Ok(models) => (models, None),
-            Err(e) => (Vec::new(), Some(format!("Could not list Gemini models: {e}"))),
+            Err(e) => (
+                Vec::new(),
+                Some(format!("Could not list Gemini models: {e}")),
+            ),
         }
     };
     if !choices.iter().any(|(id, _)| id == current) {

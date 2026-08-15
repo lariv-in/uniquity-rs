@@ -570,13 +570,9 @@ pub async fn edit_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            if let Err(e) = sync_site_purchase_orders(
-                &state.db,
-                id,
-                parsed.customer_id,
-                &form.purchase_orders,
-            )
-            .await
+            if let Err(e) =
+                sync_site_purchase_orders(&state.db, id, parsed.customer_id, &form.purchase_orders)
+                    .await
             {
                 let page = edit_page_from_form(
                     &state.db,

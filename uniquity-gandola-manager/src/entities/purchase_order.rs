@@ -17,7 +17,6 @@ pub struct Model {
     pub payment_term_id: Option<i64>,
     pub billing_address: Option<String>,
     pub shipping_address: Option<String>,
-    pub additional_notes: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

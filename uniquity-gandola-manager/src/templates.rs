@@ -11,9 +11,9 @@ use lariv_rs::{
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_url,
         label_inline, label_newline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold, sidebar_menu,
-        sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
-        table_pagination,
+        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -44,9 +44,8 @@ use super::routes::{
     PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag, PurchaseOrderDeletePostRouteTag,
     PurchaseOrderDetailRouteTag, PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag,
     PurchaseOrderFromPdfGetRouteTag, PurchaseOrderFromPdfPostRouteTag, PurchaseOrderSelectRouteTag,
-    SiteCreatePostRouteTag,
-    SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag, SiteEditGetRouteTag,
-    SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
+    SiteCreatePostRouteTag, SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag,
+    SiteEditGetRouteTag, SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
 };
 use super::site_status::SiteStatus;
 
@@ -1677,7 +1676,6 @@ pub struct PurchaseOrderDetailPage {
     pub file_name: String,
     pub billing_address: String,
     pub shipping_address: String,
-    pub additional_notes: String,
     pub lines: Vec<PoLineRow>,
     pub can_edit: bool,
 }
@@ -1706,15 +1704,6 @@ impl PurchaseOrderDetailPage {
                     }))
                     (label_inline("Billing address", field_text(FieldText { value: &self.billing_address, classes: "" })))
                     (label_inline("Shipping address", field_text(FieldText { value: &self.shipping_address, classes: "" })))
-                    (label_newline("Additional notes", html! {
-                        div class="max-w-3xl whitespace-pre-wrap break-words" {
-                            @if self.additional_notes.trim().is_empty() {
-                                (field_text(FieldText { value: "—", classes: "" }))
-                            } @else {
-                                (self.additional_notes)
-                            }
-                        }
-                    }))
                     (label_newline("Lines", html! {
                         div class="w-full min-w-0" {
                             div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
@@ -1840,10 +1829,6 @@ fn purchase_order_form_inputs(
             .value(
                 PurchaseOrderFormField::ShippingAddress,
                 &form.shipping_address,
-            )
-            .value(
-                PurchaseOrderFormField::AdditionalNotes,
-                &form.additional_notes,
             ),
     )
 }

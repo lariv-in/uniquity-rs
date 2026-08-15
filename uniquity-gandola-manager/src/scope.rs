@@ -418,7 +418,8 @@ pub async fn sync_site_purchase_orders<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?;
     let current_ids: std::collections::BTreeSet<i64> = current.iter().map(|po| po.id).collect();
-    let desired: std::collections::BTreeSet<i64> = po_ids.iter().copied().filter(|&id| id > 0).collect();
+    let desired: std::collections::BTreeSet<i64> =
+        po_ids.iter().copied().filter(|&id| id > 0).collect();
     if current_ids.difference(&desired).next().is_some() {
         return Err(
             "Purchase orders cannot be removed from a site here. Edit the purchase order to assign a different site."
@@ -493,6 +494,34 @@ pub async fn sync_site_invoices<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// Link a draft invoice to a site without removing the site's other invoice links.
+pub async fn link_site_invoice<C: ConnectionTrait>(
+    db: &C,
+    site_id: i64,
+    draft_invoice_id: i64,
+) -> Result<(), String> {
+    if site_id <= 0 || draft_invoice_id <= 0 {
+        return Err("site_id and draft_invoice_id are required".into());
+    }
+    let exists = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::DraftInvoiceId.eq(draft_invoice_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if exists.is_some() {
+        return Ok(());
+    }
+    site_invoice_link::ActiveModel {
+        site_id: Set(site_id),
+        draft_invoice_id: Set(draft_invoice_id),
+    }
+    .insert(db)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

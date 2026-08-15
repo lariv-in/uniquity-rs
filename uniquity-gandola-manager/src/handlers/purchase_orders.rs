@@ -37,9 +37,7 @@ use crate::{
         PurchaseOrderCreateModalKey, PurchaseOrderEditModalKey, PurchaseOrderFromPdfModalKey,
         PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
     },
-    po_from_pdf::{
-        extract_purchase_order_from_pdf, form_from_extracted, store_purchase_order_pdf,
-    },
+    po_from_pdf::{extract_purchase_order_from_pdf, form_from_extracted, store_purchase_order_pdf},
     po_lines::{
         default_po_lines_json, load_po_line_displays, parse_po_lines_json, po_lines_form_json,
         replace_po_lines,
@@ -205,7 +203,6 @@ fn clone_form(form: &PurchaseOrderForm) -> PurchaseOrderForm {
         po_lines_json: form.po_lines_json.clone(),
         billing_address: form.billing_address.clone(),
         shipping_address: form.shipping_address.clone(),
-        additional_notes: form.additional_notes.clone(),
     }
 }
 
@@ -220,7 +217,6 @@ fn empty_form() -> PurchaseOrderForm {
         po_lines_json: default_po_lines_json(),
         billing_address: String::new(),
         shipping_address: String::new(),
-        additional_notes: String::new(),
     }
 }
 
@@ -313,7 +309,6 @@ pub async fn detail(
         file_name: vnode_name(&state.db, po.file_id).await,
         billing_address: po.billing_address.unwrap_or_default(),
         shipping_address: po.shipping_address.unwrap_or_default(),
-        additional_notes: po.additional_notes.unwrap_or_default(),
         lines: lines
             .into_iter()
             .map(|l| PoLineRow {
@@ -428,7 +423,6 @@ async fn persist_new_purchase_order(
         payment_term_id: Set(Some(term.id)),
         billing_address: Set(opt_string(form.billing_address.clone())),
         shipping_address: Set(opt_string(form.shipping_address.clone())),
-        additional_notes: Set(opt_string(form.additional_notes.clone())),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -453,7 +447,11 @@ async fn persist_new_purchase_order(
     }
 }
 
-fn from_pdf_modal(site_id: i64, q: &ModalNameQuery, error: String) -> PurchaseOrderFromPdfModalPage {
+fn from_pdf_modal(
+    site_id: i64,
+    q: &ModalNameQuery,
+    error: String,
+) -> PurchaseOrderFromPdfModalPage {
     PurchaseOrderFromPdfModalPage {
         site_id,
         form_name: q.form_name(),
@@ -603,7 +601,6 @@ async fn form_from_model(
         po_lines_json: po_lines_form_json(db, po.id).await,
         billing_address: po.billing_address.clone().unwrap_or_default(),
         shipping_address: po.shipping_address.clone().unwrap_or_default(),
-        additional_notes: po.additional_notes.clone().unwrap_or_default(),
     }
 }
 
@@ -731,7 +728,6 @@ pub async fn edit_post(
         payment_term_id: Set(Some(term.id)),
         billing_address: Set(opt_string(form.billing_address.clone())),
         shipping_address: Set(opt_string(form.shipping_address.clone())),
-        additional_notes: Set(opt_string(form.additional_notes.clone())),
         updated_at: Set(Some(now)),
         ..Default::default()
     };

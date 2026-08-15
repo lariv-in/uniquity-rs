@@ -32,7 +32,6 @@ Use this exact shape:
   "gstin": "",
   "billing_address": "",
   "shipping_address": "",
-  "additional_notes": "",
   "lines": [
     {
       "item_code": "",
@@ -67,7 +66,6 @@ Rules:
 - cin is the buyer's CIN when present (used to match an existing customer); otherwise leave empty
 - quantity is the line qty / number of units only. rate is the unit price only. Sometimes the printed columns are switched (rate in the qty column, qty in the rate column) or values are misaligned. Assign by meaning, not by left-to-right order or column position. quantity is never a money amount; rate is never a count of units.
 - description is a short item name for that row only (what is being ordered). Keep it brief — a few words, never more than about 10. Write a short name; do not paste the full line text, a long spec, a header blurb, scope of work, preamble, terms, footer, tax summary, or any other document text. Do not invent an item that is not on the line. If the row has no item description, use an empty string.
-- additional_notes is only explicit remarks the PO issuer wrote as notes / special instructions / comments (often labelled Notes, Remarks, Instructions, or similar). Copy those remarks only. Do not invent notes. Do not dump letterhead, greetings, legal terms and conditions, payment terms, addresses, GST/CIN, bank details, signatures, page headers/footers, line items, or other fields. If there are no such issuer remarks, use an empty string.
 "#;
 
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
@@ -86,8 +84,6 @@ pub struct ExtractedPurchaseOrder {
     pub billing_address: String,
     #[serde(default)]
     pub shipping_address: String,
-    #[serde(default)]
-    pub additional_notes: String,
     #[serde(default)]
     pub lines: Vec<ExtractedPoLine>,
     #[serde(default)]
@@ -254,7 +250,6 @@ pub fn form_from_extracted(
         po_lines_json: lines_json(&extracted.lines),
         billing_address: extracted.billing_address.trim().to_string(),
         shipping_address: extracted.shipping_address.trim().to_string(),
-        additional_notes: extracted.additional_notes.trim().to_string(),
     }
 }
 
@@ -510,7 +505,6 @@ mod tests {
         assert_eq!(form.customer_id, 4);
         assert_eq!(form.site_id, 8);
         assert_eq!(form.file_id, "12");
-        assert!(form.additional_notes.is_empty());
         assert!(form.payment_term_lines_json.contains("relative_delivery"));
         assert!(form.payment_term_lines_json.contains("30 days"));
     }
