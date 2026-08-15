@@ -40,12 +40,6 @@ mod tests {
             end_date: end.map(|(y, m, day)| d(y, m, day)),
             customer_id: 1,
             status: SiteStatus::Started,
-            po_rent: None,
-            po_dti: None,
-            po_tpi: None,
-            po_extn1: None,
-            po_extn2: None,
-            po_extn3: None,
         }
     }
 

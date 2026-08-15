@@ -1,11 +1,12 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, Select, sea_query::Expr,
+    EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
 use lariv_rs::components::ManyToManyItem;
 use lariv_rs::plugins::customer::entities::customer::Entity as CustomerEntity;
+use lariv_rs::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_rs::plugins::finance_invoices::entities::draft_invoice::{
     self, Entity as DraftInvoiceEntity,
 };
@@ -23,6 +24,7 @@ use crate::entities::{
     gandola::{self, Entity as GandolaEntity},
     gandola_site_link::{self, Entity as GandolaSiteLinkEntity},
     preferences::{self, Entity as PreferencesEntity},
+    purchase_order::{self, Entity as PurchaseOrderEntity},
     site::{self, Entity as SiteEntity},
     site_invoice_link::{self, Entity as SiteInvoiceLinkEntity},
 };
@@ -39,6 +41,16 @@ pub fn scope_gandolas(query: Select<GandolaEntity>, auth: &AuthContext) -> Selec
 }
 
 pub fn scope_sites(query: Select<SiteEntity>, auth: &AuthContext) -> Select<SiteEntity> {
+    if is_superuser(auth) {
+        return query;
+    }
+    query.filter(Expr::cust("1 = 0"))
+}
+
+pub fn scope_purchase_orders(
+    query: Select<PurchaseOrderEntity>,
+    auth: &AuthContext,
+) -> Select<PurchaseOrderEntity> {
     if is_superuser(auth) {
         return query;
     }
@@ -65,6 +77,16 @@ pub fn apply_name_filter_sites(
     query
 }
 
+pub fn apply_number_filter_purchase_orders(
+    mut query: Select<PurchaseOrderEntity>,
+    number: Option<&str>,
+) -> Select<PurchaseOrderEntity> {
+    if let Some(n) = number.filter(|s| !s.is_empty()) {
+        query = query.filter(purchase_order::Column::Number.contains(n));
+    }
+    query
+}
+
 pub async fn find_gandola_scoped(
     db: &DatabaseConnection,
     id: i64,
@@ -87,6 +109,31 @@ pub async fn find_site_scoped(
         .await
         .ok()
         .flatten()
+}
+
+pub async fn find_purchase_order_scoped(
+    db: &DatabaseConnection,
+    id: i64,
+    auth: &AuthContext,
+) -> Option<purchase_order::Model> {
+    scope_purchase_orders(PurchaseOrderEntity::find_by_id(id), auth)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+}
+
+pub async fn vnode_name(db: &DatabaseConnection, vnode_id: Option<i64>) -> String {
+    let Some(id) = vnode_id.filter(|&id| id > 0) else {
+        return String::new();
+    };
+    VNodeEntity::find_by_id(id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|n| n.name)
+        .unwrap_or_else(|| format!("#{id}"))
 }
 
 pub async fn load_sites_for_gandola(db: &DatabaseConnection, gandola_id: i64) -> Vec<site::Model> {
@@ -256,15 +303,21 @@ fn invoice_label(id: i64, number: &Option<String>) -> String {
     }
 }
 
-async fn invoice_href(db: &DatabaseConnection, draft_id: i64) -> String {
+async fn invoice_status_and_href(db: &DatabaseConnection, draft_id: i64) -> (String, String) {
     if let Ok(Some(posted)) = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
         .one(db)
         .await
     {
-        return PostedInvoiceDetailRouteTag::new(posted.id).url();
+        return (
+            "Posted".into(),
+            PostedInvoiceDetailRouteTag::new(posted.id).url(),
+        );
     }
-    DraftInvoiceDetailRouteTag::new(draft_id).url()
+    (
+        "Draft".into(),
+        DraftInvoiceDetailRouteTag::new(draft_id).url(),
+    )
 }
 
 pub async fn invoice_items_for_site(db: &DatabaseConnection, site_id: i64) -> Vec<ManyToManyItem> {
@@ -289,14 +342,113 @@ pub async fn site_items_for_invoice(
 pub async fn related_invoices_for_site(
     db: &DatabaseConnection,
     site_id: i64,
-) -> Vec<(i64, String, String)> {
-    let drafts = load_invoices_for_site(db, site_id).await;
+    tz: &str,
+) -> Vec<(i64, String, String, String, String)> {
+    let mut drafts = load_invoices_for_site(db, site_id).await;
+    drafts.sort_by(|a, b| b.datetime.cmp(&a.datetime).then(b.id.cmp(&a.id)));
     let mut out = Vec::with_capacity(drafts.len());
     for d in drafts {
-        let href = invoice_href(db, d.id).await;
-        out.push((d.id, invoice_label(d.id, &d.number), href));
+        let (status, href) = invoice_status_and_href(db, d.id).await;
+        out.push((
+            d.id,
+            invoice_label(d.id, &d.number),
+            href,
+            lariv_rs::datetime::format_date_in_tz(d.datetime, tz),
+            status,
+        ));
     }
     out
+}
+
+pub async fn load_purchase_orders_for_site(
+    db: &DatabaseConnection,
+    site_id: i64,
+) -> Vec<purchase_order::Model> {
+    PurchaseOrderEntity::find()
+        .filter(purchase_order::Column::SiteId.eq(site_id))
+        .order_by_desc(purchase_order::Column::Date)
+        .order_by_desc(purchase_order::Column::Id)
+        .all(db)
+        .await
+        .unwrap_or_default()
+}
+
+pub async fn purchase_order_items_for_site(
+    db: &DatabaseConnection,
+    site_id: i64,
+) -> Vec<ManyToManyItem> {
+    load_purchase_orders_for_site(db, site_id)
+        .await
+        .into_iter()
+        .map(|po| ManyToManyItem::new(po.id.to_string(), po.number))
+        .collect()
+}
+
+pub async fn purchase_order_items_from_ids(
+    db: &DatabaseConnection,
+    ids: &[i64],
+) -> Vec<ManyToManyItem> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let models = PurchaseOrderEntity::find()
+        .filter(purchase_order::Column::Id.is_in(ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    ids.iter()
+        .filter_map(|id| {
+            models
+                .iter()
+                .find(|po| po.id == *id)
+                .map(|po| ManyToManyItem::new(po.id.to_string(), po.number.clone()))
+        })
+        .collect()
+}
+
+pub async fn sync_site_purchase_orders<C: ConnectionTrait>(
+    db: &C,
+    site_id: i64,
+    customer_id: i64,
+    po_ids: &[i64],
+) -> Result<(), String> {
+    let current = PurchaseOrderEntity::find()
+        .filter(purchase_order::Column::SiteId.eq(site_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let current_ids: std::collections::BTreeSet<i64> = current.iter().map(|po| po.id).collect();
+    let desired: std::collections::BTreeSet<i64> = po_ids.iter().copied().filter(|&id| id > 0).collect();
+    if current_ids.difference(&desired).next().is_some() {
+        return Err(
+            "Purchase orders cannot be removed from a site here. Edit the purchase order to assign a different site."
+                .into(),
+        );
+    }
+    let now = Utc::now();
+    for &po_id in &desired {
+        if current_ids.contains(&po_id) {
+            continue;
+        }
+        let Some(existing) = PurchaseOrderEntity::find_by_id(po_id)
+            .one(db)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        purchase_order::ActiveModel {
+            id: Set(existing.id),
+            site_id: Set(site_id),
+            customer_id: Set(customer_id),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 pub async fn invoice_items_from_ids(db: &DatabaseConnection, ids: &[i64]) -> Vec<ManyToManyItem> {
@@ -370,6 +522,53 @@ pub async fn sync_invoice_sites<C: ConnectionTrait>(
     Ok(())
 }
 
+pub async fn site_name(db: &DatabaseConnection, site_id: i64) -> String {
+    if site_id <= 0 {
+        return String::new();
+    }
+    SiteEntity::find_by_id(site_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|s| s.name)
+        .unwrap_or_else(|| format!("#{site_id}"))
+}
+
+pub async fn find_site_for_customer(
+    db: &DatabaseConnection,
+    customer_id: i64,
+) -> Option<site::Model> {
+    if customer_id <= 0 {
+        return None;
+    }
+    let Ok(sites) = SiteEntity::find()
+        .filter(site::Column::CustomerId.eq(customer_id))
+        .order_by_asc(site::Column::Id)
+        .all(db)
+        .await
+    else {
+        return None;
+    };
+    match sites.len() {
+        0 => None,
+        1 => sites.into_iter().next(),
+        _ => {
+            let today = Utc::now().date_naive();
+            let current: Vec<_> = sites
+                .iter()
+                .filter(|s| crate::logic::site_is_current(s, today))
+                .cloned()
+                .collect();
+            if current.len() == 1 {
+                current.into_iter().next()
+            } else {
+                None
+            }
+        }
+    }
+}
+
 pub async fn customer_name(db: &DatabaseConnection, customer_id: i64) -> String {
     if customer_id <= 0 {
         return String::new();
@@ -418,6 +617,8 @@ pub async fn load_preferences(db: &DatabaseConnection) -> preferences::Model {
         tpi_product_id: Set(None),
         dti_product_id: Set(None),
         payment_term_lines_json: Set(Some(default_payment_term_lines_json())),
+        gemini_api_key: Set(String::new()),
+        gemini_model: Set(crate::po_from_pdf::DEFAULT_GEMINI_PO_MODEL.to_string()),
     };
     am.insert(db).await.unwrap_or(preferences::Model {
         id: 1,
@@ -427,6 +628,8 @@ pub async fn load_preferences(db: &DatabaseConnection) -> preferences::Model {
         tpi_product_id: None,
         dti_product_id: None,
         payment_term_lines_json: Some(default_payment_term_lines_json()),
+        gemini_api_key: String::new(),
+        gemini_model: crate::po_from_pdf::DEFAULT_GEMINI_PO_MODEL.to_string(),
     })
 }
 

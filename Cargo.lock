@@ -2477,7 +2477,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=18b8d0278aacff33c7256ee3ba2613e41b8b900a#18b8d0278aacff33c7256ee3ba2613e41b8b900a"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=25644c1933ded3acab378db63cdbb0001a55a598#25644c1933ded3acab378db63cdbb0001a55a598"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2538,7 +2538,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=18b8d0278aacff33c7256ee3ba2613e41b8b900a#18b8d0278aacff33c7256ee3ba2613e41b8b900a"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=25644c1933ded3acab378db63cdbb0001a55a598#25644c1933ded3acab378db63cdbb0001a55a598"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6207,14 +6207,17 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "frunk",
  "frunk_core",
  "lariv-rs",
  "maud",
+ "rust_decimal",
  "sea-orm",
  "sea-orm-migration",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

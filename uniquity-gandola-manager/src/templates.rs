@@ -10,8 +10,8 @@ use lariv_rs::{
         button_clear, button_delete_post_route, button_modal_form, button_submit, column_sort_url,
         container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_url,
-        label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select_multi, shell_scaffold, sidebar_menu,
+        label_inline, label_newline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold, sidebar_menu,
         sidebar_menu_item_pane, sort_indicator, table_button_filter, table_create_button,
         table_pagination,
     },
@@ -19,26 +19,34 @@ use lariv_rs::{
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     plugins::customer::routes::CustomerDetailRouteTag,
+    plugins::filesystem::routes::VNodeDetailRouteTag,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
 use super::forms::{
     GandolaFilterForm, GandolaFilterFormField, GandolaForm, GandolaFormField,
-    GandolaPreferencesForm, GandolaPreferencesFormField, SiteFilterForm, SiteFilterFormField,
-    SiteForm, SiteFormField,
+    GandolaPreferencesForm, GandolaPreferencesFormField, PurchaseOrderFilterForm,
+    PurchaseOrderFilterFormField, PurchaseOrderForm, PurchaseOrderFormField,
+    PurchaseOrderFromPdfForm, SiteFilterForm, SiteFilterFormField, SiteForm, SiteFormField,
 };
 use super::keys::{
     GandolaCreateModalKey, GandolaEditModalKey, GandolaSelectModalKey, GandolaSelectTableKey,
-    GandolaTableKey, SiteCreateModalKey, SiteEditModalKey, SiteSelectModalKey, SiteSelectTableKey,
-    SiteTableKey,
+    GandolaTableKey, PurchaseOrderCreateModalKey, PurchaseOrderEditModalKey,
+    PurchaseOrderFromPdfModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
+    PurchaseOrderTableKey, SiteCreateModalKey, SiteEditModalKey, SiteFkSelectModalKey,
+    SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
 };
 use super::routes::{
     GandolaCreatePostRouteTag, GandolaDefaultRouteTag, GandolaDeletePostRouteTag,
     GandolaDetailRouteTag, GandolaEditGetRouteTag, GandolaEditPostRouteTag,
     GandolaPreferencesPostRouteTag, GandolaPreferencesRouteTag, GandolaSelectRouteTag,
-    SiteCreatePostRouteTag, SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag,
-    SiteEditGetRouteTag, SiteEditPostRouteTag, SiteSelectRouteTag,
+    PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag, PurchaseOrderDeletePostRouteTag,
+    PurchaseOrderDetailRouteTag, PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag,
+    PurchaseOrderFromPdfGetRouteTag, PurchaseOrderFromPdfPostRouteTag, PurchaseOrderSelectRouteTag,
+    SiteCreatePostRouteTag,
+    SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag, SiteEditGetRouteTag,
+    SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
 };
 use super::site_status::SiteStatus;
 
@@ -102,6 +110,12 @@ fn gandola_menu(active: &str) -> Markup {
                 title: "Sites",
                 url: &SiteDefaultRouteTag.url(),
                 active: active == "sites",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Purchase Orders",
+                url: &PurchaseOrderDefaultRouteTag.url(),
+                active: active == "purchase_orders",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -173,6 +187,16 @@ fn site_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     )
 }
 
+fn purchase_order_crumbs(id: i64, number: &str, action: Option<&str>) -> Markup {
+    entity_crumbs(
+        "Purchase Orders",
+        &PurchaseOrderDefaultRouteTag.url(),
+        number,
+        &PurchaseOrderDetailRouteTag::new(id).url(),
+        action,
+    )
+}
+
 fn detail_menu(title: String, detail_url: String) -> Markup {
     sidebar_menu(SidebarMenu {
         title: title.as_str(),
@@ -220,6 +244,34 @@ fn status_badge(status: &str, label: &str) -> Markup {
     html! { span class=(class) { (label) } }
 }
 
+fn related_detail_table(
+    empty_label: &str,
+    colspan: u8,
+    headers: Markup,
+    rows: Vec<Markup>,
+) -> Markup {
+    html! {
+        div class="w-full min-w-0" {
+            div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
+                table class="table table-sm min-w-max w-full" {
+                    thead { tr { (headers) } }
+                    tbody {
+                        @if rows.is_empty() {
+                            tr {
+                                td colspan=(colspan) class="text-center opacity-50 py-4" { (empty_label) }
+                            }
+                        } @else {
+                            @for row in &rows {
+                                (row)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
     choices
         .iter()
@@ -246,7 +298,14 @@ lariv_rs::define_register_items! {
         SiteEditModalIdx: SiteEditModalPageTag => SiteEditModalPage,
         SiteCreateModalIdx: SiteCreateModalPageTag => SiteCreateModalPage,
         SiteSelectIdx: SiteSelectPageTag => SiteSelectPage,
+        SiteFkSelectIdx: SiteFkSelectPageTag => SiteFkSelectPage,
         PreferencesIdx: GandolaPreferencesPageTag => GandolaPreferencesPage,
+        PurchaseOrderListIdx: PurchaseOrderListPageTag => PurchaseOrderListPage,
+        PurchaseOrderDetailIdx: PurchaseOrderDetailPageTag => PurchaseOrderDetailPage,
+        PurchaseOrderEditModalIdx: PurchaseOrderEditModalPageTag => PurchaseOrderEditModalPage,
+        PurchaseOrderCreateModalIdx: PurchaseOrderCreateModalPageTag => PurchaseOrderCreateModalPage,
+        PurchaseOrderFromPdfModalIdx: PurchaseOrderFromPdfModalPageTag => PurchaseOrderFromPdfModalPage,
+        PurchaseOrderSelectIdx: PurchaseOrderSelectPageTag => PurchaseOrderSelectPage,
     ]
 }
 
@@ -271,6 +330,15 @@ pub struct RelatedInvoice {
     pub id: i64,
     pub name: String,
     pub href: String,
+    pub date: String,
+    pub status: String,
+}
+
+#[derive(Clone)]
+pub struct SitePurchaseOrderRow {
+    pub id: i64,
+    pub number: String,
+    pub date: String,
 }
 
 #[derive(Clone)]
@@ -442,7 +510,7 @@ impl GandolaDetailPage {
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
-                                name: "p_gandola_manager.GandolaEditForm",
+                                name: "gandola_manager.GandolaEditForm",
                                 href: &GandolaEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &GandolaEditPostRouteTag::new(self.id).path(),
                                 modal_uid: GandolaEditModalKey::ID,
@@ -551,7 +619,7 @@ pub struct GandolaCreateModalPage {
 impl RenderTemplate for GandolaCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let form_name = if self.form_name.is_empty() {
-            "p_gandola_manager.GandolaCreateForm"
+            "gandola_manager.GandolaCreateForm"
         } else {
             self.form_name.as_str()
         };
@@ -858,13 +926,8 @@ pub struct SiteDetailPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
-    pub po_rent: String,
-    pub po_dti: String,
-    pub po_tpi: String,
-    pub po_extn1: String,
-    pub po_extn2: String,
-    pub po_extn3: String,
     pub gandolas: Vec<RelatedName>,
+    pub purchase_orders: Vec<SitePurchaseOrderRow>,
     pub invoices: Vec<RelatedInvoice>,
     pub can_edit: bool,
 }
@@ -883,34 +946,72 @@ impl SiteDetailPage {
                     (label_inline("Start Date", field_text(FieldText { value: &self.start_date, classes: "" })))
                     (label_inline("End Date", field_text(FieldText { value: &self.end_date, classes: "" })))
                     (label_inline("Address", field_text(FieldText { value: &self.address, classes: "" })))
-                    (label_inline("PO Rent", field_text(FieldText { value: &self.po_rent, classes: "" })))
-                    (label_inline("PO DTI", field_text(FieldText { value: &self.po_dti, classes: "" })))
-                    (label_inline("PO TPI", field_text(FieldText { value: &self.po_tpi, classes: "" })))
-                    (label_inline("PO Extension 1", field_text(FieldText { value: &self.po_extn1, classes: "" })))
-                    (label_inline("PO Extension 2", field_text(FieldText { value: &self.po_extn2, classes: "" })))
-                    (label_inline("PO Extension 3", field_text(FieldText { value: &self.po_extn3, classes: "" })))
-                    (label_inline("Gandolas", html! {
-                        div class="flex flex-col gap-1" {
-                            @for g in &self.gandolas {
-                                a class="link" href=(GandolaDetailRouteTag::new(g.id).url()) { (g.name) }
+                    (label_newline("Gandolas", related_detail_table(
+                        "No gandolas",
+                        1,
+                        html! {
+                            th class="whitespace-nowrap" { "Name" }
+                        },
+                        self.gandolas.iter().map(|g| html! {
+                            tr {
+                                td class="whitespace-nowrap" {
+                                    a class="link" href=(GandolaDetailRouteTag::new(g.id).url()) { (g.name) }
+                                }
                             }
-                        }
-                    }))
-                    (label_inline("Invoices", html! {
-                        div class="flex flex-col gap-1" {
-                            @for inv in &self.invoices {
-                                a class="link" href=(inv.href) { (inv.name) }
+                        }).collect(),
+                    )))
+                    (label_newline("Purchase Orders", related_detail_table(
+                        "No purchase orders",
+                        2,
+                        html! {
+                            th class="whitespace-nowrap" { "Number" }
+                            th class="whitespace-nowrap" { "Date" }
+                        },
+                        self.purchase_orders.iter().map(|po| html! {
+                            tr {
+                                td class="whitespace-nowrap" {
+                                    a class="link" href=(PurchaseOrderDetailRouteTag::new(po.id).url()) { (po.number) }
+                                }
+                                td class="whitespace-nowrap" { (po.date) }
                             }
-                        }
-                    }))
+                        }).collect(),
+                    )))
+                    (label_newline("Invoices", related_detail_table(
+                        "No invoices",
+                        3,
+                        html! {
+                            th class="whitespace-nowrap" { "Number" }
+                            th class="whitespace-nowrap" { "Date" }
+                            th class="whitespace-nowrap" { "Status" }
+                        },
+                        self.invoices.iter().map(|inv| html! {
+                            tr {
+                                td class="whitespace-nowrap" {
+                                    a class="link" href=(inv.href) { (inv.name) }
+                                }
+                                td class="whitespace-nowrap" { (inv.date) }
+                                td class="whitespace-nowrap" { (inv.status) }
+                            }
+                        }).collect(),
+                    )))
                     @if self.can_edit {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
-                                name: "p_gandola_manager.SiteEditForm",
+                                name: "gandola_manager.SiteEditForm",
                                 href: &SiteEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &SiteEditPostRouteTag::new(self.id).path(),
                                 modal_uid: SiteEditModalKey::ID,
                                 label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                            (button_modal_form(ButtonModalForm {
+                                name: "gandola_manager.PurchaseOrderFromPdfForm",
+                                href: &PurchaseOrderFromPdfGetRouteTag::new(self.id).url(),
+                                form_post_url: &PurchaseOrderFromPdfPostRouteTag::new(self.id).path(),
+                                modal_uid: PurchaseOrderFromPdfModalKey::ID,
+                                label: "Add Purchase Order from PDF",
+                                icon_name: Some("document-arrow-up"),
                                 classes: "btn-outline",
                                 ..Default::default()
                             }))
@@ -962,14 +1063,9 @@ fn site_form_inputs(
     start_date: &str,
     end_date: &str,
     address: &str,
-    po_rent: &str,
-    po_dti: &str,
-    po_tpi: &str,
-    po_extn1: &str,
-    po_extn2: &str,
-    po_extn3: &str,
     gandolas: &[ManyToManyItem],
     invoices: &[ManyToManyItem],
+    purchase_orders: &[ManyToManyItem],
 ) -> Markup {
     let customer_id_s = fk_value(customer_id);
     let choices = choice_pairs(SiteForm::status_choices());
@@ -983,14 +1079,9 @@ fn site_form_inputs(
             .value(SiteFormField::StartDate, start_date)
             .value(SiteFormField::EndDate, end_date)
             .value(SiteFormField::Address, address)
-            .value(SiteFormField::PoRent, po_rent)
-            .value(SiteFormField::PoDti, po_dti)
-            .value(SiteFormField::PoTpi, po_tpi)
-            .value(SiteFormField::PoExtn1, po_extn1)
-            .value(SiteFormField::PoExtn2, po_extn2)
-            .value(SiteFormField::PoExtn3, po_extn3)
             .m2m(SiteFormField::Gandolas, gandolas)
-            .m2m(SiteFormField::Invoices, invoices),
+            .m2m(SiteFormField::Invoices, invoices)
+            .m2m(SiteFormField::PurchaseOrders, purchase_orders),
     )
 }
 
@@ -1005,14 +1096,9 @@ pub struct SiteEditModalPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
-    pub po_rent: String,
-    pub po_dti: String,
-    pub po_tpi: String,
-    pub po_extn1: String,
-    pub po_extn2: String,
-    pub po_extn3: String,
     pub gandolas: Vec<ManyToManyItem>,
     pub invoices: Vec<ManyToManyItem>,
+    pub purchase_orders: Vec<ManyToManyItem>,
     pub error: String,
 }
 
@@ -1036,14 +1122,9 @@ impl RenderTemplate for SiteEditModalPage {
                         &self.start_date,
                         &self.end_date,
                         &self.address,
-                        &self.po_rent,
-                        &self.po_dti,
-                        &self.po_tpi,
-                        &self.po_extn1,
-                        &self.po_extn2,
-                        &self.po_extn3,
                         &self.gandolas,
                         &self.invoices,
+                        &self.purchase_orders,
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -1075,21 +1156,16 @@ pub struct SiteCreateModalPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
-    pub po_rent: String,
-    pub po_dti: String,
-    pub po_tpi: String,
-    pub po_extn1: String,
-    pub po_extn2: String,
-    pub po_extn3: String,
     pub gandolas: Vec<ManyToManyItem>,
     pub invoices: Vec<ManyToManyItem>,
+    pub purchase_orders: Vec<ManyToManyItem>,
     pub error: String,
 }
 
 impl RenderTemplate for SiteCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let form_name = if self.form_name.is_empty() {
-            "p_gandola_manager.SiteCreateForm"
+            "gandola_manager.SiteCreateForm"
         } else {
             self.form_name.as_str()
         };
@@ -1114,14 +1190,9 @@ impl RenderTemplate for SiteCreateModalPage {
                     &self.start_date,
                     &self.end_date,
                     &self.address,
-                    &self.po_rent,
-                    &self.po_dti,
-                    &self.po_tpi,
-                    &self.po_extn1,
-                    &self.po_extn2,
-                    &self.po_extn3,
                     &self.gandolas,
                     &self.invoices,
+                    &self.purchase_orders,
                 ),
                 actions: html! {
                     (container_row("flex justify-end gap-2 mt-2", html! {
@@ -1245,6 +1316,107 @@ impl RenderTemplate for SiteSelectPage {
 }
 
 #[derive(Generic)]
+pub struct SiteFkSelectPage {
+    pub sites: ObjectList<SiteRow>,
+    pub filter_name: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub target_input: String,
+    pub can_edit: bool,
+}
+
+impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSelectPage {
+    fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Status",
+                label: "Status",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .sites
+            .items
+            .iter()
+            .map(|s| TableRow {
+                attrs: row_attr_select(&self.target_input, &s.id.to_string(), &s.name),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &s.name,
+                        classes: "",
+                    }),
+                    status_badge(&s.status, &s.status_label),
+                ],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_picker_route::<
+                        SiteFkSelectTableKey,
+                        SiteFkSelectModalKey,
+                        SiteFkSelectRouteTag,
+                    >(SiteFkSelectRouteTag),
+                    inputs: html! {
+                        (SiteFilterForm::render_inputs(
+                            &FormCtx::form::<SiteFilterForm>()
+                                .value(SiteFilterFormField::Name, &self.filter_name),
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (picker_create_button::<SiteCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<SiteFkSelectTableKey>(
+            &self.path_and_query,
+            self.sites.number,
+            self.sites.num_pages,
+        );
+        data_table_list_refresh::<SiteFkSelectTableKey>(
+            "Select Site",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for SiteFkSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
 pub struct GandolaPreferencesPage {
     pub gandola_product_id: String,
     pub gandola_product_display: String,
@@ -1253,6 +1425,9 @@ pub struct GandolaPreferencesPage {
     pub dti_product_id: String,
     pub dti_product_display: String,
     pub payment_term_lines_json: String,
+    pub gemini_api_key: String,
+    pub gemini_model: String,
+    pub gemini_model_choices: Vec<(String, String)>,
     pub error: String,
     pub can_edit: bool,
 }
@@ -1277,6 +1452,9 @@ impl GandolaPreferencesPage {
                                     .display(GandolaPreferencesFormField::TpiProductId, &self.tpi_product_display)
                                     .value(GandolaPreferencesFormField::DtiProductId, &self.dti_product_id)
                                     .display(GandolaPreferencesFormField::DtiProductId, &self.dti_product_display)
+                                    .value(GandolaPreferencesFormField::GeminiApiKey, &self.gemini_api_key)
+                                    .value(GandolaPreferencesFormField::GeminiModel, &self.gemini_model)
+                                    .choices(GandolaPreferencesFormField::GeminiModel, &self.gemini_model_choices)
                                     .value(GandolaPreferencesFormField::PaymentTermLinesJson, &self.payment_term_lines_json),
                             ),
                             actions: html! {
@@ -1292,6 +1470,11 @@ impl GandolaPreferencesPage {
                         (label_inline("Gandola Rent Product", field_text(FieldText { value: &self.gandola_product_display, classes: "" })))
                         (label_inline("TPI Product", field_text(FieldText { value: &self.tpi_product_display, classes: "" })))
                         (label_inline("DTI Product", field_text(FieldText { value: &self.dti_product_display, classes: "" })))
+                        (label_inline("Gemini API key", field_text(FieldText {
+                            value: if self.gemini_api_key.trim().is_empty() { "Not set" } else { "Configured" },
+                            classes: "",
+                        })))
+                        (label_inline("Gemini model", field_text(FieldText { value: &self.gemini_model, classes: "" })))
                     }
                 }))
             }))
@@ -1321,5 +1504,615 @@ impl RenderTemplate for GandolaPreferencesPage {
             list_crumbs("Settings"),
             self.body(),
         )
+    }
+}
+
+#[derive(Clone)]
+pub struct PurchaseOrderRow {
+    pub id: i64,
+    pub number: String,
+    pub date: String,
+    pub customer_name: String,
+    pub site_name: String,
+}
+
+#[derive(Clone)]
+pub struct PoLineRow {
+    pub item_code: String,
+    pub description: String,
+    pub unit: String,
+    pub delivery_date: String,
+    pub quantity: String,
+    pub rate: String,
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderListPage {
+    pub purchase_orders: ObjectList<PurchaseOrderRow>,
+    pub filter_number: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub can_edit: bool,
+}
+
+impl PurchaseOrderListPage {
+    pub fn render_table(&self) -> Markup {
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Customer",
+                label: "Customer",
+                sort_url: None,
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Site",
+                label: "Site",
+                sort_url: None,
+                push_url: true,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .purchase_orders
+            .items
+            .iter()
+            .map(|po| TableRow {
+                attrs: row_attr_navigate_route(PurchaseOrderDetailRouteTag::new(po.id)),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &po.number,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &po.date,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &po.customer_name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &po.site_name,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<PurchaseOrderTableKey, PurchaseOrderDefaultRouteTag>(
+                        PurchaseOrderDefaultRouteTag,
+                    ),
+                    inputs: PurchaseOrderFilterForm::render_inputs(
+                        &FormCtx::form::<PurchaseOrderFilterForm>()
+                            .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (table_create_button::<PurchaseOrderTableKey, PurchaseOrderCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<PurchaseOrderTableKey>(
+            &self.path_and_query,
+            self.purchase_orders.number,
+            self.purchase_orders.num_pages,
+        );
+        data_table_list_refresh::<PurchaseOrderTableKey>(
+            "Purchase Orders",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderAppPane for PurchaseOrderListPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        scaffold_pane(
+            gandola_menu("purchase_orders"),
+            list_crumbs("Purchase Orders"),
+            self.render_table(),
+        )
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        scaffold_main(list_crumbs("Purchase Orders"), self.render_table())
+    }
+}
+
+impl RenderTemplate for PurchaseOrderListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Purchase Orders",
+            chrome,
+            gandola_menu("purchase_orders"),
+            list_crumbs("Purchase Orders"),
+            self.render_table(),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderDetailPage {
+    pub id: i64,
+    pub number: String,
+    pub date: String,
+    pub customer_id: i64,
+    pub customer_name: String,
+    pub site_id: i64,
+    pub site_name: String,
+    pub file_id: Option<i64>,
+    pub file_name: String,
+    pub billing_address: String,
+    pub shipping_address: String,
+    pub additional_notes: String,
+    pub lines: Vec<PoLineRow>,
+    pub can_edit: bool,
+}
+
+impl PurchaseOrderDetailPage {
+    fn body(&self) -> Markup {
+        let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
+        let site_url = SiteDetailRouteTag::new(self.site_id).url();
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.number, classes: "" }))
+                    (label_inline("Date", field_text(FieldText { value: &self.date, classes: "" })))
+                    (label_inline("Customer", html! {
+                        a class="link" href=(customer_url) { (self.customer_name) }
+                    }))
+                    (label_inline("Site", html! {
+                        a class="link" href=(site_url) { (self.site_name) }
+                    }))
+                    (label_inline("File", html! {
+                        @if let Some(fid) = self.file_id.filter(|&id| id > 0) {
+                            a class="link" href=(VNodeDetailRouteTag::new(fid).url()) { (self.file_name) }
+                        } @else {
+                            (field_text(FieldText { value: "—", classes: "" }))
+                        }
+                    }))
+                    (label_inline("Billing address", field_text(FieldText { value: &self.billing_address, classes: "" })))
+                    (label_inline("Shipping address", field_text(FieldText { value: &self.shipping_address, classes: "" })))
+                    (label_newline("Additional notes", html! {
+                        div class="max-w-3xl whitespace-pre-wrap break-words" {
+                            @if self.additional_notes.trim().is_empty() {
+                                (field_text(FieldText { value: "—", classes: "" }))
+                            } @else {
+                                (self.additional_notes)
+                            }
+                        }
+                    }))
+                    (label_newline("Lines", html! {
+                        div class="w-full min-w-0" {
+                            div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
+                                table class="table table-sm min-w-max w-full" {
+                                    thead {
+                                        tr {
+                                            th class="whitespace-nowrap" { "Item code" }
+                                            th class="min-w-[12rem] max-w-md" { "Description" }
+                                            th class="whitespace-nowrap" { "Unit" }
+                                            th class="whitespace-nowrap" { "Delivery date" }
+                                            th class="whitespace-nowrap text-end" { "Quantity" }
+                                            th class="whitespace-nowrap text-end" { "Rate" }
+                                        }
+                                    }
+                                    tbody {
+                                        @if self.lines.is_empty() {
+                                            tr {
+                                                td colspan="6" class="text-center opacity-50 py-4" { "No lines" }
+                                            }
+                                        } @else {
+                                            @for line in &self.lines {
+                                                tr {
+                                                    td class="whitespace-nowrap" { (line.item_code) }
+                                                    td class="align-top max-w-md min-w-[12rem]" {
+                                                        div class="max-w-md whitespace-normal break-words" {
+                                                            (line.description)
+                                                        }
+                                                    }
+                                                    td class="whitespace-nowrap" { (line.unit) }
+                                                    td class="whitespace-nowrap" { (line.delivery_date) }
+                                                    td class="whitespace-nowrap text-end tabular-nums" { (line.quantity) }
+                                                    td class="whitespace-nowrap text-end tabular-nums" { (line.rate) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    @if self.can_edit {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "gandola_manager.PurchaseOrderEditForm",
+                                href: &PurchaseOrderEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &PurchaseOrderEditPostRouteTag::new(self.id).path(),
+                                modal_uid: PurchaseOrderEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        detail_menu(
+            format!("PO: {}", self.number),
+            PurchaseOrderDetailRouteTag::new(self.id).url(),
+        )
+    }
+}
+
+impl RenderAppPane for PurchaseOrderDetailPage {
+    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+        scaffold_pane(
+            self.menu(),
+            purchase_order_crumbs(self.id, &self.number, None),
+            self.body(),
+        )
+    }
+    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+        scaffold_main(
+            purchase_order_crumbs(self.id, &self.number, None),
+            self.body(),
+        )
+    }
+}
+
+impl RenderTemplate for PurchaseOrderDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Purchase Order",
+            chrome,
+            self.menu(),
+            purchase_order_crumbs(self.id, &self.number, None),
+            self.body(),
+        )
+    }
+}
+
+fn purchase_order_form_inputs(
+    form: &PurchaseOrderForm,
+    customer_display: &str,
+    site_display: &str,
+    file_display: &str,
+) -> Markup {
+    PurchaseOrderForm::render_inputs(
+        &FormCtx::form::<PurchaseOrderForm>()
+            .value(PurchaseOrderFormField::Number, &form.number)
+            .value(PurchaseOrderFormField::Date, &form.date)
+            .value(
+                PurchaseOrderFormField::CustomerId,
+                &fk_value(form.customer_id),
+            )
+            .display(PurchaseOrderFormField::CustomerId, customer_display)
+            .value(PurchaseOrderFormField::SiteId, &fk_value(form.site_id))
+            .display(PurchaseOrderFormField::SiteId, site_display)
+            .value(PurchaseOrderFormField::FileId, &form.file_id)
+            .display(PurchaseOrderFormField::FileId, file_display)
+            .value(
+                PurchaseOrderFormField::PaymentTermLinesJson,
+                &form.payment_term_lines_json,
+            )
+            .value(PurchaseOrderFormField::PoLinesJson, &form.po_lines_json)
+            .value(
+                PurchaseOrderFormField::BillingAddress,
+                &form.billing_address,
+            )
+            .value(
+                PurchaseOrderFormField::ShippingAddress,
+                &form.shipping_address,
+            )
+            .value(
+                PurchaseOrderFormField::AdditionalNotes,
+                &form.additional_notes,
+            ),
+    )
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub form: PurchaseOrderForm,
+    pub customer_display: String,
+    pub site_display: String,
+    pub file_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PurchaseOrderEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        modal_keyed::<PurchaseOrderEditModalKey>(
+            "!max-w-6xl w-full",
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit purchase order" }
+                (form(FormOpts {
+                    classes: "@container",
+                    attrs: form_hx_post_url::<PurchaseOrderEditModalKey>(&modal_edit_post_url(
+                        PurchaseOrderEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: purchase_order_form_inputs(
+                        &self.form,
+                        &self.customer_display,
+                        &self.site_display,
+                        &self.file_display,
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_delete_post_route(
+                            PurchaseOrderDeletePostRouteTag::new(self.id),
+                            ButtonDeletePost {
+                                label: "Delete",
+                                confirm: "Permanently delete this purchase order?",
+                                classes: "btn-error",
+                            },
+                        ))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub target_input: String,
+    pub form: PurchaseOrderForm,
+    pub customer_display: String,
+    pub site_display: String,
+    pub file_display: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PurchaseOrderCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "gandola_manager.PurchaseOrderCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PurchaseOrderCreateModalKey>(
+            "!max-w-6xl w-full",
+            form(FormOpts {
+                title: "Create purchase order",
+                subtitle: "Create a new purchase order",
+                classes: "@container",
+                attrs: form_hx_post_url::<PurchaseOrderCreateModalKey>(&modal_create_post_query(
+                    PurchaseOrderCreatePostRouteTag,
+                    form_name,
+                    &self.refresh_table,
+                    &self.target_input,
+                )),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: purchase_order_form_inputs(
+                    &self.form,
+                    &self.customer_display,
+                    &self.site_display,
+                    &self.file_display,
+                ),
+                actions: html! {
+                    (container_row("flex justify-end gap-2 mt-2", html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save purchase order",
+                            classes: "btn-primary",
+                            ..Default::default()
+                        }))
+                    }))
+                },
+                ..Default::default()
+            }),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderFromPdfModalPage {
+    pub site_id: i64,
+    pub form_name: String,
+    pub refresh_table: String,
+    pub target_input: String,
+    pub error: String,
+}
+
+impl RenderTemplate for PurchaseOrderFromPdfModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "gandola_manager.PurchaseOrderFromPdfForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<PurchaseOrderFromPdfModalKey>(
+            "max-w-lg w-full",
+            form(FormOpts {
+                title: "Add Purchase Order from PDF",
+                subtitle: "Upload a purchase order PDF. Gemini will fill the fields and create the order.",
+                classes: "@container",
+                attrs: form_hx_post_url::<PurchaseOrderFromPdfModalKey>(&modal_create_post_query(
+                    PurchaseOrderFromPdfPostRouteTag::new(self.site_id),
+                    form_name,
+                    &self.refresh_table,
+                    &self.target_input,
+                ))
+                .set("hx-encoding", "multipart/form-data")
+                .set("hx-indicator:append", "#gandola-po-from-pdf-busy")
+                .set("hx-disabled-elt", "find button[type=submit]"),
+                enctype: Some("multipart/form-data"),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                inputs: PurchaseOrderFromPdfForm::render_inputs(&FormCtx::form::<
+                    PurchaseOrderFromPdfForm,
+                >()),
+                actions: html! {
+                    div id="gandola-po-from-pdf-busy" class="group flex flex-col items-end gap-2 mt-2" {
+                        p class="hidden group-[.htmx-request]:inline-flex m-0 items-center gap-2 text-sm text-base-content/70"
+                            aria-live="polite"
+                        {
+                            span class="loading loading-spinner loading-sm" {}
+                            "Reading the PDF with Gemini…"
+                        }
+                        (button_submit(ButtonSubmit {
+                            label: "Add Purchase Order from PDF",
+                            classes: "btn-primary group-[.htmx-request]:hidden",
+                            ..Default::default()
+                        }))
+                    }
+                },
+                ..Default::default()
+            }),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct PurchaseOrderSelectPage {
+    pub purchase_orders: ObjectList<PurchaseOrderRow>,
+    pub filter_number: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub target_input: String,
+    pub can_edit: bool,
+}
+
+impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey>
+    for PurchaseOrderSelectPage
+{
+    fn render_table(&self) -> Markup {
+        let target = if self.target_input.is_empty() {
+            "PurchaseOrders"
+        } else {
+            self.target_input.as_str()
+        };
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: "Date",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .purchase_orders
+            .items
+            .iter()
+            .map(|po| TableRow {
+                attrs: row_attr_select_multi(target, &po.id.to_string(), &po.number),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &po.number,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &po.date,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_picker_route::<
+                        PurchaseOrderSelectTableKey,
+                        PurchaseOrderSelectModalKey,
+                        PurchaseOrderSelectRouteTag,
+                    >(PurchaseOrderSelectRouteTag),
+                    inputs: html! {
+                        (PurchaseOrderFilterForm::render_inputs(
+                            &FormCtx::form::<PurchaseOrderFilterForm>()
+                                .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        if self.can_edit {
+            actions = html! {
+                (actions)
+                (picker_create_button::<PurchaseOrderCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<PurchaseOrderSelectTableKey>(
+            &self.path_and_query,
+            self.purchase_orders.number,
+            self.purchase_orders.num_pages,
+        );
+        data_table_list_refresh::<PurchaseOrderSelectTableKey>(
+            "Select Purchase Orders",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for PurchaseOrderSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
     }
 }

@@ -1,8 +1,9 @@
 use super::{
     handlers,
     keys::{
-        GandolaSelectModalKey, GandolaSelectTableKey, GandolaTableKey, SiteSelectModalKey,
-        SiteSelectTableKey, SiteTableKey,
+        GandolaSelectModalKey, GandolaSelectTableKey, GandolaTableKey, PurchaseOrderSelectModalKey,
+        PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteFkSelectModalKey,
+        SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
 };
 
@@ -26,8 +27,20 @@ lariv_rs::define_plugin_routes! {
         post SiteEditPostRouteTag, "/gandola/sites/s/{id}/edit", handlers::sites::edit_post;
         post SiteDeletePostRouteTag, "/gandola/sites/s/{id}/delete", bare handlers::sites::delete_post, redirect;
         get SiteSelectRouteTag, "/gandola/sites/pick", handlers::sites::select, multi_select(SiteSelectTableKey, SiteSelectModalKey);
+        get SiteFkSelectRouteTag, "/gandola/sites/pick-site", handlers::sites::fk_select, fk_select(SiteFkSelectTableKey, SiteFkSelectModalKey);
 
         get GandolaPreferencesRouteTag, "/gandola/preferences", handlers::preferences::get;
         post GandolaPreferencesPostRouteTag, "/gandola/preferences", handlers::preferences::post;
+
+        get PurchaseOrderDefaultRouteTag, "/gandola/purchase-orders", handlers::purchase_orders::list, fragment(PurchaseOrderTableKey);
+        get PurchaseOrderCreateGetRouteTag, "/gandola/purchase-orders/create", handlers::purchase_orders::create_get, modal;
+        post PurchaseOrderCreatePostRouteTag, "/gandola/purchase-orders/create", handlers::purchase_orders::create_post;
+        get PurchaseOrderFromPdfGetRouteTag, "/gandola/sites/s/{id}/purchase-orders/create-from-pdf", handlers::purchase_orders::from_pdf_get, modal;
+        post PurchaseOrderFromPdfPostRouteTag, "/gandola/sites/s/{id}/purchase-orders/create-from-pdf", handlers::purchase_orders::from_pdf_post;
+        get PurchaseOrderDetailRouteTag, "/gandola/purchase-orders/po/{id}", handlers::purchase_orders::detail;
+        get PurchaseOrderEditGetRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_get, modal;
+        post PurchaseOrderEditPostRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_post;
+        post PurchaseOrderDeletePostRouteTag, "/gandola/purchase-orders/po/{id}/delete", bare handlers::purchase_orders::delete_post, redirect;
+        get PurchaseOrderSelectRouteTag, "/gandola/purchase-orders/pick", handlers::purchase_orders::select, multi_select(PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey);
     ]
 }

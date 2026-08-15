@@ -9,3 +9,12 @@ lariv_rs::swap_key!(SiteCreateModalKey, "gandola-site-create-modal");
 lariv_rs::swap_key!(SiteEditModalKey, "gandola-site-edit-modal");
 lariv_rs::swap_key!(SiteSelectTableKey, "gandola-site-selection-table");
 lariv_rs::swap_key!(SiteSelectModalKey, "gandola-site-selection-modal");
+lariv_rs::swap_key!(SiteFkSelectTableKey, "gandola-site-fk-selection-table");
+lariv_rs::swap_key!(SiteFkSelectModalKey, "gandola-site-fk-selection-modal");
+
+lariv_rs::swap_key!(PurchaseOrderTableKey, "gandola-po-table");
+lariv_rs::swap_key!(PurchaseOrderCreateModalKey, "gandola-po-create-modal");
+lariv_rs::swap_key!(PurchaseOrderFromPdfModalKey, "gandola-po-from-pdf-modal");
+lariv_rs::swap_key!(PurchaseOrderEditModalKey, "gandola-po-edit-modal");
+lariv_rs::swap_key!(PurchaseOrderSelectTableKey, "gandola-po-selection-table");
+lariv_rs::swap_key!(PurchaseOrderSelectModalKey, "gandola-po-selection-modal");

@@ -24,20 +24,22 @@ use crate::{
     forms::SiteForm,
     handlers::ModalNameQuery,
     keys::{
-        SiteCreateModalKey, SiteEditModalKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        SiteCreateModalKey, SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey,
+        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
     routes::SiteDetailRouteTag,
     scope::{
         apply_name_filter_sites, customer_name, find_site_scoped, gandola_items_for_site,
         gandola_items_from_ids, invoice_items_for_site, invoice_items_from_ids, is_superuser,
-        load_gandolas_for_site, opt_string, related_invoices_for_site, scope_sites,
-        sync_site_gandolas, sync_site_invoices,
+        load_gandolas_for_site, load_purchase_orders_for_site, opt_string,
+        purchase_order_items_for_site, purchase_order_items_from_ids, related_invoices_for_site,
+        scope_sites, sync_site_gandolas, sync_site_invoices, sync_site_purchase_orders,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
     templates::{
         RelatedInvoice, RelatedName, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
-        SiteListPage, SiteRow, SiteSelectPage,
+        SiteFkSelectPage, SiteListPage, SitePurchaseOrderRow, SiteRow, SiteSelectPage,
     },
 };
 
@@ -79,8 +81,7 @@ fn parse_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
 }
 
 fn format_date(d: Option<NaiveDate>) -> String {
-    d.map(lariv_rs::datetime::format_date)
-        .unwrap_or_default()
+    d.map(lariv_rs::datetime::format_date).unwrap_or_default()
 }
 
 async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRow {
@@ -173,8 +174,10 @@ pub async fn detail(
     let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(LIST_URL).into_response();
     };
-    let gandolas = load_gandolas_for_site(&state.db, s.id).await;
-    let invoices = related_invoices_for_site(&state.db, s.id).await;
+    let mut gandolas = load_gandolas_for_site(&state.db, s.id).await;
+    gandolas.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+    let invoices = related_invoices_for_site(&state.db, s.id, &ctx.timezone).await;
+    let purchase_orders = load_purchase_orders_for_site(&state.db, s.id).await;
     let page = SiteDetailPage {
         id: s.id,
         name: s.name,
@@ -185,12 +188,6 @@ pub async fn detail(
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
         address: s.address.unwrap_or_default(),
-        po_rent: s.po_rent.unwrap_or_default(),
-        po_dti: s.po_dti.unwrap_or_default(),
-        po_tpi: s.po_tpi.unwrap_or_default(),
-        po_extn1: s.po_extn1.unwrap_or_default(),
-        po_extn2: s.po_extn2.unwrap_or_default(),
-        po_extn3: s.po_extn3.unwrap_or_default(),
         gandolas: gandolas
             .into_iter()
             .map(|g| RelatedName {
@@ -198,9 +195,23 @@ pub async fn detail(
                 name: g.name,
             })
             .collect(),
+        purchase_orders: purchase_orders
+            .into_iter()
+            .map(|po| SitePurchaseOrderRow {
+                id: po.id,
+                number: po.number,
+                date: lariv_rs::datetime::format_date(po.date),
+            })
+            .collect(),
         invoices: invoices
             .into_iter()
-            .map(|(id, name, href)| RelatedInvoice { id, name, href })
+            .map(|(id, name, href, date, status)| RelatedInvoice {
+                id,
+                name,
+                href,
+                date,
+                status,
+            })
             .collect(),
         can_edit: is_superuser(&ctx),
     };
@@ -214,12 +225,6 @@ struct ParsedSite {
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
     address: Option<String>,
-    po_rent: Option<String>,
-    po_dti: Option<String>,
-    po_tpi: Option<String>,
-    po_extn1: Option<String>,
-    po_extn2: Option<String>,
-    po_extn3: Option<String>,
 }
 
 fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
@@ -239,12 +244,6 @@ fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
         start_date,
         end_date,
         address: opt_string(form.address.clone()),
-        po_rent: opt_string(form.po_rent.clone()),
-        po_dti: opt_string(form.po_dti.clone()),
-        po_tpi: opt_string(form.po_tpi.clone()),
-        po_extn1: opt_string(form.po_extn1.clone()),
-        po_extn2: opt_string(form.po_extn2.clone()),
-        po_extn3: opt_string(form.po_extn3.clone()),
     })
 }
 
@@ -253,6 +252,7 @@ async fn create_page_from_form(
     form: &SiteForm,
     gandolas: Vec<ManyToManyItem>,
     invoices: Vec<ManyToManyItem>,
+    purchase_orders: Vec<ManyToManyItem>,
     form_name: String,
     refresh_table: String,
     target_input: String,
@@ -269,14 +269,9 @@ async fn create_page_from_form(
         start_date: form.start_date.clone(),
         end_date: form.end_date.clone(),
         address: form.address.clone(),
-        po_rent: form.po_rent.clone(),
-        po_dti: form.po_dti.clone(),
-        po_tpi: form.po_tpi.clone(),
-        po_extn1: form.po_extn1.clone(),
-        po_extn2: form.po_extn2.clone(),
-        po_extn3: form.po_extn3.clone(),
         gandolas,
         invoices,
+        purchase_orders,
         error,
     }
 }
@@ -300,14 +295,9 @@ pub async fn create_get(
         start_date: String::new(),
         end_date: String::new(),
         address: String::new(),
-        po_rent: String::new(),
-        po_dti: String::new(),
-        po_tpi: String::new(),
-        po_extn1: String::new(),
-        po_extn2: String::new(),
-        po_extn3: String::new(),
         gandolas: Vec::new(),
         invoices: Vec::new(),
+        purchase_orders: Vec::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -326,6 +316,7 @@ pub async fn create_post(
     }
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
     let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
+    let purchase_orders = purchase_order_items_from_ids(&state.db, &form.purchase_orders).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
         Err(e) => {
@@ -334,6 +325,7 @@ pub async fn create_post(
                 &form,
                 gandolas,
                 invoices,
+                purchase_orders,
                 q.form_name(),
                 q.refresh_table(),
                 q.target_input(),
@@ -352,12 +344,6 @@ pub async fn create_post(
         start_date: Set(parsed.start_date),
         end_date: Set(parsed.end_date),
         address: Set(parsed.address),
-        po_rent: Set(parsed.po_rent),
-        po_dti: Set(parsed.po_dti),
-        po_tpi: Set(parsed.po_tpi),
-        po_extn1: Set(parsed.po_extn1),
-        po_extn2: Set(parsed.po_extn2),
-        po_extn3: Set(parsed.po_extn3),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -370,6 +356,7 @@ pub async fn create_post(
                     &form,
                     gandolas,
                     invoices,
+                    purchase_orders,
                     q.form_name(),
                     q.refresh_table(),
                     q.target_input(),
@@ -385,6 +372,30 @@ pub async fn create_post(
                     &form,
                     gandolas,
                     invoices,
+                    purchase_orders,
+                    q.form_name(),
+                    q.refresh_table(),
+                    q.target_input(),
+                    e,
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            if let Err(e) = sync_site_purchase_orders(
+                &state.db,
+                saved.id,
+                saved.customer_id,
+                &form.purchase_orders,
+            )
+            .await
+            {
+                let page = create_page_from_form(
+                    &state.db,
+                    &form,
+                    gandolas,
+                    invoices,
+                    purchase_orders,
                     q.form_name(),
                     q.refresh_table(),
                     q.target_input(),
@@ -409,6 +420,7 @@ pub async fn create_post(
                 &form,
                 gandolas,
                 invoices,
+                purchase_orders,
                 q.form_name(),
                 q.refresh_table(),
                 q.target_input(),
@@ -443,14 +455,9 @@ pub async fn edit_get(
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
         address: s.address.unwrap_or_default(),
-        po_rent: s.po_rent.unwrap_or_default(),
-        po_dti: s.po_dti.unwrap_or_default(),
-        po_tpi: s.po_tpi.unwrap_or_default(),
-        po_extn1: s.po_extn1.unwrap_or_default(),
-        po_extn2: s.po_extn2.unwrap_or_default(),
-        po_extn3: s.po_extn3.unwrap_or_default(),
         gandolas: gandola_items_for_site(&state.db, s.id).await,
         invoices: invoice_items_for_site(&state.db, s.id).await,
+        purchase_orders: purchase_order_items_for_site(&state.db, s.id).await,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -462,6 +469,7 @@ async fn edit_page_from_form(
     form: &SiteForm,
     gandolas: Vec<ManyToManyItem>,
     invoices: Vec<ManyToManyItem>,
+    purchase_orders: Vec<ManyToManyItem>,
     form_name: String,
     error: String,
 ) -> SiteEditModalPage {
@@ -475,14 +483,9 @@ async fn edit_page_from_form(
         start_date: form.start_date.clone(),
         end_date: form.end_date.clone(),
         address: form.address.clone(),
-        po_rent: form.po_rent.clone(),
-        po_dti: form.po_dti.clone(),
-        po_tpi: form.po_tpi.clone(),
-        po_extn1: form.po_extn1.clone(),
-        po_extn2: form.po_extn2.clone(),
-        po_extn3: form.po_extn3.clone(),
         gandolas,
         invoices,
+        purchase_orders,
         error,
     }
 }
@@ -504,12 +507,21 @@ pub async fn edit_post(
     };
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
     let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
+    let purchase_orders = purchase_order_items_from_ids(&state.db, &form.purchase_orders).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
         Err(e) => {
-            let page =
-                edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
-                    .await;
+            let page = edit_page_from_form(
+                &state.db,
+                id,
+                &form,
+                gandolas,
+                invoices,
+                purchase_orders,
+                q.form_name(),
+                e,
+            )
+            .await;
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                 .into_response();
         }
@@ -523,28 +535,60 @@ pub async fn edit_post(
         start_date: Set(parsed.start_date),
         end_date: Set(parsed.end_date),
         address: Set(parsed.address),
-        po_rent: Set(parsed.po_rent),
-        po_dti: Set(parsed.po_dti),
-        po_tpi: Set(parsed.po_tpi),
-        po_extn1: Set(parsed.po_extn1),
-        po_extn2: Set(parsed.po_extn2),
-        po_extn3: Set(parsed.po_extn3),
         updated_at: Set(Some(now)),
         ..Default::default()
     };
     match model.update(&state.db).await {
         Ok(_) => {
             if let Err(e) = sync_site_gandolas(&state.db, id, &form.gandolas).await {
-                let page =
-                    edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
-                        .await;
+                let page = edit_page_from_form(
+                    &state.db,
+                    id,
+                    &form,
+                    gandolas,
+                    invoices,
+                    purchase_orders,
+                    q.form_name(),
+                    e,
+                )
+                .await;
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
             if let Err(e) = sync_site_invoices(&state.db, id, &form.invoices).await {
-                let page =
-                    edit_page_from_form(&state.db, id, &form, gandolas, invoices, q.form_name(), e)
-                        .await;
+                let page = edit_page_from_form(
+                    &state.db,
+                    id,
+                    &form,
+                    gandolas,
+                    invoices,
+                    purchase_orders,
+                    q.form_name(),
+                    e,
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+            if let Err(e) = sync_site_purchase_orders(
+                &state.db,
+                id,
+                parsed.customer_id,
+                &form.purchase_orders,
+            )
+            .await
+            {
+                let page = edit_page_from_form(
+                    &state.db,
+                    id,
+                    &form,
+                    gandolas,
+                    invoices,
+                    purchase_orders,
+                    q.form_name(),
+                    e,
+                )
+                .await;
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
@@ -557,6 +601,7 @@ pub async fn edit_post(
                 &form,
                 gandolas,
                 invoices,
+                purchase_orders,
                 q.form_name(),
                 e.to_string(),
             )
@@ -597,4 +642,23 @@ pub async fn select(
         can_edit: is_superuser(&ctx),
     };
     respond_picker_select::<SiteSelectTableKey, SiteSelectModalKey, _>(&htmx, &page)
+}
+
+pub async fn fk_select(
+    Cap(state): Cap<GandolaManagerState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<SiteSelectQuery>,
+) -> maud::Markup {
+    let sites = query_sites(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let page = SiteFkSelectPage {
+        sites,
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        target_input: q.target_input.clone().unwrap_or_else(|| "SiteID".into()),
+        can_edit: is_superuser(&ctx),
+    };
+    respond_picker_select::<SiteFkSelectTableKey, SiteFkSelectModalKey, _>(&htmx, &page)
 }

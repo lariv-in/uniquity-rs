@@ -19,12 +19,6 @@ pub struct Model {
     pub end_date: Option<NaiveDate>,
     pub customer_id: i64,
     pub status: SiteStatus,
-    pub po_rent: Option<String>,
-    pub po_dti: Option<String>,
-    pub po_tpi: Option<String>,
-    pub po_extn1: Option<String>,
-    pub po_extn2: Option<String>,
-    pub po_extn3: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -33,6 +27,8 @@ pub enum Relation {
     GandolaLinks,
     #[sea_orm(has_many = "super::site_invoice_link::Entity")]
     InvoiceLinks,
+    #[sea_orm(has_many = "super::purchase_order::Entity")]
+    PurchaseOrders,
 }
 
 impl Related<super::gandola_site_link::Entity> for Entity {
@@ -54,6 +50,12 @@ impl Related<super::gandola::Entity> for Entity {
 impl Related<super::site_invoice_link::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::InvoiceLinks.def()
+    }
+}
+
+impl Related<super::purchase_order::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PurchaseOrders.def()
     }
 }
 

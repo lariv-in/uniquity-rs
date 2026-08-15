@@ -4,9 +4,11 @@ use async_trait::async_trait;
 use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
 
+use lariv_rs::components::label_inline;
 use lariv_rs::html_form::{FormCtx, HtmlForm, UrlencodedFields};
 use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
-use lariv_rs::components::label_inline;
+use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
+use serde_json::{Value, json};
 
 use crate::forms::{DraftInvoiceSitesForm, DraftInvoiceSitesFormField};
 use crate::routes::SiteDetailRouteTag;
@@ -20,6 +22,9 @@ pub struct InvoiceSitesAddon;
 
 pub fn register() {
     lariv_rs::plugins::finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
+        &INVOICE_SITES_ADDON,
+    );
+    lariv_rs::plugins::finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
         &INVOICE_SITES_ADDON,
     );
 }
@@ -79,5 +84,42 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
     ) -> Result<(), String> {
         let form: DraftInvoiceSitesForm = fields.deserialize().map_err(|e| e.to_string())?;
         sync_invoice_sites(db, draft_id, &form.sites).await
+    }
+}
+
+#[async_trait]
+impl InvoicePdfContextAddon for InvoiceSitesAddon {
+    fn id(&self) -> &'static str {
+        "uniquity-site-invoices"
+    }
+
+    async fn extra_context(
+        &self,
+        db: &DatabaseConnection,
+        draft_invoice_id: i64,
+    ) -> Result<Value, String> {
+        let sites = load_sites_for_invoice(db, draft_invoice_id).await;
+        Ok(json!({
+            "Sites": sites
+                .into_iter()
+                .map(|s| {
+                    json!({
+                        "ID": s.id,
+                        "Name": s.name,
+                        "Address": s.address.unwrap_or_default(),
+                    })
+                })
+                .collect::<Vec<_>>(),
+        }))
+    }
+
+    fn sample_extra_context(&self) -> Value {
+        json!({
+            "Sites": [{
+                "ID": 1,
+                "Name": "Sample Site",
+                "Address": "Plot 12, Industrial Area",
+            }]
+        })
     }
 }

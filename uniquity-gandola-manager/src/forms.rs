@@ -1,13 +1,19 @@
 use lariv_rs::html_form::{
-    html_form,
-    widgets::{Date, Select, Text, Textarea},
+    Upload, html_form,
+    widgets::{Date, File, Password, Select, Text, Textarea},
 };
 use lariv_rs::plugins::customer::routes::CustomerFkSelectRouteTag;
+use lariv_rs::plugins::filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_rs::plugins::finance_invoices::forms::PaymentTermLinesDraft;
 use lariv_rs::plugins::finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
 use lariv_rs::plugins::finance_products::routes::ProductFkSelectRouteTag;
 
-use super::routes::{GandolaSelectRouteTag, SiteSelectRouteTag};
+use crate::po_line_editor::PurchaseOrderLinesDraft;
+use crate::po_payment_term::PurchaseOrderPaymentTermLinesDraft;
+
+use super::routes::{
+    GandolaSelectRouteTag, PurchaseOrderSelectRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
+};
 use super::site_status::SiteStatus;
 
 #[html_form]
@@ -59,24 +65,6 @@ pub struct SiteForm {
     #[form(label = "Address", widget = Textarea)]
     pub address: String,
 
-    #[form(label = "PO Rent", widget = Text)]
-    pub po_rent: String,
-
-    #[form(label = "PO DTI", widget = Text)]
-    pub po_dti: String,
-
-    #[form(label = "PO TPI", widget = Text)]
-    pub po_tpi: String,
-
-    #[form(label = "PO Extension 1", widget = Text)]
-    pub po_extn1: String,
-
-    #[form(label = "PO Extension 2", widget = Text)]
-    pub po_extn2: String,
-
-    #[form(label = "PO Extension 3", widget = Text)]
-    pub po_extn3: String,
-
     #[form(
         label = "Gandolas",
         widget = ManyToMany,
@@ -94,6 +82,15 @@ pub struct SiteForm {
         placeholder = "Select invoices…"
     )]
     pub invoices: Vec<i64>,
+
+    #[form(
+        label = "Purchase Orders",
+        widget = ManyToMany,
+        route = PurchaseOrderSelectRouteTag,
+        swap_key = "site-purchase-orders",
+        placeholder = "Select purchase orders…"
+    )]
+    pub purchase_orders: Vec<i64>,
 }
 
 impl SiteForm {
@@ -152,6 +149,85 @@ pub struct GandolaPreferencesForm {
     )]
     pub dti_product_id: String,
 
+    #[form(label = "Gemini API key", widget = Password)]
+    pub gemini_api_key: String,
+
+    #[form(label = "Gemini model", widget = Select, required, choices = "gemini_model")]
+    pub gemini_model: String,
+
     #[form(label = "Invoice payment term", widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
+}
+
+#[html_form]
+pub struct PurchaseOrderForm {
+    #[form(label = "Number", required, widget = Text)]
+    pub number: String,
+
+    #[form(label = "Date", required, widget = Date)]
+    pub date: String,
+
+    #[form(
+        label = "Customer",
+        required,
+        widget = ForeignKey,
+        route = CustomerFkSelectRouteTag,
+        swap_key = "gandola-po-customer",
+        display = "customer",
+        placeholder = "Select customer…"
+    )]
+    pub customer_id: i64,
+
+    #[form(
+        label = "Site",
+        required,
+        widget = ForeignKey,
+        route = SiteFkSelectRouteTag,
+        swap_key = "gandola-po-site",
+        display = "site",
+        placeholder = "Select site…"
+    )]
+    pub site_id: i64,
+
+    #[form(
+        label = "File",
+        widget = ForeignKey,
+        route = VNodeFileSelectRouteTag,
+        swap_key = "gandola-po-file",
+        display = "file",
+        placeholder = "Select file…"
+    )]
+    pub file_id: String,
+
+    #[form(label = "Payment term", required, widget = PurchaseOrderPaymentTermLinesDraft)]
+    pub payment_term_lines_json: String,
+
+    #[form(label = "Lines", required, widget = PurchaseOrderLinesDraft)]
+    pub po_lines_json: String,
+
+    #[form(label = "Billing address", widget = Textarea)]
+    pub billing_address: String,
+
+    #[form(label = "Shipping address", widget = Textarea)]
+    pub shipping_address: String,
+
+    #[form(label = "Additional notes", widget = Textarea)]
+    pub additional_notes: String,
+}
+
+#[html_form]
+pub struct PurchaseOrderFilterForm {
+    #[form(label = "Number", widget = Text)]
+    pub number: String,
+}
+
+#[html_form]
+pub struct PurchaseOrderFromPdfForm {
+    #[form(
+        label = "Purchase order PDF",
+        widget = File,
+        accept = ".pdf,application/pdf",
+        required
+    )]
+    pub pdf: Upload,
 }

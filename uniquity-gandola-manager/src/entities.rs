@@ -1,6 +1,10 @@
 pub mod gandola;
 pub mod gandola_site_link;
 pub mod preferences;
+pub mod purchase_order;
+pub mod purchase_order_line;
+pub mod purchase_order_payment_term;
+pub mod purchase_order_payment_term_line;
 pub mod site;
 pub mod site_invoice_link;
 
@@ -8,5 +12,9 @@ pub use crate::site_status::SiteStatus;
 pub use gandola::Entity as GandolaEntity;
 pub use gandola_site_link::Entity as GandolaSiteLinkEntity;
 pub use preferences::Entity as GandolaPreferencesEntity;
+pub use purchase_order::Entity as PurchaseOrderEntity;
+pub use purchase_order_line::Entity as PurchaseOrderLineEntity;
+pub use purchase_order_payment_term::Entity as PurchaseOrderPaymentTermEntity;
+pub use purchase_order_payment_term_line::Entity as PurchaseOrderPaymentTermLineEntity;
 pub use site::Entity as SiteEntity;
 pub use site_invoice_link::Entity as SiteInvoiceLinkEntity;
