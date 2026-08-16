@@ -10,9 +10,11 @@ frunk_core = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 async-trait = { workspace = true }
+clap = { version = "4", features = ["derive"] }
 axum = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+csv = "1.3"
 maud = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }

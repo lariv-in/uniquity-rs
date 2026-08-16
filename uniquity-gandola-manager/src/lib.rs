@@ -3,6 +3,7 @@
 //! Gandola Manager plugin — gandolas, sites, and product settings.
 
 pub mod apps;
+pub mod cli;
 pub mod create_modals;
 pub mod entities;
 pub mod forms;
@@ -12,10 +13,13 @@ pub mod invoice_sites;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod import;
+pub mod import_cmd;
 pub mod po_from_pdf;
 pub mod po_line_editor;
 pub mod po_lines;
 pub mod po_payment_term;
+pub mod po_persist;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
@@ -60,6 +64,7 @@ lariv_rs::define_plugin_install! {
         http(routes::Hook),
         state(StateHook),
         seeds(SeedsHook),
+        commands(cli::Hook),
     ]
 }
 

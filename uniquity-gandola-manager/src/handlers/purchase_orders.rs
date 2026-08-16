@@ -5,8 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
 };
 
 use lariv_rs::{
@@ -28,7 +27,7 @@ use lariv_rs::{
 
 use crate::{
     entities::{
-        PurchaseOrderPaymentTermEntity, SiteEntity,
+        PurchaseOrderPaymentTermEntity,
         purchase_order::{self, Entity as PurchaseOrderEntity},
     },
     forms::{PurchaseOrderForm, PurchaseOrderFromPdfForm},
@@ -85,14 +84,6 @@ fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
-}
-
-fn parse_date(s: &str) -> Result<chrono::NaiveDate, &'static str> {
-    let s = s.trim();
-    if s.is_empty() {
-        return Err("date is required");
-    }
-    lariv_rs::datetime::parse_date(s).ok_or("invalid date")
 }
 
 fn format_date(d: chrono::NaiveDate) -> String {
@@ -158,11 +149,7 @@ async fn number_taken(
     number: &str,
     except_id: Option<i64>,
 ) -> bool {
-    let mut query = PurchaseOrderEntity::find().filter(purchase_order::Column::Number.eq(number));
-    if let Some(id) = except_id {
-        query = query.filter(purchase_order::Column::Id.ne(id));
-    }
-    query.one(db).await.ok().flatten().is_some()
+    crate::po_persist::purchase_order_number_taken(db, number, except_id).await
 }
 
 struct PoFormContext {
@@ -221,20 +208,7 @@ fn empty_form() -> PurchaseOrderForm {
 }
 
 fn validate_form(form: &PurchaseOrderForm) -> Result<(chrono::NaiveDate, String), String> {
-    let number = form.number.trim();
-    if number.is_empty() {
-        return Err("number is required".into());
-    }
-    if form.customer_id <= 0 {
-        return Err("select a customer".into());
-    }
-    if form.site_id <= 0 {
-        return Err("select a site".into());
-    }
-    let date = parse_date(&form.date).map_err(|e| e.to_string())?;
-    parse_payment_term_lines_json(&form.payment_term_lines_json)?;
-    parse_po_lines_json(&form.po_lines_json)?;
-    Ok((date, number.to_string()))
+    crate::po_persist::validate_purchase_order_form(form)
 }
 
 async fn resolve_site_and_customer(
@@ -242,19 +216,7 @@ async fn resolve_site_and_customer(
     site_id: i64,
     customer_id: i64,
 ) -> Result<(i64, i64), String> {
-    if site_id <= 0 {
-        return Err("select a site".into());
-    }
-    let site = SiteEntity::find_by_id(site_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .ok_or_else(|| "select a site".to_string())?;
-    if customer_id > 0 && site.customer_id != customer_id {
-        return Err("site does not belong to the selected customer".into());
-    }
-    Ok((site.id, site.customer_id))
+    crate::po_persist::resolve_site_and_customer(db, site_id, customer_id).await
 }
 
 pub async fn list(
@@ -381,7 +343,7 @@ pub async fn create_post(
     let form_name = q.form_name();
     let refresh_table = q.refresh_table();
     let target_input = q.target_input();
-    match persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
+    match crate::po_persist::persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
         Ok(saved) => respond_create_modal_done_fk::<PurchaseOrderCreateModalKey>(
             &htmx,
             &refresh_table,
@@ -395,54 +357,6 @@ pub async fn create_post(
                 create_modal_from_form(&state.db, &form, form_name, refresh_table, target_input, e)
                     .await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
-    }
-}
-
-async fn persist_new_purchase_order(
-    db: &sea_orm::DatabaseConnection,
-    form: &PurchaseOrderForm,
-    tz: &str,
-) -> Result<purchase_order::Model, String> {
-    let (date, number) = validate_form(form)?;
-    let (site_id, customer_id) =
-        resolve_site_and_customer(db, form.site_id, form.customer_id).await?;
-    if number_taken(db, &number, None).await {
-        return Err("number must be unique".into());
-    }
-    let lines = parse_po_lines_json(&form.po_lines_json)?;
-    let term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
-    let term = upsert_purchase_order_payment_term_lines(db, None, &term_lines, tz).await?;
-    let now = Utc::now();
-    let model = purchase_order::ActiveModel {
-        number: Set(number),
-        date: Set(date),
-        customer_id: Set(customer_id),
-        site_id: Set(site_id),
-        file_id: Set(parse_optional_i64(&form.file_id)),
-        payment_term_id: Set(Some(term.id)),
-        billing_address: Set(opt_string(form.billing_address.clone())),
-        shipping_address: Set(opt_string(form.shipping_address.clone())),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    };
-    match model.insert(db).await {
-        Ok(saved) => {
-            if let Err(e) = replace_po_lines(db, saved.id, &lines).await {
-                let _ = PurchaseOrderEntity::delete_by_id(saved.id).exec(db).await;
-                let _ = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
-                    .exec(db)
-                    .await;
-                return Err(e);
-            }
-            Ok(saved)
-        }
-        Err(e) => {
-            let _ = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
-                .exec(db)
-                .await;
-            Err(e.to_string())
         }
     }
 }
@@ -553,7 +467,7 @@ pub async fn from_pdf_post(
         }
     };
     let form = form_from_extracted(&extracted, site.customer_id, site.id, file_id);
-    match persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
+    match crate::po_persist::persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
         Ok(saved) => respond_create_modal_done_fk::<PurchaseOrderFromPdfModalKey>(
             &htmx,
             &q.refresh_table(),

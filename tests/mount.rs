@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use lariv_rs::app::App;
+use lariv_rs::app::{App, MountedApp};
+use lariv_rs::command::{BuildCli, CommandCapability, CommandTag};
+use lariv_rs::traits::get::GetByTag;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
@@ -27,6 +29,24 @@ fn temp_config(body: &str) -> PathBuf {
     ));
     std::fs::write(&path, body).expect("write temp config");
     path
+}
+
+fn assert_gandola_import_cli<M, CmdIdx, Cmds, Proof>(app: MountedApp<M>)
+where
+    M: GetByTag<CommandTag, CmdIdx, Value = CommandCapability<Cmds>> + Send + 'static,
+    Cmds: BuildCli<M, Proof>,
+    CmdIdx: Send + Sync + 'static,
+{
+    let cmd_cap = app.get_capability_output::<CommandTag, CmdIdx>();
+    let cli = cmd_cap.build_cli::<M, Proof>();
+    let names: Vec<String> = cli
+        .get_subcommands()
+        .map(|sub| sub.get_name().to_string())
+        .collect();
+    assert!(
+        names.contains(&"gandola-import".to_string()),
+        "expected gandola-import subcommand, got: {names:?}"
+    );
 }
 
 #[tokio::test]
@@ -61,7 +81,8 @@ async fn uniquity_stack_mounts() {
                     let path = temp_config(MINIMAL_DB_TOML);
                     let app = app.load_config(&path).await.expect("load_config");
                     std::fs::remove_file(&path).ok();
-                    let _mounted = app.mount();
+                    let mounted = app.mount();
+                    assert_gandola_import_cli(mounted);
                 });
         })
         .expect("spawn mount thread");
