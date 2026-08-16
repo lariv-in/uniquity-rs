@@ -770,9 +770,15 @@ pub struct SiteListPage {
 impl SiteListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let start_date_sort = column_sort_url(&self.path_and_query, "StartDate", &self.sort);
+        let end_date_sort = column_sort_url(&self.path_and_query, "EndDate", &self.sort);
         let status_sort = column_sort_url(&self.path_and_query, "Status", &self.sort);
+        let gandolas_sort = column_sort_url(&self.path_and_query, "Gandolas", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let start_date_label = format!("Start Date{}", sort_indicator(&self.sort, "StartDate"));
+        let end_date_label = format!("End Date{}", sort_indicator(&self.sort, "EndDate"));
         let status_label = format!("Status{}", sort_indicator(&self.sort, "Status"));
+        let gandolas_label = format!("Gandolas{}", sort_indicator(&self.sort, "Gandolas"));
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -788,14 +794,14 @@ impl SiteListPage {
             },
             TableColumnHeader {
                 key: "StartDate",
-                label: "Start Date",
-                sort_url: None,
+                label: &start_date_label,
+                sort_url: Some(&start_date_sort),
                 push_url: true,
             },
             TableColumnHeader {
                 key: "EndDate",
-                label: "End Date",
-                sort_url: None,
+                label: &end_date_label,
+                sort_url: Some(&end_date_sort),
                 push_url: true,
             },
             TableColumnHeader {
@@ -806,8 +812,8 @@ impl SiteListPage {
             },
             TableColumnHeader {
                 key: "Gandolas",
-                label: "Gandolas",
-                sort_url: None,
+                label: &gandolas_label,
+                sort_url: Some(&gandolas_sort),
                 push_url: true,
             },
         ];

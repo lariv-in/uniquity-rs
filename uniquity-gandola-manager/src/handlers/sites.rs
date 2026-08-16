@@ -4,7 +4,10 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::{NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
+    sea_query::{Expr, Order},
+};
 
 use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
@@ -45,6 +48,9 @@ use crate::{
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 const LIST_URL: &str = "/gandola/sites/";
+
+/// Sort sites by the first linked gandola name (sites without gandolas sort as empty).
+const GANDOLA_NAME_SORT_EXPR: &str = "COALESCE((SELECT MIN(g.name) FROM gandola_sites gs INNER JOIN gandolas g ON g.id = gs.gandola_id WHERE gs.site_id = sites.id), '')";
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct SiteListQuery {
@@ -113,9 +119,25 @@ async fn query_sites(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(site::Column::Name)
         }
+        s if s.eq_ignore_ascii_case("StartDate DESC") => {
+            query.order_by_desc(site::Column::StartDate)
+        }
+        s if s.eq_ignore_ascii_case("StartDate ASC") || s.eq_ignore_ascii_case("StartDate") => {
+            query.order_by_asc(site::Column::StartDate)
+        }
+        s if s.eq_ignore_ascii_case("EndDate DESC") => query.order_by_desc(site::Column::EndDate),
+        s if s.eq_ignore_ascii_case("EndDate ASC") || s.eq_ignore_ascii_case("EndDate") => {
+            query.order_by_asc(site::Column::EndDate)
+        }
         s if s.eq_ignore_ascii_case("Status DESC") => query.order_by_desc(site::Column::Status),
         s if s.eq_ignore_ascii_case("Status ASC") || s.eq_ignore_ascii_case("Status") => {
             query.order_by_asc(site::Column::Status)
+        }
+        s if s.eq_ignore_ascii_case("Gandolas DESC") => {
+            query.order_by(Expr::cust(GANDOLA_NAME_SORT_EXPR), Order::Desc)
+        }
+        s if s.eq_ignore_ascii_case("Gandolas ASC") || s.eq_ignore_ascii_case("Gandolas") => {
+            query.order_by(Expr::cust(GANDOLA_NAME_SORT_EXPR), Order::Asc)
         }
         _ => query
             .order_by_desc(site::Column::CreatedAt)
