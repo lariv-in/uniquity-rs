@@ -9,7 +9,7 @@ use lariv_rs::{
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete, button_link,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
         data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_url, label_inline, layout_main,
+        form_hx_get_route, form_hx_post_main, form_hx_post_url, label, layout_main,
         layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
         shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_pagination,
     },
@@ -501,11 +501,11 @@ impl RawDetailPage {
             (detail(html! {
                 (container_column("p-4 gap-2", html! {
                     (field_title(FieldTitle { value: &self.title, classes: "" }))
-                    (label_inline("Assigned to", field_text(FieldText {
+                    (label("Assigned to", field_text(FieldText {
                         value: &self.assigned_to_name,
                         classes: "",
                     })))
-                    (label_inline("Files", html! { @for f in &files { (f) } }))
+                    (label("Files", html! { @for f in &files { (f) } }))
                     (button_link(ButtonLink {
                         href: &RawEditGetRouteTag::new(self.id).url(),
                         label: "Edit",
@@ -848,19 +848,19 @@ impl EditedDetailPage {
         html! {
             (detail(html! {
                 (container_column("p-4 gap-2", html! {
-                    (label_inline("Raw footage", button_link(ButtonLink {
+                    (label("Raw footage", button_link(ButtonLink {
                         href: &RawDetailRouteTag::new(self.raw_footage_id).url(),
                         label: &self.raw_title,
                         classes: "link link-hover",
                         ..Default::default()
                     })))
-                    (label_inline("Assigned to", button_link(ButtonLink {
+                    (label("Assigned to", button_link(ButtonLink {
                         href: &EmployeesDetailRouteTag::new(self.assigned_to_id).url(),
                         label: &self.assigned_to_name,
                         classes: "link link-hover",
                         ..Default::default()
                     })))
-                    (label_inline("Output file", field_text(FieldText {
+                    (label("Output file", field_text(FieldText {
                         value: &self.output_name,
                         classes: "",
                     })))
@@ -1189,7 +1189,7 @@ impl PublishedDetailPage {
             html! {}
         } else {
             html! {
-                (label_inline("YouTube Studio", button_link(ButtonLink {
+                (label("YouTube Studio", button_link(ButtonLink {
                     href: &self.studio_url,
                     label: "Open video in YouTube Studio",
                     classes: "link link-hover",
@@ -1200,28 +1200,28 @@ impl PublishedDetailPage {
         html! {
             (detail(html! {
                 (container_column("p-4 gap-2", html! {
-                    (label_inline("YouTube video", youtube_field))
+                    (label("YouTube video", youtube_field))
                     (studio_field)
-                    (label_inline("Title (YouTube)", field_text(FieldText { value: &self.yt_title, classes: "" })))
-                    (label_inline("Published on YouTube", field_text(FieldText {
+                    (label("Title (YouTube)", field_text(FieldText { value: &self.yt_title, classes: "" })))
+                    (label("Published on YouTube", field_text(FieldText {
                         value: &self.yt_published_at,
                         classes: "",
                     })))
-                    (label_inline("YouTube upload status", field_text(FieldText {
+                    (label("YouTube upload status", field_text(FieldText {
                         value: &self.yt_upload_status,
                         classes: "",
                     })))
-                    (label_inline("Views", field_text(FieldText { value: &self.yt_view_count, classes: "" })))
-                    (label_inline("Likes", field_text(FieldText { value: &self.yt_like_count, classes: "" })))
-                    (label_inline("Comments", field_text(FieldText {
+                    (label("Views", field_text(FieldText { value: &self.yt_view_count, classes: "" })))
+                    (label("Likes", field_text(FieldText { value: &self.yt_like_count, classes: "" })))
+                    (label("Comments", field_text(FieldText {
                         value: &self.yt_comment_count,
                         classes: "",
                     })))
-                    (label_inline("Edited from (raw)", field_text(FieldText {
+                    (label("Edited from (raw)", field_text(FieldText {
                         value: &self.raw_title,
                         classes: "",
                     })))
-                    (label_inline("Assigned to", button_link(ButtonLink {
+                    (label("Assigned to", button_link(ButtonLink {
                         href: &EmployeesDetailRouteTag::new(self.assigned_to_id).url(),
                         label: &self.assigned_to_name,
                         classes: "link link-hover",
@@ -1459,7 +1459,7 @@ impl EditorPointsPage {
                     value: "Awards points to the employee assigned to the source raw footage.",
                     classes: "text-base-content/70 mb-4",
                 }))
-                (label_inline("Responsible editor", field_text(FieldText {
+                (label("Responsible editor", field_text(FieldText {
                     value: &self.editor_name,
                     classes: "",
                 })))

@@ -3,17 +3,17 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTextarea, FieldTitle,
-        FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
-        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-        button_clear, button_delete_post_route, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, detail, field_text, field_textarea, field_title,
-        form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_url,
-        label_inline, label_newline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText,
+        FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
+        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
+        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
+        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
+        field_text, field_textarea, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+        form_hx_post_main_url, form_hx_post_url, label, layout_main,
+        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
+        row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
+        sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -497,9 +497,9 @@ impl GandolaDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Is Currently Assigned", field_text(FieldText { value: assigned_label, classes: "" })))
-                    (label_inline("Current Site", assigned_badge(self.is_assigned, current_name)))
-                    (label_inline("Sites", html! {
+                    (label("Is Currently Assigned", field_text(FieldText { value: assigned_label, classes: "" })))
+                    (label("Current Site", assigned_badge(self.is_assigned, current_name)))
+                    (label("Sites", html! {
                         div class="flex flex-col gap-1" {
                             @for site in &self.sites {
                                 a class="link" href=(SiteDetailRouteTag::new(site.id).url()) { (site.name) }
@@ -938,14 +938,14 @@ impl SiteDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label_inline("Customer", html! {
+                    (label("Customer", html! {
                         a class="link" href=(customer_url) { (self.customer_name) }
                     }))
-                    (label_inline("Status", status_badge(&self.status, &self.status_label)))
-                    (label_inline("Start Date", field_text(FieldText { value: &self.start_date, classes: "" })))
-                    (label_inline("End Date", field_text(FieldText { value: &self.end_date, classes: "" })))
-                    (label_inline("Address", field_text(FieldText { value: &self.address, classes: "" })))
-                    (label_newline("Gandolas", related_detail_table(
+                    (label("Status", status_badge(&self.status, &self.status_label)))
+                    (label("Start Date", field_text(FieldText { value: &self.start_date, classes: "" })))
+                    (label("End Date", field_text(FieldText { value: &self.end_date, classes: "" })))
+                    (label("Address", field_text(FieldText { value: &self.address, classes: "" })))
+                    (label("Gandolas", related_detail_table(
                         "No gandolas",
                         1,
                         html! {
@@ -959,7 +959,7 @@ impl SiteDetailPage {
                             }
                         }).collect(),
                     )))
-                    (label_newline("Purchase Orders", related_detail_table(
+                    (label("Purchase Orders", related_detail_table(
                         "No purchase orders",
                         2,
                         html! {
@@ -975,7 +975,7 @@ impl SiteDetailPage {
                             }
                         }).collect(),
                     )))
-                    (label_newline("Invoices", related_detail_table(
+                    (label("Invoices", related_detail_table(
                         "No invoices",
                         3,
                         html! {
@@ -1466,14 +1466,14 @@ impl GandolaPreferencesPage {
                             ..Default::default()
                         }))
                     } @else {
-                        (label_inline("Gandola Rent Product", field_text(FieldText { value: &self.gandola_product_display, classes: "" })))
-                        (label_inline("TPI Product", field_text(FieldText { value: &self.tpi_product_display, classes: "" })))
-                        (label_inline("DTI Product", field_text(FieldText { value: &self.dti_product_display, classes: "" })))
-                        (label_inline("Gemini API key", field_text(FieldText {
+                        (label("Gandola Rent Product", field_text(FieldText { value: &self.gandola_product_display, classes: "" })))
+                        (label("TPI Product", field_text(FieldText { value: &self.tpi_product_display, classes: "" })))
+                        (label("DTI Product", field_text(FieldText { value: &self.dti_product_display, classes: "" })))
+                        (label("Gemini API key", field_text(FieldText {
                             value: if self.gemini_api_key.trim().is_empty() { "Not set" } else { "Configured" },
                             classes: "",
                         })))
-                        (label_inline("Gemini model", field_text(FieldText { value: &self.gemini_model, classes: "" })))
+                        (label("Gemini model", field_text(FieldText { value: &self.gemini_model, classes: "" })))
                     }
                 }))
             }))
@@ -1688,29 +1688,29 @@ impl PurchaseOrderDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.number, classes: "" }))
-                    (label_inline("Date", field_text(FieldText { value: &self.date, classes: "" })))
-                    (label_inline("Customer", html! {
+                    (label("Date", field_text(FieldText { value: &self.date, classes: "" })))
+                    (label("Customer", html! {
                         a class="link" href=(customer_url) { (self.customer_name) }
                     }))
-                    (label_inline("Site", html! {
+                    (label("Site", html! {
                         a class="link" href=(site_url) { (self.site_name) }
                     }))
-                    (label_inline("File", html! {
+                    (label("File", html! {
                         @if let Some(fid) = self.file_id.filter(|&id| id > 0) {
                             a class="link" href=(VNodeDetailRouteTag::new(fid).url()) { (self.file_name) }
                         } @else {
                             (field_text(FieldText { value: "—", classes: "" }))
                         }
                     }))
-                    (label_newline("Billing address", field_textarea(FieldTextarea {
+                    (label("Billing address", field_textarea(FieldTextarea {
                         value: &self.billing_address,
                         classes: "break-words min-w-0 max-w-full overflow-x-hidden",
                     })))
-                    (label_newline("Shipping address", field_textarea(FieldTextarea {
+                    (label("Shipping address", field_textarea(FieldTextarea {
                         value: &self.shipping_address,
                         classes: "break-words min-w-0 max-w-full overflow-x-hidden",
                     })))
-                    (label_newline("Lines", html! {
+                    (label("Lines", html! {
                         div class="w-full min-w-0" {
                             div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
                                 table class="table table-sm min-w-max w-full" {

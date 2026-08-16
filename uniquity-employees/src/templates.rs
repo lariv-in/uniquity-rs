@@ -10,7 +10,7 @@ use lariv_rs::{
         button_delete, button_link, button_modal_form, button_submit, container_column,
         container_row, column_sort_url, data_table_list, data_table_list_refresh, detail,
         field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        label_inline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        label, layout_main, layout_sidebar, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, shell_scaffold, sort_indicator,
         table_button_filter, table_pagination,
     },
@@ -304,8 +304,8 @@ impl EmployeeDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.user_name, classes: "" }))
-                    (label_inline("Email", field_text(FieldText { value: &self.user_email, classes: "" })))
-                    (label_inline("Total points", field_text(FieldText { value: &self.total_points, classes: "" })))
+                    (label("Email", field_text(FieldText { value: &self.user_email, classes: "" })))
+                    (label("Total points", field_text(FieldText { value: &self.total_points, classes: "" })))
                     (container_row("flex gap-2 mt-4", html! {
                         (button_link(ButtonLink {
                             href: &EmployeesEditGetRouteTag::new(self.id).url(),
@@ -605,10 +605,10 @@ impl PointsDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: "Points Transaction", classes: "" }))
-                    (label_inline("Points", field_text(FieldText { value: &self.points, classes: "" })))
-                    (label_inline("From", field_text(FieldText { value: &self.from_user_name, classes: "" })))
-                    (label_inline("To employee", field_text(FieldText { value: &self.to_employee_name, classes: "" })))
-                    (label_inline("Created", field_text(FieldText { value: &self.created_at, classes: "" })))
+                    (label("Points", field_text(FieldText { value: &self.points, classes: "" })))
+                    (label("From", field_text(FieldText { value: &self.from_user_name, classes: "" })))
+                    (label("To employee", field_text(FieldText { value: &self.to_employee_name, classes: "" })))
+                    (label("Created", field_text(FieldText { value: &self.created_at, classes: "" })))
                 }))
             }))
         }

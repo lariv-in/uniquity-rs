@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
 
-use lariv_rs::components::label_inline;
+use lariv_rs::components::label;
 use lariv_rs::html_form::{FormCtx, HtmlForm, UrlencodedFields};
 use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
 use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
@@ -66,7 +66,7 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
             return Markup::default();
         }
         html! {
-            (label_inline("Sites", html! {
+            (label("Sites", html! {
                 div class="flex flex-col gap-1" {
                     @for s in &sites {
                         a class="link" href=(SiteDetailRouteTag::new(s.id).url()) { (s.name) }
