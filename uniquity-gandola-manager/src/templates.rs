@@ -3,12 +3,12 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTextarea, FieldTitle,
         FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
         ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
         SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
         button_clear, button_delete_post_route, button_modal_form, button_submit, column_sort_url,
-        container_column, container_row, data_table_list_refresh, detail, field_text, field_title,
+        container_column, container_row, data_table_list_refresh, detail, field_text, field_textarea, field_title,
         form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_url,
         label_inline, label_newline, layout_main, layout_sidebar, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
@@ -100,15 +100,15 @@ fn gandola_menu(active: &str) -> Markup {
         title: "Gandola Manager",
         children: html! {
             (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Gandolas",
-                url: &GandolaDefaultRouteTag.url(),
-                active: active == "gandolas",
-                ..Default::default()
-            }))
-            (sidebar_menu_item_pane(SidebarMenuItem {
                 title: "Sites",
                 url: &SiteDefaultRouteTag.url(),
                 active: active == "sites",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Gandolas",
+                url: &GandolaDefaultRouteTag.url(),
+                active: active == "gandolas",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -1702,8 +1702,14 @@ impl PurchaseOrderDetailPage {
                             (field_text(FieldText { value: "—", classes: "" }))
                         }
                     }))
-                    (label_inline("Billing address", field_text(FieldText { value: &self.billing_address, classes: "" })))
-                    (label_inline("Shipping address", field_text(FieldText { value: &self.shipping_address, classes: "" })))
+                    (label_newline("Billing address", field_textarea(FieldTextarea {
+                        value: &self.billing_address,
+                        classes: "break-words min-w-0 max-w-full overflow-x-hidden",
+                    })))
+                    (label_newline("Shipping address", field_textarea(FieldTextarea {
+                        value: &self.shipping_address,
+                        classes: "break-words min-w-0 max-w-full overflow-x-hidden",
+                    })))
                     (label_newline("Lines", html! {
                         div class="w-full min-w-0" {
                             div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {

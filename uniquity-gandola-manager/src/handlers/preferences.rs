@@ -22,7 +22,7 @@ use crate::{
     templates::GandolaPreferencesPage,
 };
 
-const LIST_URL: &str = "/gandola/";
+const LIST_URL: &str = "/gandola/sites/";
 
 fn product_id_str(id: Option<i64>) -> String {
     id.filter(|&id| id > 0)
