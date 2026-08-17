@@ -1,4 +1,4 @@
-name: Release
+name: release
 
 on:
   push:
@@ -14,18 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly
+      - name: install rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-08-11
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - name: rust cache
+        uses: swatinem/rust-cache@v2
 
-      - name: Build release binary
+      - name: build release binary
         run: cargo build --release
 
-      - name: Create release
+      - name: create release
         uses: softprops/action-gh-release@v2
         with:
           files: target/release/uniquity-ventures-rs
