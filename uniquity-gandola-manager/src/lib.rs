@@ -16,6 +16,7 @@ pub mod migrations;
 pub mod import;
 pub mod import_cmd;
 pub mod po_from_pdf;
+pub mod po_import_queue;
 pub mod po_line_editor;
 pub mod po_lines;
 pub mod po_payment_term;

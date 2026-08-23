@@ -10,8 +10,8 @@ use lariv_rs::{
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
         detail_header, field_text, field_textarea, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_main_url, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
+        form_hx_get_route, form_hx_post_url, label, layout_main, layout_sidebar, MainContentKey,
+        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
         row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
     },
@@ -43,10 +43,13 @@ use super::routes::{
     GandolaPreferencesPostRouteTag, GandolaPreferencesRouteTag, GandolaSelectRouteTag,
     PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag, PurchaseOrderDeletePostRouteTag,
     PurchaseOrderDetailRouteTag, PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag,
-    PurchaseOrderFromPdfGetRouteTag, PurchaseOrderFromPdfPostRouteTag, PurchaseOrderSelectRouteTag,
+    PurchaseOrderFromPdfGetRouteTag, PurchaseOrderFromPdfPostRouteTag,
+    PurchaseOrderImportJobsDismissRouteTag, PurchaseOrderImportJobsRouteTag,
+    PurchaseOrderSelectRouteTag,
     SiteCreatePostRouteTag, SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag,
     SiteEditGetRouteTag, SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
 };
+use super::po_import_queue::{PoImportJobSnapshot, PoImportJobStatus};
 use super::site_status::SiteStatus;
 
 fn app_scaffold(
@@ -961,7 +964,7 @@ impl SiteDetailPage {
                     href: &PurchaseOrderFromPdfGetRouteTag::new(self.id).url(),
                     form_post_url: &PurchaseOrderFromPdfPostRouteTag::new(self.id).path(),
                     modal_uid: PurchaseOrderFromPdfModalKey::ID,
-                    label: "Add Purchase Order from PDF",
+                    label: "Add Purchase Orders from PDF",
                     icon_name: Some("document-arrow-up"),
                     classes: "btn-outline",
                     ..Default::default()
@@ -1455,9 +1458,12 @@ impl GandolaPreferencesPage {
                     (field_title(FieldTitle { value: "Gandola Configuration", classes: "" }))
                     @if self.can_edit {
                         (form(FormOpts {
-                            attrs: form_hx_post_main_url(
-                                &GandolaPreferencesPostRouteTag.url(),
-                            ),
+                            // outerHTML (not outerMorph): re-init Alpine FK/payment-term state
+                            // from the server-rendered values after save.
+                            attrs: form_hx_post_url::<MainContentKey>(
+                                &GandolaPreferencesPostRouteTag.path(),
+                            )
+                            .set("hx-swap", "outerHTML"),
                             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                             inputs: GandolaPreferencesForm::render_inputs(
                                 &FormCtx::form::<GandolaPreferencesForm>()
@@ -1968,6 +1974,101 @@ pub struct PurchaseOrderFromPdfModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub error: String,
+    pub jobs: Vec<PoImportJobSnapshot>,
+}
+
+pub const PO_FROM_PDF_PROGRESS_ID: &str = "gandola-po-from-pdf-progress";
+
+pub fn render_po_from_pdf_progress(site_id: i64, jobs: &[PoImportJobSnapshot]) -> Markup {
+    let poll_url = PurchaseOrderImportJobsRouteTag::new(site_id).url();
+    let done_url = PurchaseOrderImportJobsDismissRouteTag::new(site_id).path();
+    let active = jobs.iter().any(|j| j.is_active());
+    let done = jobs
+        .iter()
+        .filter(|j| j.status == PoImportJobStatus::Succeeded)
+        .count();
+    let failed = jobs
+        .iter()
+        .filter(|j| j.status == PoImportJobStatus::Failed)
+        .count();
+    let summary = if jobs.is_empty() {
+        "No import jobs.".to_string()
+    } else if active {
+        format!(
+            "Importing purchase orders… ({done} created, {} in progress)",
+            jobs.len() - done - failed
+        )
+    } else if failed == 0 {
+        format!("Imported {done} purchase order(s).")
+    } else if done == 0 {
+        format!("Import finished with {failed} failure(s).")
+    } else {
+        format!("Imported {done} purchase order(s); {failed} failed.")
+    };
+    html! {
+        div id=(PO_FROM_PDF_PROGRESS_ID)
+            hx-get=[active.then_some(poll_url.as_str())]
+            hx-trigger=[active.then_some("every 2s")]
+            hx-target=[active.then_some("this")]
+            hx-swap=[active.then_some("outerHTML")]
+            hx-push-url=[active.then_some("false")]
+            class="flex flex-col gap-3"
+        {
+            p class="m-0 text-sm font-medium flex items-center gap-2" aria-live="polite" {
+                @if active {
+                    span class="loading loading-spinner loading-sm" {}
+                }
+                (summary)
+            }
+            @if !jobs.is_empty() {
+                ul class="m-0 pl-4 text-sm flex flex-col gap-1" {
+                    @for job in jobs {
+                        li {
+                            span class="font-mono" { (job.filename) }
+                            " — "
+                            @match job.status {
+                                PoImportJobStatus::Succeeded => {
+                                    @if let (Some(po_id), Some(number)) =
+                                        (job.purchase_order_id, job.purchase_order_number.as_deref())
+                                    {
+                                        a class="link" href=(PurchaseOrderDetailRouteTag::new(po_id).url()) {
+                                            (number)
+                                        }
+                                    } @else {
+                                        (job.status.label())
+                                    }
+                                }
+                                PoImportJobStatus::Failed => {
+                                    span class="text-error" {
+                                        (job.status.label())
+                                        @if let Some(err) = job.error.as_deref() {
+                                            ": "
+                                            (err)
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    (job.status.label())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            @if !active {
+                div class="flex justify-end" {
+                    form method="POST"
+                        hx-post=(done_url)
+                        hx-target=(PurchaseOrderFromPdfModalKey::SELECTOR)
+                        hx-swap="outerHTML"
+                        hx-push-url="false"
+                    {
+                        button type="submit" class="btn btn-primary" { "Done" }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl RenderTemplate for PurchaseOrderFromPdfModalPage {
@@ -1977,11 +2078,25 @@ impl RenderTemplate for PurchaseOrderFromPdfModalPage {
         } else {
             self.form_name.as_str()
         };
+        if !self.jobs.is_empty() {
+            return modal_keyed::<PurchaseOrderFromPdfModalKey>(
+                "max-w-lg w-full",
+                html! {
+                    div class="@container flex flex-col gap-3 p-1" {
+                        h2 class="text-lg font-semibold m-0" { "Add Purchase Orders from PDF" }
+                        p class="m-0 text-sm text-base-content/70" {
+                            "Each PDF is processed in the background. This dialog updates as jobs finish."
+                        }
+                        (render_po_from_pdf_progress(self.site_id, &self.jobs))
+                    }
+                },
+            );
+        }
         modal_keyed::<PurchaseOrderFromPdfModalKey>(
             "max-w-lg w-full",
             form(FormOpts {
-                title: "Add Purchase Order from PDF",
-                subtitle: "Upload a purchase order PDF. Gemini will fill the fields and create the order.",
+                title: "Add Purchase Orders from PDF",
+                subtitle: "Upload one or more purchase order PDFs. Each file is queued and processed in the background.",
                 classes: "@container",
                 attrs: form_hx_post_url::<PurchaseOrderFromPdfModalKey>(&modal_create_post_query(
                     PurchaseOrderFromPdfPostRouteTag::new(self.site_id),
@@ -2003,10 +2118,10 @@ impl RenderTemplate for PurchaseOrderFromPdfModalPage {
                             aria-live="polite"
                         {
                             span class="loading loading-spinner loading-sm" {}
-                            "Reading the PDF with Gemini…"
+                            "Queuing import…"
                         }
                         (button_submit(ButtonSubmit {
-                            label: "Add Purchase Order from PDF",
+                            label: "Add Purchase Orders from PDF",
                             classes: "btn-primary group-[.htmx-request]:hidden",
                             ..Default::default()
                         }))

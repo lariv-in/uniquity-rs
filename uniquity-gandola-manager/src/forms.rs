@@ -221,10 +221,11 @@ pub struct PurchaseOrderFilterForm {
 #[html_form]
 pub struct PurchaseOrderFromPdfForm {
     #[form(
-        label = "Purchase order PDF",
+        label = "Purchase order PDFs",
         widget = File,
         accept = ".pdf,application/pdf",
+        multiple,
         required
     )]
-    pub pdf: Upload,
+    pub files: Vec<Upload>,
 }

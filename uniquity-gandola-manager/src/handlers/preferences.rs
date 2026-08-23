@@ -11,7 +11,7 @@ use lariv_rs::{
     http::Cap,
     plugins::finance_invoices::logic::default_payment_term_lines_json,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots},
+    web::{Htmx, html_built_page_or_app_layout},
 };
 
 use crate::{
@@ -99,7 +99,10 @@ async fn page_from_prefs(
         payment_term_lines_json: prefs
             .payment_term_lines_json
             .clone()
-            .filter(|s| !s.trim().is_empty())
+            .filter(|s| {
+                let t = s.trim();
+                !t.is_empty() && t != "[]"
+            })
             .unwrap_or_else(default_payment_term_lines_json),
         gemini_api_key: prefs.gemini_api_key.clone(),
         gemini_model,
@@ -191,7 +194,7 @@ pub async fn post(
                         gemini_model: gemini_model_or_default(&form.gemini_model),
                     };
                     let page = page_from_prefs(&state.db, &prefs, e.to_string(), true).await;
-                    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response()
                 }
             }
