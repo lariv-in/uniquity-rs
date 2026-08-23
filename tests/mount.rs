@@ -9,7 +9,7 @@ use lariv_rs::command::{BuildCli, CommandCapability, CommandTag};
 use lariv_rs::traits::get::GetByTag;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_fiscal_year, finance_indian, finance_invoices, finance_products, finance_taxes,
+    finance_indian, finance_invoices, finance_products, finance_taxes,
     llm_assistant, otp, pwa, users,
 };
 
@@ -68,7 +68,6 @@ async fn uniquity_stack_mounts() {
                     let app = crm::install(app);
                     let app = finance_customer::install(app);
                     let app = finance_creditnotes::install(app);
-                    let app = finance_fiscal_year::install(app);
                     let app = finance_taxes::install(app);
                     let app = finance_products::install(app);
                     let app = finance_invoices::install(app);

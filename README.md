@@ -40,7 +40,6 @@ Invoice PDF templates in Accounting preferences use [Minijinja](https://github.c
 | `customer` | `/customers/` | Customer CRUD |
 | `crm` | `/crm/leads` | Leads, companies, contacts, deals |
 | `uniquity-finance-creditnotes` | `/finance-creditnotes/` | Credit notes with auto-reversing JE |
-| `uniquity-finance-fiscal-year` | `/finance-fiscal-years/` | Fiscal period management |
 | `uniquity-finance-taxes` | `/finance-taxes/` | Tax configuration |
 | `uniquity-finance-products` | `/finance-products/` | Products with M2M taxes |
 | `uniquity-finance-invoices` | `/finance-invoices/` | Invoices, payments, posting |

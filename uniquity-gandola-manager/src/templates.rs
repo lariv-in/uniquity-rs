@@ -3,14 +3,14 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, FieldText,
+        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldText,
         FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
         PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
         SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
         breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        field_text, field_textarea, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-        form_hx_post_main_url, form_hx_post_url, label, layout_main,
+        detail_header, field_text, field_textarea, field_title, form, form_hx_get_picker_route,
+        form_hx_get_route, form_hx_post_main_url, form_hx_post_url, label, layout_main,
         layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
         row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
         sort_indicator, table_button_filter, table_create_button, table_pagination,
@@ -493,10 +493,28 @@ impl GandolaDetailPage {
             .as_ref()
             .map(|s| s.name.as_str())
             .unwrap_or("Not assigned");
+        let actions = if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "gandola_manager.GandolaEditForm",
+                    href: &GandolaEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &GandolaEditPostRouteTag::new(self.id).path(),
+                    modal_uid: GandolaEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.name,
+                        actions,
+                    }))
                     (label("Is Currently Assigned", field_text(FieldText { value: assigned_label, classes: "" })))
                     (label("Current Site", assigned_badge(self.is_assigned, current_name)))
                     (label("Sites", html! {
@@ -506,19 +524,6 @@ impl GandolaDetailPage {
                             }
                         }
                     }))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "gandola_manager.GandolaEditForm",
-                                href: &GandolaEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &GandolaEditPostRouteTag::new(self.id).path(),
-                                modal_uid: GandolaEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
         }
@@ -940,10 +945,38 @@ pub struct SiteDetailPage {
 impl SiteDetailPage {
     fn body(&self) -> Markup {
         let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
+        let actions = if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "gandola_manager.SiteEditForm",
+                    href: &SiteEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &SiteEditPostRouteTag::new(self.id).path(),
+                    modal_uid: SiteEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+                (button_modal_form(ButtonModalForm {
+                    name: "gandola_manager.PurchaseOrderFromPdfForm",
+                    href: &PurchaseOrderFromPdfGetRouteTag::new(self.id).url(),
+                    form_post_url: &PurchaseOrderFromPdfPostRouteTag::new(self.id).path(),
+                    modal_uid: PurchaseOrderFromPdfModalKey::ID,
+                    label: "Add Purchase Order from PDF",
+                    icon_name: Some("document-arrow-up"),
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.name,
+                        actions,
+                    }))
                     (label("Customer", html! {
                         a class="link" href=(customer_url) { (self.customer_name) }
                     }))
@@ -999,29 +1032,6 @@ impl SiteDetailPage {
                             }
                         }).collect(),
                     )))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "gandola_manager.SiteEditForm",
-                                href: &SiteEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &SiteEditPostRouteTag::new(self.id).path(),
-                                modal_uid: SiteEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                            (button_modal_form(ButtonModalForm {
-                                name: "gandola_manager.PurchaseOrderFromPdfForm",
-                                href: &PurchaseOrderFromPdfGetRouteTag::new(self.id).url(),
-                                form_post_url: &PurchaseOrderFromPdfPostRouteTag::new(self.id).path(),
-                                modal_uid: PurchaseOrderFromPdfModalKey::ID,
-                                label: "Add Purchase Order from PDF",
-                                icon_name: Some("document-arrow-up"),
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
         }
@@ -1690,10 +1700,28 @@ impl PurchaseOrderDetailPage {
     fn body(&self) -> Markup {
         let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
         let site_url = SiteDetailRouteTag::new(self.site_id).url();
+        let actions = if self.can_edit {
+            html! {
+                (button_modal_form(ButtonModalForm {
+                    name: "gandola_manager.PurchaseOrderEditForm",
+                    href: &PurchaseOrderEditGetRouteTag::new(self.id).url(),
+                    form_post_url: &PurchaseOrderEditPostRouteTag::new(self.id).path(),
+                    modal_uid: PurchaseOrderEditModalKey::ID,
+                    label: "Edit",
+                    classes: "btn-outline",
+                    ..Default::default()
+                }))
+            }
+        } else {
+            html! {}
+        };
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &self.number, classes: "" }))
+                    (detail_header(DetailHeader {
+                        title: &self.number,
+                        actions,
+                    }))
                     (label("Date", field_text(FieldText { value: &self.date, classes: "" })))
                     (label("Customer", html! {
                         a class="link" href=(customer_url) { (self.customer_name) }
@@ -1756,19 +1784,6 @@ impl PurchaseOrderDetailPage {
                             }
                         }
                     }))
-                    @if self.can_edit {
-                        (container_row("flex gap-2 mt-4", html! {
-                            (button_modal_form(ButtonModalForm {
-                                name: "gandola_manager.PurchaseOrderEditForm",
-                                href: &PurchaseOrderEditGetRouteTag::new(self.id).url(),
-                                form_post_url: &PurchaseOrderEditPostRouteTag::new(self.id).path(),
-                                modal_uid: PurchaseOrderEditModalKey::ID,
-                                label: "Edit",
-                                classes: "btn-outline",
-                                ..Default::default()
-                            }))
-                        }))
-                    }
                 }))
             }))
         }

@@ -21,7 +21,7 @@ use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
-    crm, dashboard, finance_accounts, finance_creditnotes, customer, finance_customer, finance_fiscal_year,
+    crm, dashboard, finance_accounts, finance_creditnotes, customer, finance_customer,
     finance_indian, finance_invoices, finance_products, finance_taxes, filesystem, llm_assistant,
     otp, pwa,
 };
@@ -65,7 +65,6 @@ async fn create_draft_invoice_via_http() {
     let app = crm::install(app);
     let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
-    let app = finance_fiscal_year::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
