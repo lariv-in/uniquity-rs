@@ -1,5 +1,7 @@
 //! Sites many-to-many on draft invoices (deployment-specific).
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
@@ -7,13 +9,15 @@ use sea_orm::DatabaseConnection;
 use lariv_rs::components::label;
 use lariv_rs::html_form::{FormCtx, HtmlForm, UrlencodedFields};
 use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
+use lariv_rs::plugins::finance_invoices::hub_table_addon::InvoiceHubTableAddon;
 use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
 
 use crate::forms::{DraftInvoiceSitesForm, DraftInvoiceSitesFormField};
 use crate::routes::SiteDetailRouteTag;
 use crate::scope::{
-    load_sites_for_invoice, site_items_for_invoice, site_items_from_ids, sync_invoice_sites,
+    load_sites_for_invoice, site_items_for_invoice, site_items_from_ids, site_names_for_invoices,
+    sync_invoice_sites,
 };
 
 pub static INVOICE_SITES_ADDON: InvoiceSitesAddon = InvoiceSitesAddon;
@@ -22,6 +26,9 @@ pub struct InvoiceSitesAddon;
 
 pub fn register() {
     lariv_rs::plugins::finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
+        &INVOICE_SITES_ADDON,
+    );
+    lariv_rs::plugins::finance_invoices::hub_table_addon::register_invoice_hub_table_addon(
         &INVOICE_SITES_ADDON,
     );
     lariv_rs::plugins::finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
@@ -84,6 +91,29 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
     ) -> Result<(), String> {
         let form: DraftInvoiceSitesForm = fields.deserialize().map_err(|e| e.to_string())?;
         sync_invoice_sites(db, draft_id, &form.sites).await
+    }
+}
+
+#[async_trait]
+impl InvoiceHubTableAddon for InvoiceSitesAddon {
+    fn id(&self) -> &'static str {
+        "uniquity-site-invoices"
+    }
+
+    fn column_key(&self) -> &'static str {
+        "Sites"
+    }
+
+    fn column_label(&self) -> &'static str {
+        "Sites"
+    }
+
+    async fn cell_values(
+        &self,
+        db: &DatabaseConnection,
+        draft_invoice_ids: &[i64],
+    ) -> HashMap<i64, String> {
+        site_names_for_invoices(db, draft_invoice_ids).await
     }
 }
 

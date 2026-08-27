@@ -293,6 +293,41 @@ pub async fn load_sites_for_invoice(
         .collect()
 }
 
+/// Comma-separated site names keyed by draft invoice id (names sorted).
+pub async fn site_names_for_invoices(
+    db: &DatabaseConnection,
+    draft_invoice_ids: &[i64],
+) -> std::collections::HashMap<i64, String> {
+    use std::collections::HashMap;
+
+    if draft_invoice_ids.is_empty() {
+        return HashMap::new();
+    }
+    let links = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::DraftInvoiceId.is_in(draft_invoice_ids.to_vec()))
+        .find_also_related(SiteEntity)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    let mut names_by_draft: HashMap<i64, Vec<String>> = HashMap::new();
+    for (link, site) in links {
+        if let Some(site) = site {
+            names_by_draft
+                .entry(link.draft_invoice_id)
+                .or_default()
+                .push(site.name);
+        }
+    }
+    names_by_draft
+        .into_iter()
+        .map(|(id, mut names)| {
+            names.sort();
+            (id, names.join(", "))
+        })
+        .collect()
+}
+
 fn invoice_label(id: i64, number: &Option<String>) -> String {
     match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(n) => n.to_string(),
