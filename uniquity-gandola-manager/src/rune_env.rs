@@ -12,18 +12,26 @@ pub struct Hook;
 
 impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
-        rune_env.register_contextual("find_site", |_ctx| {
-            NativeBinding::Function(Arc::new(find_site))
-        });
-        rune_env.register_contextual("list_site_purchase_orders", |_ctx| {
-            NativeBinding::Function(Arc::new(list_site_purchase_orders))
-        });
-        rune_env.register_contextual("create_invoices_for_site", |_ctx| {
-            NativeBinding::Function(Arc::new(create_invoices_for_site))
-        });
-        rune_env.register_contextual("link_site_invoice", |_ctx| {
-            NativeBinding::Function(Arc::new(link_site_invoice))
-        });
+        rune_env.register_contextual(
+            "find_site",
+            "find_site(#{ site_id?: int, name?: string, site_name?: string }) -> #{ id, name, customer_id, address?, status }",
+            |_ctx| NativeBinding::Function(Arc::new(find_site)),
+        );
+        rune_env.register_contextual(
+            "list_site_purchase_orders",
+            "list_site_purchase_orders(#{ site_id?: int, name?: string, site_name?: string }) -> #{ site: SiteSummary, purchase_orders: [#{ id, number, date, customer_id, already_invoiced, existing_invoice_id?, lines: [...] }] }",
+            |_ctx| NativeBinding::Function(Arc::new(list_site_purchase_orders)),
+        );
+        rune_env.register_contextual(
+            "create_invoices_for_site",
+            "create_invoices_for_site(#{ site_id?: int, site_name?: string, name?: string, timezone?: string, dry_run?: bool }) -> #{ site_id, site_name, dry_run, created: [InvoiceAction], skipped: [InvoiceAction], errors: [InvoiceAction] }",
+            |_ctx| NativeBinding::Function(Arc::new(create_invoices_for_site)),
+        );
+        rune_env.register_contextual(
+            "link_site_invoice",
+            "link_site_invoice(#{ site_id: int, invoice_id?: int, draft_invoice_id?: int }) -> #{ site_id, invoice_id, linked: true }",
+            |_ctx| NativeBinding::Function(Arc::new(link_site_invoice)),
+        );
     }
 }
 
