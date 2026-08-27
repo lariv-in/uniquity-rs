@@ -92,6 +92,13 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
         let form: DraftInvoiceSitesForm = fields.deserialize().map_err(|e| e.to_string())?;
         sync_invoice_sites(db, draft_id, &form.sites).await
     }
+
+    fn bulk_has_values(&self, fields: &UrlencodedFields) -> bool {
+        match fields.deserialize::<DraftInvoiceSitesForm>() {
+            Ok(form) => !form.sites.is_empty(),
+            Err(_) => false,
+        }
+    }
 }
 
 #[async_trait]
