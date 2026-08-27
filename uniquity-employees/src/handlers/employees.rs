@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -9,6 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use lariv_rs::{
+    html_form::HtmlFormBody,
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::{
@@ -176,7 +176,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<EmployeeForm>,
+    HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/").into_response();
@@ -234,7 +234,7 @@ pub async fn edit_post(
     Cap(state): Cap<EmployeesState>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
-    Form(form): Form<EmployeeForm>,
+    HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/").into_response();

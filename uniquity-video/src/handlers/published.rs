@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -12,6 +11,7 @@ use std::str::FromStr;
 use tracing::warn;
 
 use lariv_rs::{
+    html_form::HtmlFormBody,
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::middleware::RequireAuth,
@@ -166,7 +166,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<PublishedVideoForm>,
+    HtmlFormBody(form): HtmlFormBody<PublishedVideoForm>,
 ) -> Response {
     let video_id = match youtube::clean_youtube_video_id(&form.you_tube_video_id) {
         Ok(id) => id,
@@ -235,7 +235,7 @@ pub async fn edit_post(
     Cap(state): Cap<VideoState>,
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
-    Form(form): Form<PublishedVideoForm>,
+    HtmlFormBody(form): HtmlFormBody<PublishedVideoForm>,
 ) -> Response {
     let Some(existing) = find_published_video(&state.db, id).await else {
         return Redirect::to("/video/published/").into_response();
@@ -355,7 +355,7 @@ pub async fn editor_points_post(
     Cap(state): Cap<VideoState>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
-    Form(form): Form<EditorPointsForm>,
+    HtmlFormBody(form): HtmlFormBody<EditorPointsForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to(&PublishedDetailRouteTag::new(id).url()).into_response();

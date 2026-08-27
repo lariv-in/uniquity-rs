@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -9,6 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use lariv_rs::{
+    html_form::HtmlFormBody,
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::middleware::RequireAuth,
@@ -150,7 +150,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<EditedVideoForm>,
+    HtmlFormBody(form): HtmlFormBody<EditedVideoForm>,
 ) -> Response {
     let now = Utc::now();
     let model = edited_video::ActiveModel {
@@ -197,7 +197,7 @@ pub async fn edit_post(
     Cap(state): Cap<VideoState>,
     RequireAuth(_ctx): RequireAuth,
     Path(id): Path<i64>,
-    Form(form): Form<EditedVideoForm>,
+    HtmlFormBody(form): HtmlFormBody<EditedVideoForm>,
 ) -> Response {
     let Some(existing) = find_edited_video(&state.db, id).await else {
         return Redirect::to("/video/edited/").into_response();

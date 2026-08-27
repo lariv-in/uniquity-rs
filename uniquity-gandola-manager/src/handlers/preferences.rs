@@ -1,11 +1,11 @@
 use axum::{
-    Form,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
 use lariv_rs::{
+    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     genai::GenaiClient,
     http::Cap,
@@ -128,7 +128,7 @@ pub async fn post(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Form(form): Form<GandolaPreferencesForm>,
+    HtmlFormBody(form): HtmlFormBody<GandolaPreferencesForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();

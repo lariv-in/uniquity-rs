@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -11,6 +10,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 use lariv_rs::{
+    html_form::HtmlFormBody,
     components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
@@ -152,7 +152,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<PointsForm>,
+    HtmlFormBody(form): HtmlFormBody<PointsForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
         return Redirect::to("/employees/points/").into_response();

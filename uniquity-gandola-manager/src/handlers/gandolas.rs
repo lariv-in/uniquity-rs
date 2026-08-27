@@ -1,5 +1,4 @@
 use axum::{
-    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
@@ -9,6 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, Q
 
 use lariv_rs::{
     components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::users::{middleware::RequireAuth, state::AuthContext},
@@ -220,7 +220,7 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<GandolaForm>,
+    HtmlFormBody(form): HtmlFormBody<GandolaForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
@@ -295,7 +295,7 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    Form(form): Form<GandolaForm>,
+    HtmlFormBody(form): HtmlFormBody<GandolaForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
