@@ -256,6 +256,7 @@ async fn invoice_one_purchase_order(
             payment_reference: None,
             bank_account: None,
             datetime,
+            delivery_date: None,
             customer_id: po.customer_id,
             payment_term_lines,
             header_tax_ids: Vec::new(),

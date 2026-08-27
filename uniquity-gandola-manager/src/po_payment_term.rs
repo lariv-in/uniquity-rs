@@ -75,10 +75,10 @@ fn validate_duration(raw: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_po_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<(), String> {
+fn validate_po_line_input(line: &DraftPaymentTermLineInput) -> Result<(), String> {
     match line.date_kind {
         PaymentTermDateKind::Absolute => {
-            parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""), tz)?;
+            parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""))?;
         }
         PaymentTermDateKind::Relative => {
             validate_duration(line.due_duration.as_deref().unwrap_or(""))?;
@@ -109,13 +109,12 @@ fn validate_po_line_input(line: &DraftPaymentTermLineInput, tz: &str) -> Result<
 
 fn validate_purchase_order_payment_term_lines(
     lines: &[DraftPaymentTermLineInput],
-    tz: &str,
 ) -> Result<(), String> {
     if lines.is_empty() {
         return Err("add at least one payment term line".to_string());
     }
     for line in lines {
-        validate_po_line_input(line, tz)?;
+        validate_po_line_input(line)?;
     }
 
     let all_relative = lines
@@ -144,13 +143,15 @@ fn line_input_to_active(
     now: DateTime<Utc>,
 ) -> Result<purchase_order_payment_term_line::ActiveModel, String> {
     let (due_datetime, due_duration) = match line.date_kind {
-        PaymentTermDateKind::Absolute => (
-            Some(parse_due_date_for_term(
-                line.due_date.as_deref().unwrap_or(""),
+        PaymentTermDateKind::Absolute => {
+            let date = parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""))?;
+            let dt = lariv_rs::datetime::parse_date_start_in_tz(
+                &lariv_rs::datetime::format_date(date),
                 tz,
-            )?),
-            None,
-        ),
+            )
+            .ok_or_else(|| "invalid due date".to_string())?;
+            (Some(dt), None)
+        }
         PaymentTermDateKind::Relative => relative_duration_fields(line)?,
         PaymentTermDateKind::RelativeDelivery => relative_duration_fields(line)?,
     };
@@ -191,7 +192,7 @@ pub async fn upsert_purchase_order_payment_term_lines<C: ConnectionTrait>(
     lines: &[DraftPaymentTermLineInput],
     tz: &str,
 ) -> Result<purchase_order_payment_term::Model, String> {
-    validate_purchase_order_payment_term_lines(lines, tz)?;
+    validate_purchase_order_payment_term_lines(lines)?;
     let now = Utc::now();
 
     let term = if let Some(id) = existing_term_id {
@@ -291,7 +292,7 @@ mod tests {
 
     #[test]
     fn accepts_relative_to_delivery_date() {
-        validate_purchase_order_payment_term_lines(&[relative_delivery_line()], "UTC")
+        validate_purchase_order_payment_term_lines(&[relative_delivery_line()])
             .expect("relative_delivery should be valid");
     }
 
@@ -299,7 +300,7 @@ mod tests {
     fn relative_delivery_requires_duration() {
         let mut line = relative_delivery_line();
         line.due_duration = Some(String::new());
-        let err = validate_purchase_order_payment_term_lines(&[line], "UTC").unwrap_err();
+        let err = validate_purchase_order_payment_term_lines(&[line]).unwrap_err();
         assert!(err.contains("duration"));
     }
 }

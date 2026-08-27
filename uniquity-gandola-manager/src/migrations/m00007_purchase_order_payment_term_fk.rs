@@ -40,7 +40,7 @@ async fn backfill_terms(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         let lines = parse_payment_term_lines_json(&raw)
             .or_else(|_| parse_payment_term_lines_json(&default_payment_term_lines_json()))
             .map_err(DbErr::Custom)?;
-        let term = upsert_draft_payment_term_lines(conn, None, &lines, "UTC")
+        let term = upsert_draft_payment_term_lines(conn, None, &lines)
             .await
             .map_err(DbErr::Custom)?;
         conn.execute(Statement::from_sql_and_values(
