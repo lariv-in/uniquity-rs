@@ -2,8 +2,8 @@
 
 use rust_decimal::Decimal;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
-    sea_query::Expr,
+    sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Select,
 };
 
 use lariv_rs::plugins::users::{
@@ -35,7 +35,10 @@ pub struct PointsRow {
     pub created_at: String,
 }
 
-pub fn scope_employees(query: Select<EmployeeEntity>, auth: &AuthContext) -> Select<EmployeeEntity> {
+pub fn scope_employees(
+    query: Select<EmployeeEntity>,
+    auth: &AuthContext,
+) -> Select<EmployeeEntity> {
     if require_superuser(auth) {
         query
     } else {
@@ -77,7 +80,10 @@ pub async fn find_employee_scoped(
     auth: &AuthContext,
 ) -> Option<employee::Model> {
     let query = EmployeeEntity::find_by_id(id);
-    scope_employees(query, auth).one(db).await.ok().flatten()
+    lariv_rs::web::opt_or_log(
+        scope_employees(query, auth).one(db).await,
+        "find employee scoped",
+    )
 }
 
 pub async fn find_points_scoped(
@@ -85,9 +91,11 @@ pub async fn find_points_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<points_transaction::Model> {
-    let query =
-        PointsTransactionEntity::find_by_id(id);
-    scope_points(query, auth).one(db).await.ok().flatten()
+    let query = PointsTransactionEntity::find_by_id(id);
+    lariv_rs::web::opt_or_log(
+        scope_points(query, auth).one(db).await,
+        "find points scoped",
+    )
 }
 
 pub async fn employee_points_total(db: &DatabaseConnection, employee_id: i64) -> Decimal {
@@ -100,14 +108,15 @@ pub async fn employee_points_total(db: &DatabaseConnection, employee_id: i64) ->
         "SELECT COALESCE(SUM(points), 0) AS sum FROM points_transactions \
          WHERE to_employee_id = {employee_id}"
     );
-    SumRow::find_by_statement(Statement::from_string(
-        sea_orm::DatabaseBackend::Postgres,
-        sql,
-    ))
-    .one(db)
-    .await
-    .ok()
-    .flatten()
+    lariv_rs::web::opt_or_log(
+        SumRow::find_by_statement(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            sql,
+        ))
+        .one(db)
+        .await,
+        "db find one",
+    )
     .and_then(|r| r.sum)
     .unwrap_or_else(|| Decimal::ZERO)
 }
@@ -242,12 +251,10 @@ pub async fn query_points(
 }
 
 pub async fn employee_display_name(db: &DatabaseConnection, employee_id: i64) -> String {
-    let Some(emp) = EmployeeEntity::find_by_id(employee_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(emp) = lariv_rs::web::opt_or_log(
+        EmployeeEntity::find_by_id(employee_id).one(db).await,
+        "find by id",
+    ) else {
         return String::new();
     };
     load_user_map(db, &[emp.user_id])

@@ -9,7 +9,7 @@ use sea_orm::{
 };
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, oob_delete},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, oob_delete},
     html_form::{HtmlForm, HtmlFormBody, UploadedFile},
     http::Cap,
     picker::respond_picker_select,
@@ -33,8 +33,9 @@ use crate::{
     forms::{PurchaseOrderForm, PurchaseOrderFromPdfForm},
     handlers::ModalNameQuery,
     keys::{
-        PurchaseOrderCreateModalKey, PurchaseOrderEditModalKey, PurchaseOrderFromPdfModalKey,
-        PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
+        PurchaseOrderCreateModalKey, PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey,
+        PurchaseOrderFromPdfModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
+        PurchaseOrderTableKey,
     },
     po_import_queue::PoImportEnqueue,
     po_lines::{
@@ -52,7 +53,7 @@ use crate::{
     },
     state::GandolaManagerState,
     templates::{
-        PoLineRow, PurchaseOrderCreateModalPage, PurchaseOrderDetailPage,
+        ConfirmDeletePage, PoLineRow, PurchaseOrderCreateModalPage, PurchaseOrderDetailPage,
         PurchaseOrderEditModalPage, PurchaseOrderFromPdfModalPage, PurchaseOrderListPage,
         PurchaseOrderRow, PurchaseOrderSelectPage, render_po_from_pdf_progress,
     },
@@ -722,24 +723,68 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: PurchaseOrderDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this purchase order?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "gandola_manager.PurchaseOrderDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
     }
-    if let Some(po) = find_purchase_order_scoped(&state.db, id, &ctx).await {
-        let term_id = po.payment_term_id;
-        let _ = PurchaseOrderEntity::delete_by_id(id).exec(&state.db).await;
-        if let Some(term_id) = term_id {
-            let _ = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
-                .exec(&state.db)
-                .await;
+    let Some(po) = find_purchase_order_scoped(&state.db, id, &ctx).await else {
+        return Redirect::to(LIST_URL).into_response();
+    };
+    let term_id = po.payment_term_id;
+    match PurchaseOrderEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => {
+            if let Some(term_id) = term_id {
+                if let Err(e) = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
+                    .exec(&state.db)
+                    .await
+                {
+                    tracing::error!(
+                        error = %e,
+                        term_id,
+                        po_id = id,
+                        "failed to delete purchase order payment term after PO delete"
+                    );
+                }
+            }
+            htmx.redirect(LIST_URL)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete purchase order");
+            let page = ConfirmDeletePage {
+                modal_uid: PurchaseOrderDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this purchase order?".into(),
+                form_name: "gandola_manager.PurchaseOrderDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
-    Redirect::to(LIST_URL).into_response()
 }
 
 pub async fn select(

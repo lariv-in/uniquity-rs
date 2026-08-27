@@ -8,7 +8,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Pagi
 use serde::Deserialize;
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::middleware::RequireAuth,
@@ -24,7 +24,8 @@ use crate::{
     entities::raw_footage::{self, Column as RawFootageColumn},
     forms::RawFootageForm,
     keys::{
-        RawCreateModalKey, RawFootageSelectTableKey, RawFootageTableKey, VideoEmployeeSelectTableKey,
+        RawCreateModalKey, RawFootageDeleteModalKey, RawFootageSelectTableKey, RawFootageTableKey,
+        VideoEmployeeSelectTableKey,
     },
     routes::{
         RawDetailRouteTag, RawEditGetRouteTag,
@@ -35,8 +36,8 @@ use crate::{
     },
     state::VideoState,
     templates::{
-        RawCreateModalPage, RawDetailPage, RawFormPage, RawListPage, RawSelectPage,
-        VideoEmployeeSelectPage,
+        ConfirmDeletePage, RawCreateModalPage, RawDetailPage, RawFormPage, RawListPage,
+        RawSelectPage, VideoEmployeeSelectPage,
     },
 };
 
@@ -265,22 +266,58 @@ pub async fn edit_post(
         ..Default::default()
     };
     if model.update(&state.db).await.is_ok() {
-        let _ = sync_raw_footage_files(&state.db, id, &form.files).await;
+        if let Err(e) = sync_raw_footage_files(&state.db, id, &form.files).await {
+            tracing::error!(error = %e, raw_footage_id = id, "failed to sync raw footage files");
+        }
         Redirect::to(&RawDetailRouteTag::new(id).url()).into_response()
     } else {
         Redirect::to(&RawEditGetRouteTag::new(id).url()).into_response()
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: RawFootageDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this raw footage?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_uniquity_video.RawDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<VideoState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if find_raw_footage(&state.db, id).await.is_some() {
-        let _ = raw_footage::Entity::delete_by_id(id).exec(&state.db).await;
+    if find_raw_footage(&state.db, id).await.is_none() {
+        return Redirect::to("/video/raw/").into_response();
     }
-    Redirect::to("/video/raw/").into_response()
+    match raw_footage::Entity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/video/raw/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete raw footage");
+            let page = ConfirmDeletePage {
+                modal_uid: RawFootageDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this raw footage?".into(),
+                form_name: "p_uniquity_video.RawDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

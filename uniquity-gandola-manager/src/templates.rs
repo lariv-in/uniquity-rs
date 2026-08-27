@@ -3,17 +3,18 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldText,
-        FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList,
-        PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability,
-        SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-        breadcrumbs, button_clear, button_delete_post_route, button_modal_form, button_submit,
+        ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
+        FieldText, FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem,
+        ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
+        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
         column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        detail_header, field_text, field_textarea, field_title, form, form_hx_get_picker_route,
-        form_hx_get_route, form_hx_post_url, label, layout_main, layout_sidebar, MainContentKey,
-        modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
-        row_attr_select_multi, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-        sort_indicator, table_button_filter, table_create_button, table_pagination,
+        detail_header, delete_confirmation, field_text, field_textarea, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
+        layout_main, layout_sidebar, MainContentKey, modal, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
+        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        table_create_button, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -31,22 +32,23 @@ use super::forms::{
     PurchaseOrderFromPdfForm, SiteFilterForm, SiteFilterFormField, SiteForm, SiteFormField,
 };
 use super::keys::{
-    GandolaCreateModalKey, GandolaEditModalKey, GandolaSelectModalKey, GandolaSelectTableKey,
-    GandolaTableKey, PurchaseOrderCreateModalKey, PurchaseOrderEditModalKey,
-    PurchaseOrderFromPdfModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
-    PurchaseOrderTableKey, SiteCreateModalKey, SiteEditModalKey, SiteFkSelectModalKey,
+    GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
+    GandolaSelectTableKey, GandolaTableKey, PurchaseOrderCreateModalKey,
+    PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey, PurchaseOrderFromPdfModalKey,
+    PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
+    SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
     SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
 };
 use super::routes::{
-    GandolaCreatePostRouteTag, GandolaDefaultRouteTag, GandolaDeletePostRouteTag,
-    GandolaDetailRouteTag, GandolaEditGetRouteTag, GandolaEditPostRouteTag,
-    GandolaPreferencesPostRouteTag, GandolaPreferencesRouteTag, GandolaSelectRouteTag,
-    PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag, PurchaseOrderDeletePostRouteTag,
-    PurchaseOrderDetailRouteTag, PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag,
-    PurchaseOrderFromPdfGetRouteTag, PurchaseOrderFromPdfPostRouteTag,
-    PurchaseOrderImportJobsDismissRouteTag, PurchaseOrderImportJobsRouteTag,
-    PurchaseOrderSelectRouteTag,
-    SiteCreatePostRouteTag, SiteDefaultRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag,
+    GandolaCreatePostRouteTag, GandolaDefaultRouteTag, GandolaDeleteGetRouteTag,
+    GandolaDeletePostRouteTag, GandolaDetailRouteTag, GandolaEditGetRouteTag,
+    GandolaEditPostRouteTag, GandolaPreferencesPostRouteTag, GandolaPreferencesRouteTag,
+    GandolaSelectRouteTag, PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag,
+    PurchaseOrderDeleteGetRouteTag, PurchaseOrderDeletePostRouteTag, PurchaseOrderDetailRouteTag,
+    PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag, PurchaseOrderFromPdfGetRouteTag,
+    PurchaseOrderFromPdfPostRouteTag, PurchaseOrderImportJobsDismissRouteTag,
+    PurchaseOrderImportJobsRouteTag, PurchaseOrderSelectRouteTag, SiteCreatePostRouteTag,
+    SiteDefaultRouteTag, SiteDeleteGetRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag,
     SiteEditGetRouteTag, SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
 };
 use super::po_import_queue::{PoImportJobSnapshot, PoImportJobStatus};
@@ -308,6 +310,7 @@ lariv_rs::define_register_items! {
         PurchaseOrderCreateModalIdx: PurchaseOrderCreateModalPageTag => PurchaseOrderCreateModalPage,
         PurchaseOrderFromPdfModalIdx: PurchaseOrderFromPdfModalPageTag => PurchaseOrderFromPdfModalPage,
         PurchaseOrderSelectIdx: PurchaseOrderSelectPageTag => PurchaseOrderSelectPage,
+        ConfirmDeleteIdx: GandolaConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -584,6 +587,7 @@ pub struct GandolaEditModalPage {
 
 impl RenderTemplate for GandolaEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = GandolaDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<GandolaEditModalKey>(
             &self.form_name,
             html! {
@@ -597,14 +601,16 @@ impl RenderTemplate for GandolaEditModalPage {
                     inputs: gandola_form_inputs(&self.name, &self.sites),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            GandolaDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this gandola?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "gandola_manager.GandolaDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: GandolaDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -1122,6 +1128,7 @@ pub struct SiteEditModalPage {
 
 impl RenderTemplate for SiteEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = SiteDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<SiteEditModalKey>(
             &self.form_name,
             html! {
@@ -1146,14 +1153,16 @@ impl RenderTemplate for SiteEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            SiteDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this site?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "gandola_manager.SiteDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: SiteDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -1879,6 +1888,7 @@ pub struct PurchaseOrderEditModalPage {
 
 impl RenderTemplate for PurchaseOrderEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = PurchaseOrderDeleteGetRouteTag::new(self.id).url();
         modal_keyed::<PurchaseOrderEditModalKey>(
             "!max-w-6xl w-full",
             html! {
@@ -1898,14 +1908,16 @@ impl RenderTemplate for PurchaseOrderEditModalPage {
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_delete_post_route(
-                            PurchaseOrderDeletePostRouteTag::new(self.id),
-                            ButtonDeletePost {
-                                label: "Delete",
-                                confirm: "Permanently delete this purchase order?",
-                                classes: "btn-error",
-                            },
-                        ))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "gandola_manager.PurchaseOrderDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: PurchaseOrderDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
                     },
                     ..Default::default()
                 }))
@@ -2241,5 +2253,47 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
 impl RenderTemplate for PurchaseOrderSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", GandolaDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            GandolaDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = if self.modal_uid == SiteDeleteModalKey::ID {
+            SiteDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == PurchaseOrderDeleteModalKey::ID {
+            PurchaseOrderDeletePostRouteTag::new(self.id).url()
+        } else {
+            GandolaDeletePostRouteTag::new(self.id).url()
+        };
+        modal(lariv_rs::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

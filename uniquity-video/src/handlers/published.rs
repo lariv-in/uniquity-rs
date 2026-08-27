@@ -12,7 +12,7 @@ use std::str::FromStr;
 use tracing::warn;
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
@@ -27,15 +27,18 @@ use uniquity_employees::{
 use crate::{
     entities::published_video,
     forms::{EditorPointsForm, PublishedVideoForm},
-    keys::{PublishedCreateModalKey, PublishedVideoSelectTableKey, PublishedVideoTableKey},
+    keys::{
+        PublishedCreateModalKey, PublishedVideoDeleteModalKey, PublishedVideoSelectTableKey,
+        PublishedVideoTableKey,
+    },
     routes::{
         PublishedDetailRouteTag, PublishedEditGetRouteTag, PublishedEditorPointsPostRouteTag,
     },
     scope::{edited_video_display, find_published_video, query_published_videos},
     state::VideoState,
     templates::{
-        EditorPointsPage, PublishedCreateModalPage, PublishedDetailPage, PublishedFormPage,
-        PublishedListPage, PublishedSelectPage,
+        ConfirmDeletePage, EditorPointsPage, PublishedCreateModalPage, PublishedDetailPage,
+        PublishedFormPage, PublishedListPage, PublishedSelectPage,
     },
     youtube::{self, YouTubeSnippetMeta, dash_if_empty, fetch_youtube_snippet_meta},
 };
@@ -256,15 +259,49 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: PublishedVideoDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this published video?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_uniquity_video.PublishedDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<VideoState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if find_published_video(&state.db, id).await.is_some() {
-        let _ = published_video::Entity::delete_by_id(id).exec(&state.db).await;
+    if find_published_video(&state.db, id).await.is_none() {
+        return Redirect::to("/video/published/").into_response();
     }
-    Redirect::to("/video/published/").into_response()
+    match published_video::Entity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/video/published/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete published video");
+            let page = ConfirmDeletePage {
+                modal_uid: PublishedVideoDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this published video?".into(),
+                form_name: "p_uniquity_video.PublishedDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

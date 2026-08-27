@@ -1,8 +1,8 @@
 //! Query helpers and M2M sync for the video pipeline.
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 
 use lariv_rs::components::DEFAULT_PAGE_SIZE;
@@ -77,7 +77,10 @@ pub struct PublishedVideoDetail {
     pub assigned_to_name: String,
 }
 
-pub fn scope_raw_list(query: Select<RawFootageEntity>, _auth: &AuthContext) -> Select<RawFootageEntity> {
+pub fn scope_raw_list(
+    query: Select<RawFootageEntity>,
+    _auth: &AuthContext,
+) -> Select<RawFootageEntity> {
     query
 }
 
@@ -161,7 +164,9 @@ pub async fn query_raw_footages(
     }
     let sort = sort.unwrap_or("").trim();
     query = match sort {
-        s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(raw_footage::Column::Title),
+        s if s.eq_ignore_ascii_case("Title DESC") => {
+            query.order_by_desc(raw_footage::Column::Title)
+        }
         s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
             query.order_by_asc(raw_footage::Column::Title)
         }
@@ -186,15 +191,9 @@ pub async fn query_raw_footages(
     (rows, page, total)
 }
 
-pub async fn find_raw_footage(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Option<RawFootageDetail> {
-    let m = RawFootageEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()?;
+pub async fn find_raw_footage(db: &DatabaseConnection, id: i64) -> Option<RawFootageDetail> {
+    let m =
+        lariv_rs::web::opt_or_log(RawFootageEntity::find_by_id(id).one(db).await, "find by id")?;
     let file_ids = load_raw_file_ids(db, m.id).await;
     let names = load_vnode_names(db, &file_ids).await;
     let file_names: Vec<String> = file_ids
@@ -215,8 +214,7 @@ pub async fn query_edited_videos(
     db: &DatabaseConnection,
     page: u32,
 ) -> (Vec<EditedVideoRow>, u32, u64) {
-    let query = EditedVideoEntity::find()
-        .order_by_desc(edited_video::Column::UpdatedAt);
+    let query = EditedVideoEntity::find().order_by_desc(edited_video::Column::UpdatedAt);
     let page = page.max(1);
     let paginator = query.paginate(db, PAGE_SIZE);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -226,13 +224,12 @@ pub async fn query_edited_videos(
         .unwrap_or_default();
     let mut rows = Vec::new();
     for m in models {
-        let raw_title = RawFootageEntity::find_by_id(m.raw_footage_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.title)
-            .unwrap_or_else(|| "—".into());
+        let raw_title = lariv_rs::web::opt_or_log(
+            RawFootageEntity::find_by_id(m.raw_footage_id).one(db).await,
+            "find by id",
+        )
+        .map(|r| r.title)
+        .unwrap_or_else(|| "—".into());
         let output_name = load_vnode_names(db, &[m.edited_v_node_id])
             .await
             .get(&m.edited_v_node_id)
@@ -248,11 +245,10 @@ pub async fn query_edited_videos(
 }
 
 pub async fn find_edited_video(db: &DatabaseConnection, id: i64) -> Option<EditedVideoDetail> {
-    let m = EditedVideoEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()?;
+    let m = lariv_rs::web::opt_or_log(
+        EditedVideoEntity::find_by_id(id).one(db).await,
+        "find by id",
+    )?;
     let raw = find_raw_footage(db, m.raw_footage_id).await?;
     let output_name = load_vnode_names(db, &[m.edited_v_node_id])
         .await
@@ -296,19 +292,20 @@ pub async fn query_published_videos(
         .unwrap_or_default();
     let mut rows = Vec::new();
     for m in models {
-        let raw_title = if let Some(ev) = EditedVideoEntity::find_by_id(m.edited_video_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-        {
-            RawFootageEntity::find_by_id(ev.raw_footage_id)
+        let raw_title = if let Some(ev) = lariv_rs::web::opt_or_log(
+            EditedVideoEntity::find_by_id(m.edited_video_id)
                 .one(db)
-                .await
-                .ok()
-                .flatten()
-                .map(|r| r.title)
-                .unwrap_or_else(|| "—".into())
+                .await,
+            "find by id",
+        ) {
+            lariv_rs::web::opt_or_log(
+                RawFootageEntity::find_by_id(ev.raw_footage_id)
+                    .one(db)
+                    .await,
+                "find by id",
+            )
+            .map(|r| r.title)
+            .unwrap_or_else(|| "—".into())
         } else {
             "—".into()
         };
@@ -321,12 +318,14 @@ pub async fn query_published_videos(
     (rows, page, total)
 }
 
-pub async fn find_published_video(db: &DatabaseConnection, id: i64) -> Option<PublishedVideoDetail> {
-    let m = PublishedVideoEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()?;
+pub async fn find_published_video(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<PublishedVideoDetail> {
+    let m = lariv_rs::web::opt_or_log(
+        PublishedVideoEntity::find_by_id(id).one(db).await,
+        "find by id",
+    )?;
     let edited = find_edited_video(db, m.edited_video_id).await?;
     Some(PublishedVideoDetail {
         id: m.id,
@@ -339,22 +338,16 @@ pub async fn find_published_video(db: &DatabaseConnection, id: i64) -> Option<Pu
 }
 
 pub async fn raw_footage_title(db: &DatabaseConnection, id: i64) -> String {
-    RawFootageEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(RawFootageEntity::find_by_id(id).one(db).await, "find by id")
         .map(|r| r.title)
         .unwrap_or_default()
 }
 
 pub async fn edited_video_display(db: &DatabaseConnection, id: i64) -> String {
-    let Some(ev) = EditedVideoEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-    else {
+    let Some(ev) = lariv_rs::web::opt_or_log(
+        EditedVideoEntity::find_by_id(id).one(db).await,
+        "find by id",
+    ) else {
         return String::new();
     };
     raw_footage_title(db, ev.raw_footage_id).await

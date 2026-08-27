@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
 };
 
 use lariv_rs::components::ManyToManyItem;
@@ -92,11 +92,12 @@ pub async fn find_gandola_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<gandola::Model> {
-    scope_gandolas(GandolaEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(
+        scope_gandolas(GandolaEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn find_site_scoped(
@@ -104,11 +105,10 @@ pub async fn find_site_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<site::Model> {
-    scope_sites(SiteEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(
+        scope_sites(SiteEntity::find_by_id(id), auth).one(db).await,
+        "find by id",
+    )
 }
 
 pub async fn find_purchase_order_scoped(
@@ -116,22 +116,19 @@ pub async fn find_purchase_order_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<purchase_order::Model> {
-    scope_purchase_orders(PurchaseOrderEntity::find_by_id(id), auth)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(
+        scope_purchase_orders(PurchaseOrderEntity::find_by_id(id), auth)
+            .one(db)
+            .await,
+        "find by id",
+    )
 }
 
 pub async fn vnode_name(db: &DatabaseConnection, vnode_id: Option<i64>) -> String {
     let Some(id) = vnode_id.filter(|&id| id > 0) else {
         return String::new();
     };
-    VNodeEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
         .map(|n| n.name)
         .unwrap_or_else(|| format!("#{id}"))
 }
@@ -555,11 +552,7 @@ pub async fn site_name(db: &DatabaseConnection, site_id: i64) -> String {
     if site_id <= 0 {
         return String::new();
     }
-    SiteEntity::find_by_id(site_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
         .map(|s| s.name)
         .unwrap_or_else(|| format!("#{site_id}"))
 }
@@ -602,24 +595,19 @@ pub async fn customer_name(db: &DatabaseConnection, customer_id: i64) -> String 
     if customer_id <= 0 {
         return String::new();
     }
-    CustomerEntity::find_by_id(customer_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .map(|c| c.name)
-        .unwrap_or_else(|| format!("#{customer_id}"))
+    lariv_rs::web::opt_or_log(
+        CustomerEntity::find_by_id(customer_id).one(db).await,
+        "find by id",
+    )
+    .map(|c| c.name)
+    .unwrap_or_else(|| format!("#{customer_id}"))
 }
 
 pub async fn product_name(db: &DatabaseConnection, product_id: Option<i64>) -> String {
     let Some(id) = product_id.filter(|&id| id > 0) else {
         return String::new();
     };
-    ProductEntity::find_by_id(id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(ProductEntity::find_by_id(id).one(db).await, "find by id")
         .map(|p| p.name)
         .unwrap_or_else(|| format!("#{id}"))
 }

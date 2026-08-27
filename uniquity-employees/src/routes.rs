@@ -1,6 +1,6 @@
 use super::{
     handlers,
-    keys::{EmployeeSelectTableKey, EmployeeTableKey, PointsTableKey},
+    keys::{EmployeeDeleteModalKey, EmployeeSelectTableKey, EmployeeTableKey, PointsTableKey},
 };
 
 lariv_rs::define_plugin_routes! {
@@ -13,7 +13,8 @@ lariv_rs::define_plugin_routes! {
         get EmployeesDetailRouteTag, "/employees/emp/{id}/", handlers::employees::detail;
         get EmployeesEditGetRouteTag, "/employees/emp/{id}/edit/", handlers::employees::edit_get;
         post EmployeesEditPostRouteTag, "/employees/emp/{id}/edit/", handlers::employees::edit_post;
-        post EmployeesDeletePostRouteTag, "/employees/emp/{id}/delete/", bare handlers::employees::delete_post, redirect;
+        get EmployeesDeleteGetRouteTag, "/employees/emp/{id}/delete/", handlers::employees::delete_get, modal;
+        post EmployeesDeletePostRouteTag, "/employees/emp/{id}/delete/", bare handlers::employees::delete_post, fragment(EmployeeDeleteModalKey);
         get PointsListRouteTag, "/employees/points/", handlers::points::list, fragment(PointsTableKey);
         get PointsCreateGetRouteTag, "/employees/points/create/", handlers::points::create_get, modal;
         post PointsCreatePostRouteTag, "/employees/points/create/", handlers::points::create_post;

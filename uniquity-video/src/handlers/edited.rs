@@ -9,7 +9,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::Deserialize;
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::middleware::RequireAuth,
     web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
@@ -19,14 +19,17 @@ use lariv_rs::{
 use crate::{
     entities::edited_video,
     forms::EditedVideoForm,
-    keys::{EditedCreateModalKey, EditedVideoSelectTableKey, EditedVideoTableKey},
+    keys::{
+        EditedCreateModalKey, EditedVideoDeleteModalKey, EditedVideoSelectTableKey,
+        EditedVideoTableKey,
+    },
     routes::{EditedDetailRouteTag, EditedEditGetRouteTag},
     scope::{
         find_edited_video, query_edited_videos, raw_footage_title, vnode_display_name,
     },
     state::VideoState,
     templates::{
-        EditedCreateModalPage, EditedDetailPage, EditedFormPage, EditedListPage,
+        ConfirmDeletePage, EditedCreateModalPage, EditedDetailPage, EditedFormPage, EditedListPage,
         EditedSelectPage,
     },
 };
@@ -214,15 +217,49 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: EditedVideoDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this edited video?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "p_uniquity_video.EditedDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<VideoState>,
-    RequireAuth(_ctx): RequireAuth,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if find_edited_video(&state.db, id).await.is_some() {
-        let _ = edited_video::Entity::delete_by_id(id).exec(&state.db).await;
+    if find_edited_video(&state.db, id).await.is_none() {
+        return Redirect::to("/video/edited/").into_response();
     }
-    Redirect::to("/video/edited/").into_response()
+    match edited_video::Entity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect("/video/edited/"),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete edited video");
+            let page = ConfirmDeletePage {
+                modal_uid: EditedVideoDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this edited video?".into(),
+                form_name: "p_uniquity_video.EditedDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

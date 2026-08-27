@@ -3,14 +3,14 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle,
-        FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ObjectList, PaginationPage, ShellChrome,
         ShellScaffold, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear,
-        button_delete, button_link, button_modal_form, button_submit, container_column,
-        container_row, column_sort_url, data_table_list, data_table_list_refresh, detail,
-        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_url,
-        label, layout_main, layout_sidebar, modal_keyed, pagination_pages,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_link,
+        button_modal_form, button_submit, container_column, container_row, column_sort_url,
+        data_table_list, data_table_list_refresh, delete_confirmation, detail, field_text,
+        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, shell_scaffold, sort_indicator,
         table_button_filter, table_pagination,
     },
@@ -25,15 +25,14 @@ use super::forms::{
     PointsFormField,
 };
 use super::keys::{
-    EmployeeCreateModalKey, EmployeeSelectTableKey, EmployeeTableKey, PointsCreateModalKey,
-    PointsTableKey,
+    EmployeeCreateModalKey, EmployeeDeleteModalKey, EmployeeSelectTableKey, EmployeeTableKey,
+    PointsCreateModalKey, PointsTableKey,
 };
 use super::routes::{
     EmployeesCreateGetRouteTag, EmployeesCreatePostRouteTag, EmployeesDefaultRouteTag,
-    EmployeesDeletePostRouteTag, EmployeesDetailRouteTag,
-    EmployeesEditGetRouteTag, EmployeesEditPostRouteTag,
-    PointsCreateGetRouteTag, PointsCreatePostRouteTag, PointsDetailRouteTag,
-    PointsListRouteTag,
+    EmployeesDeleteGetRouteTag, EmployeesDeletePostRouteTag, EmployeesDetailRouteTag,
+    EmployeesEditGetRouteTag, EmployeesEditPostRouteTag, PointsCreateGetRouteTag,
+    PointsCreatePostRouteTag, PointsDetailRouteTag, PointsListRouteTag,
 };
 use super::scope::{EmployeeRow, PointsRow};
 
@@ -54,6 +53,7 @@ lariv_rs::define_register_items! {
         PointsListIdx: PointsListPageTag => PointsListPage,
         PointsDetailIdx: PointsDetailPageTag => PointsDetailPage,
         PointsCreateModalIdx: PointsCreateModalPageTag => PointsCreateModalPage,
+        ConfirmDeleteIdx: EmployeeConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -347,6 +347,7 @@ pub struct EmployeeFormPage {
 
 impl EmployeeFormPage {
     fn body(&self) -> Markup {
+        let delete_url = EmployeesDeleteGetRouteTag::new(self.id).url();
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Edit Employee", classes: "" }))
@@ -364,11 +365,16 @@ impl EmployeeFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            (button_delete(
-                                EmployeesDeletePostRouteTag::new(self.id),
-                                "Delete",
-                                "Permanently delete this employee?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                label: "Delete",
+                                icon_name: Some("trash"),
+                                name: "p_uniquity_employees.EmployeeDeleteForm",
+                                href: &delete_url,
+                                form_post_url: &delete_url,
+                                modal_uid: EmployeeDeleteModalKey::ID,
+                                classes: "btn-error",
+                                ..Default::default()
+                            }))
                         }))
                     },
                     ..Default::default()
@@ -684,5 +690,43 @@ impl RenderTemplate for PointsCreateModalPage {
                 ..Default::default()
             }),
         )
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", EmployeeDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            EmployeeDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        modal(lariv_rs::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(
+                    &EmployeesDeletePostRouteTag::new(self.id).url(),
+                    &target,
+                ),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

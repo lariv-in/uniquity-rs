@@ -10,6 +10,7 @@ sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 typst = { workspace = true }
 typst-pdf = { workspace = true }
 typst-kit = { workspace = true }

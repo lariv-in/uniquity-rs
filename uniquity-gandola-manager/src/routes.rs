@@ -1,9 +1,10 @@
 use super::{
     handlers,
     keys::{
-        GandolaSelectModalKey, GandolaSelectTableKey, GandolaTableKey, PurchaseOrderSelectModalKey,
-        PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteFkSelectModalKey,
-        SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        GandolaDeleteModalKey, GandolaSelectModalKey, GandolaSelectTableKey, GandolaTableKey,
+        PurchaseOrderDeleteModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
+        PurchaseOrderTableKey, SiteDeleteModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey,
+        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
 };
 
@@ -16,7 +17,8 @@ lariv_rs::define_plugin_routes! {
         get GandolaDetailRouteTag, "/gandola/g/{id}", handlers::gandolas::detail;
         get GandolaEditGetRouteTag, "/gandola/g/{id}/edit", handlers::gandolas::edit_get, modal;
         post GandolaEditPostRouteTag, "/gandola/g/{id}/edit", handlers::gandolas::edit_post;
-        post GandolaDeletePostRouteTag, "/gandola/g/{id}/delete", bare handlers::gandolas::delete_post, redirect;
+        get GandolaDeleteGetRouteTag, "/gandola/g/{id}/delete", handlers::gandolas::delete_get, modal;
+        post GandolaDeletePostRouteTag, "/gandola/g/{id}/delete", bare handlers::gandolas::delete_post, fragment(GandolaDeleteModalKey);
         get GandolaSelectRouteTag, "/gandola/pick", handlers::gandolas::select, multi_select(GandolaSelectTableKey, GandolaSelectModalKey);
 
         get SiteDefaultRouteTag, "/gandola/sites", handlers::sites::list, fragment(SiteTableKey);
@@ -25,7 +27,8 @@ lariv_rs::define_plugin_routes! {
         get SiteDetailRouteTag, "/gandola/sites/s/{id}", handlers::sites::detail;
         get SiteEditGetRouteTag, "/gandola/sites/s/{id}/edit", handlers::sites::edit_get, modal;
         post SiteEditPostRouteTag, "/gandola/sites/s/{id}/edit", handlers::sites::edit_post;
-        post SiteDeletePostRouteTag, "/gandola/sites/s/{id}/delete", bare handlers::sites::delete_post, redirect;
+        get SiteDeleteGetRouteTag, "/gandola/sites/s/{id}/delete", handlers::sites::delete_get, modal;
+        post SiteDeletePostRouteTag, "/gandola/sites/s/{id}/delete", bare handlers::sites::delete_post, fragment(SiteDeleteModalKey);
         get SiteSelectRouteTag, "/gandola/sites/pick", handlers::sites::select, multi_select(SiteSelectTableKey, SiteSelectModalKey);
         get SiteFkSelectRouteTag, "/gandola/sites/pick-site", handlers::sites::fk_select, fk_select(SiteFkSelectTableKey, SiteFkSelectModalKey);
 
@@ -42,7 +45,8 @@ lariv_rs::define_plugin_routes! {
         get PurchaseOrderDetailRouteTag, "/gandola/purchase-orders/po/{id}", handlers::purchase_orders::detail;
         get PurchaseOrderEditGetRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_get, modal;
         post PurchaseOrderEditPostRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_post;
-        post PurchaseOrderDeletePostRouteTag, "/gandola/purchase-orders/po/{id}/delete", bare handlers::purchase_orders::delete_post, redirect;
+        get PurchaseOrderDeleteGetRouteTag, "/gandola/purchase-orders/po/{id}/delete", handlers::purchase_orders::delete_get, modal;
+        post PurchaseOrderDeletePostRouteTag, "/gandola/purchase-orders/po/{id}/delete", bare handlers::purchase_orders::delete_post, fragment(PurchaseOrderDeleteModalKey);
         get PurchaseOrderSelectRouteTag, "/gandola/purchase-orders/pick", handlers::purchase_orders::select, multi_select(PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey);
     ]
 }

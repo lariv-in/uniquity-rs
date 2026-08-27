@@ -12,7 +12,7 @@ edition = "2024"
 [workspace.dependencies]
 lariv-rs = { 
 	# path = "../../lariv-rs",
-	git = "https://github.com/lariv-in/lariv-rs", rev = "cd49c812cd6c56b5af460c3b72af667f63e2fd39",
+	git = "https://github.com/lariv-in/lariv-rs", rev = "ef74afb11f0c36471a7f12311658006d187ef038",
 	default-features = false, features = [
 		"plugin-users",
 		"plugin-dashboard",
@@ -80,7 +80,6 @@ path = "src/main.rs"
 [dependencies]
 lariv-rs = { workspace = true }
 uniquity-gandola-manager = { workspace = true }
-libc = "0.2"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

@@ -10,7 +10,7 @@ use sea_orm::{
 };
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -27,8 +27,8 @@ use crate::{
     forms::SiteForm,
     handlers::ModalNameQuery,
     keys::{
-        SiteCreateModalKey, SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey,
-        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
+        SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
     routes::SiteDetailRouteTag,
     scope::{
@@ -41,8 +41,9 @@ use crate::{
     site_status::SiteStatus,
     state::GandolaManagerState,
     templates::{
-        RelatedInvoice, RelatedName, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
-        SiteFkSelectPage, SiteListPage, SitePurchaseOrderRow, SiteRow, SiteSelectPage,
+        ConfirmDeletePage, RelatedInvoice, RelatedName, SiteCreateModalPage, SiteDetailPage,
+        SiteEditModalPage, SiteFkSelectPage, SiteListPage, SitePurchaseOrderRow, SiteRow,
+        SiteSelectPage,
     },
 };
 
@@ -629,18 +630,52 @@ pub async fn edit_post(
     }
 }
 
+pub async fn delete_get(
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+    Path(id): Path<i64>,
+) -> maud::Markup {
+    let page = ConfirmDeletePage {
+        modal_uid: SiteDeleteModalKey::ID.to_string(),
+        message: "Are you sure you want to delete this site?".into(),
+        form_name: q
+            .name
+            .clone()
+            .unwrap_or_else(|| "gandola_manager.SiteDeleteForm".into()),
+        id,
+        error: String::new(),
+    };
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
 pub async fn delete_post(
     Cap(state): Cap<GandolaManagerState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
     }
-    if find_site_scoped(&state.db, id, &ctx).await.is_some() {
-        let _ = SiteEntity::delete_by_id(id).exec(&state.db).await;
+    if find_site_scoped(&state.db, id, &ctx).await.is_none() {
+        return Redirect::to(LIST_URL).into_response();
     }
-    Redirect::to(LIST_URL).into_response()
+    match SiteEntity::delete_by_id(id).exec(&state.db).await {
+        Ok(_) => htmx.redirect(LIST_URL),
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to delete site");
+            let page = ConfirmDeletePage {
+                modal_uid: SiteDeleteModalKey::ID.to_string(),
+                message: "Are you sure you want to delete this site?".into(),
+                form_name: "gandola_manager.SiteDeleteForm".into(),
+                id,
+                error: e.to_string(),
+            };
+            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+        }
+    }
 }
 
 pub async fn select(

@@ -278,9 +278,7 @@ pub async fn resolve_import_gandola_id(
         .await
         .map_err(|e| e.to_string())?;
     match gandolas.len() {
-        0 => Err(
-            "no gandolas in database; create one in the UI or pass --gandola-id".into(),
-        ),
+        0 => Err("no gandolas in database; create one in the UI or pass --gandola-id".into()),
         1 => Ok(gandolas[0].id),
         n => {
             let listing = gandolas
@@ -288,9 +286,7 @@ pub async fn resolve_import_gandola_id(
                 .map(|g| format!("id={} name={}", g.id, g.name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            Err(format!(
-                "{n} gandolas found; pass --gandola-id ({listing})"
-            ))
+            Err(format!("{n} gandolas found; pass --gandola-id ({listing})"))
         }
     }
 }
@@ -335,12 +331,13 @@ async fn find_gandola_by_name(db: &DatabaseConnection, name: &str) -> Option<gan
     if name.is_empty() {
         return None;
     }
-    GandolaEntity::find()
-        .filter(gandola::Column::Name.eq(name))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(
+        GandolaEntity::find()
+            .filter(gandola::Column::Name.eq(name))
+            .one(db)
+            .await,
+        "db find one",
+    )
 }
 
 pub async fn import_gandola_row(
@@ -384,7 +381,10 @@ pub async fn import_gandolas_from_csv(
         let lariv_id = import_gandola_row(db, &row.name, dry_run).await?;
         if lariv_id > 0 {
             map.insert(row.id, lariv_id);
-            println!("gandola source id={} -> id={} name={}", row.id, lariv_id, row.name);
+            println!(
+                "gandola source id={} -> id={} name={}",
+                row.id, lariv_id, row.name
+            );
         } else if dry_run {
             println!("dry-run ok gandola source id={} name={}", row.id, row.name);
         }
@@ -422,8 +422,7 @@ pub async fn apply_gandola_site_links(
     let rows = load_gandola_sites_csv(path)?;
     let mut linked = 0usize;
     for row in rows {
-        let lariv_gandola =
-            lariv_gandola_id_for_source(db, row.gandola_id, gandola_map).await?;
+        let lariv_gandola = lariv_gandola_id_for_source(db, row.gandola_id, gandola_map).await?;
         let lariv_site = match site_map.get(&row.site_id).copied() {
             Some(id) => id,
             None => {
@@ -479,13 +478,14 @@ pub async fn find_existing_site(
     customer_id: i64,
     name: &str,
 ) -> Option<site::Model> {
-    SiteEntity::find()
-        .filter(site::Column::CustomerId.eq(customer_id))
-        .filter(site::Column::Name.eq(name.trim()))
-        .one(db)
-        .await
-        .ok()
-        .flatten()
+    lariv_rs::web::opt_or_log(
+        SiteEntity::find()
+            .filter(site::Column::CustomerId.eq(customer_id))
+            .filter(site::Column::Name.eq(name.trim()))
+            .one(db)
+            .await,
+        "db find one",
+    )
 }
 
 pub async fn import_site_row(
@@ -555,12 +555,7 @@ pub async fn build_po_number_index_for_sites(
         let customer_id = customer_ids
             .get(&row.legacy_customer_id)
             .copied()
-            .ok_or_else(|| {
-                format!(
-                    "no Lariv customer for map id {}",
-                    row.legacy_customer_id
-                )
-            })?;
+            .ok_or_else(|| format!("no Lariv customer for map id {}", row.legacy_customer_id))?;
         let site = find_existing_site(db, customer_id, &row.name)
             .await
             .ok_or_else(|| format!("site not in database: {}", row.name.trim()))?;
@@ -572,12 +567,7 @@ pub async fn build_po_number_index_for_sites(
 }
 
 fn po_numbers_for_csv_row(row: &SiteCsvRow) -> Vec<String> {
-    po_numbers_from_fields([
-        &row.po_rent,
-        &row.po_dti,
-        &row.po_tpi,
-        &row.po_extn1,
-    ])
+    po_numbers_from_fields([&row.po_rent, &row.po_dti, &row.po_tpi, &row.po_extn1])
 }
 
 fn po_numbers_from_fields(fields: [&str; 4]) -> Vec<String> {
@@ -618,12 +608,9 @@ pub async fn import_po_pdf(
     if dry_run {
         return Ok("dry-run".into());
     }
-    let extracted = extract_purchase_order_from_pdf(
-        &prefs.gemini_api_key,
-        &prefs.gemini_model,
-        pdf_bytes,
-    )
-    .await?;
+    let extracted =
+        extract_purchase_order_from_pdf(&prefs.gemini_api_key, &prefs.gemini_model, pdf_bytes)
+            .await?;
     let number = extracted.number.trim();
     if !number.is_empty() && purchase_order_number_taken(db, number, None).await {
         return Err(format!("purchase order {number} already exists"));

@@ -8,41 +8,18 @@ use lariv_rs::plugins::{
 };
 use tracing_subscriber::EnvFilter;
 
-/// Deep HList install/mount chains for this deployment overflow the default ~8 MiB stack.
-const STACK_SIZE: usize = 64 * 1024 * 1024;
+#[lariv_rs::main(
+    stack_size = 64 * 1024 * 1024,
+    flavor = "multi_thread",
+    thread_name = "uniquity-server"
+)]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive("warn".parse().expect("directive")),
+        )
+        .init();
 
-/// Raise the process stack soft limit so `thread::Builder::stack_size` is not clipped by
-/// `ulimit -s` (often 8192 KiB). Without this, requesting 32–64 MiB still leaves ~8 MiB.
-#[cfg(unix)]
-fn raise_process_stack_limit(bytes: usize) {
-    use std::mem::MaybeUninit;
-
-    unsafe {
-        let mut lim = MaybeUninit::<libc::rlimit>::uninit();
-        if libc::getrlimit(libc::RLIMIT_STACK, lim.as_mut_ptr()) != 0 {
-            return;
-        }
-        let mut lim = lim.assume_init();
-        let want = bytes as libc::rlim_t;
-        lim.rlim_cur = if lim.rlim_max == libc::RLIM_INFINITY {
-            want
-        } else {
-            want.min(lim.rlim_max)
-        };
-        if libc::setrlimit(libc::RLIMIT_STACK, &lim) != 0 {
-            eprintln!(
-                "warning: could not raise stack limit to {} MiB; \
-                 try `ulimit -s unlimited` before starting the server",
-                bytes / (1024 * 1024)
-            );
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn raise_process_stack_limit(_bytes: usize) {}
-
-async fn run() -> anyhow::Result<()> {
     let app = App::new_web_app();
     let app = users::install(app);
     let app = filesystem::install(app);
@@ -65,43 +42,4 @@ async fn run() -> anyhow::Result<()> {
     let app = app.mount();
     app.run().await?;
     Ok(())
-}
-
-fn main() {
-    raise_process_stack_limit(STACK_SIZE);
-
-    let result = std::thread::Builder::new()
-        .name("uniquity-server".into())
-        .stack_size(STACK_SIZE)
-        .spawn(|| {
-            tracing_subscriber::fmt()
-                .with_env_filter(
-                    EnvFilter::from_default_env().add_directive("warn".parse().expect("directive")),
-                )
-                .init();
-
-            // Worker stacks must match this thread: after `.await`, work resumes
-            // on a worker. `block_in_place` (Rune native DB calls) also needs
-            // the multi-thread runtime.
-            tokio::runtime::Builder::new_multi_thread()
-                .thread_stack_size(STACK_SIZE)
-                .enable_all()
-                .build()
-                .expect("tokio runtime")
-                .block_on(run())
-        })
-        .expect("spawn server thread")
-        .join();
-
-    match result {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
-            eprintln!("{e:#}");
-            std::process::exit(1);
-        }
-        Err(_) => {
-            eprintln!("server thread panicked");
-            std::process::exit(1);
-        }
-    }
 }

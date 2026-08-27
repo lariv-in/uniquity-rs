@@ -8,8 +8,8 @@ use sea_orm::{
 use lariv_rs::plugins::finance_invoices::logic::parse_payment_term_lines_json;
 
 use crate::entities::{
-    PurchaseOrderPaymentTermEntity, SiteEntity,
     purchase_order::{self, Entity as PurchaseOrderEntity},
+    PurchaseOrderPaymentTermEntity, SiteEntity,
 };
 use crate::forms::PurchaseOrderForm;
 use crate::po_lines::{parse_po_lines_json, replace_po_lines};
@@ -51,12 +51,9 @@ pub async fn resolve_site_and_customer(
     if site_id <= 0 {
         return Err("select a site".into());
     }
-    let site = SiteEntity::find_by_id(site_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .ok_or_else(|| "select a site".to_string())?;
+    let site =
+        lariv_rs::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
+            .ok_or_else(|| "select a site".to_string())?;
     if customer_id > 0 && site.customer_id != customer_id {
         return Err("site does not belong to the selected customer".into());
     }
@@ -72,7 +69,7 @@ pub async fn purchase_order_number_taken(
     if let Some(id) = except_id {
         query = query.filter(purchase_order::Column::Id.ne(id));
     }
-    query.one(db).await.ok().flatten().is_some()
+    lariv_rs::web::opt_or_log(query.one(db).await, "db find one").is_some()
 }
 
 pub async fn persist_new_purchase_order(
@@ -107,18 +104,40 @@ pub async fn persist_new_purchase_order(
     match model.insert(db).await {
         Ok(saved) => {
             if let Err(e) = replace_po_lines(db, saved.id, &lines).await {
-                let _ = PurchaseOrderEntity::delete_by_id(saved.id).exec(db).await;
-                let _ = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
+                if let Err(rollback_err) =
+                    PurchaseOrderEntity::delete_by_id(saved.id).exec(db).await
+                {
+                    tracing::error!(
+                        error = %rollback_err,
+                        po_id = saved.id,
+                        "failed to rollback purchase order after line replace error"
+                    );
+                }
+                if let Err(rollback_err) = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
                     .exec(db)
-                    .await;
+                    .await
+                {
+                    tracing::error!(
+                        error = %rollback_err,
+                        term_id = term.id,
+                        "failed to rollback payment term after line replace error"
+                    );
+                }
                 return Err(e);
             }
             Ok(saved)
         }
         Err(e) => {
-            let _ = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
+            if let Err(rollback_err) = PurchaseOrderPaymentTermEntity::delete_by_id(term.id)
                 .exec(db)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    error = %rollback_err,
+                    term_id = term.id,
+                    "failed to rollback payment term after purchase order insert error"
+                );
+            }
             Err(e.to_string())
         }
     }

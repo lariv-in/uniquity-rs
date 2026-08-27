@@ -3,15 +3,16 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FormOpts,
-        LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage, ShellChrome,
-        ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey,
-        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_delete, button_link,
+        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
+        FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
+        ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
+        SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
         button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list, data_table_list_refresh, detail, field_text, field_title, form,
-        form_hx_get_route, form_hx_post_main, form_hx_post_url, label, layout_main,
-        layout_sidebar, modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select,
-        shell_scaffold, sidebar_menu, sidebar_menu_item, sort_indicator, table_pagination,
+        data_table_list, data_table_list_refresh, delete_confirmation, detail, field_text,
+        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+        row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item,
+        sort_indicator, table_pagination,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -29,21 +30,20 @@ use super::forms::{
     RawFootageForm, RawFootageFormField,
 };
 use super::keys::{
-    EditedCreateModalKey, EditedVideoSelectTableKey, EditedVideoTableKey,
-    PublishedCreateModalKey, PublishedVideoSelectTableKey, PublishedVideoTableKey,
-    RawCreateModalKey, RawFootageSelectTableKey, RawFootageTableKey,
-    VideoEmployeeSelectTableKey,
+    EditedCreateModalKey, EditedVideoDeleteModalKey, EditedVideoSelectTableKey, EditedVideoTableKey,
+    PublishedCreateModalKey, PublishedVideoDeleteModalKey, PublishedVideoSelectTableKey,
+    PublishedVideoTableKey, RawCreateModalKey, RawFootageDeleteModalKey, RawFootageSelectTableKey,
+    RawFootageTableKey, VideoEmployeeSelectTableKey,
 };
 use super::routes::{
-    EditedCreateGetRouteTag, EditedCreatePostRouteTag,
+    EditedCreateGetRouteTag, EditedCreatePostRouteTag, EditedDeleteGetRouteTag,
     EditedDeletePostRouteTag, EditedDetailRouteTag, EditedEditGetRouteTag, EditedEditPostRouteTag,
     EditedListRouteTag, PublishedCreateGetRouteTag, PublishedCreatePostRouteTag,
-    PublishedDeletePostRouteTag, PublishedDetailRouteTag,
+    PublishedDeleteGetRouteTag, PublishedDeletePostRouteTag, PublishedDetailRouteTag,
     PublishedEditGetRouteTag, PublishedEditPostRouteTag, PublishedEditorPointsGetRouteTag,
-    PublishedEditorPointsPostRouteTag, PublishedListRouteTag,
-    RawCreateGetRouteTag, RawCreatePostRouteTag, RawDeletePostRouteTag,
-    RawDetailRouteTag, RawEditGetRouteTag, RawEditPostRouteTag,
-    RawListRouteTag, VideoHubRouteTag,
+    PublishedEditorPointsPostRouteTag, PublishedListRouteTag, RawCreateGetRouteTag,
+    RawCreatePostRouteTag, RawDeleteGetRouteTag, RawDeletePostRouteTag, RawDetailRouteTag,
+    RawEditGetRouteTag, RawEditPostRouteTag, RawListRouteTag, VideoHubRouteTag,
 };
 use super::scope::{EditedVideoRow, PublishedVideoRow, RawFootageRow};
 
@@ -74,6 +74,7 @@ lariv_rs::define_register_items! {
         PublishedCreateModalIdx: PublishedCreateModalPageTag => PublishedCreateModalPage,
         PublishedSelectIdx: PublishedSelectPageTag => PublishedSelectPage,
         EditorPointsIdx: EditorPointsPageTag => EditorPointsPage,
+        ConfirmDeleteIdx: VideoConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
 
@@ -553,6 +554,7 @@ pub struct RawFormPage {
 
 impl RawFormPage {
     fn body(&self) -> Markup {
+        let delete_url = RawDeleteGetRouteTag::new(self.id).url();
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Edit raw footage", classes: "" }))
@@ -572,11 +574,16 @@ impl RawFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            (button_delete(
-                                RawDeletePostRouteTag::new(self.id),
-                                "Delete",
-                                "Permanently delete this raw footage?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                label: "Delete",
+                                icon_name: Some("trash"),
+                                name: "p_uniquity_video.RawDeleteForm",
+                                href: &delete_url,
+                                form_post_url: &delete_url,
+                                modal_uid: RawFootageDeleteModalKey::ID,
+                                classes: "btn-error",
+                                ..Default::default()
+                            }))
                         }))
                     },
                     ..Default::default()
@@ -911,6 +918,7 @@ pub struct EditedFormPage {
 
 impl EditedFormPage {
     fn body(&self) -> Markup {
+        let delete_url = EditedDeleteGetRouteTag::new(self.id).url();
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Edit edited video", classes: "" }))
@@ -930,11 +938,16 @@ impl EditedFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            (button_delete(
-                                EditedDeletePostRouteTag::new(self.id),
-                                "Delete",
-                                "Permanently delete this edited video?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                label: "Delete",
+                                icon_name: Some("trash"),
+                                name: "p_uniquity_video.EditedDeleteForm",
+                                href: &delete_url,
+                                form_post_url: &delete_url,
+                                modal_uid: EditedVideoDeleteModalKey::ID,
+                                classes: "btn-error",
+                                ..Default::default()
+                            }))
                         }))
                     },
                     ..Default::default()
@@ -1283,6 +1296,7 @@ pub struct PublishedFormPage {
 
 impl PublishedFormPage {
     fn body(&self) -> Markup {
+        let delete_url = PublishedDeleteGetRouteTag::new(self.id).url();
         html! {
             (container_column("@container", html! {
                 (field_title(FieldTitle { value: "Edit published video", classes: "" }))
@@ -1301,11 +1315,16 @@ impl PublishedFormPage {
                                 classes: "btn-primary",
                                 ..Default::default()
                             }))
-                            (button_delete(
-                                PublishedDeletePostRouteTag::new(self.id),
-                                "Delete",
-                                "Permanently delete this published video?",
-                            ))
+                            (button_modal_form(ButtonModalForm {
+                                label: "Delete",
+                                icon_name: Some("trash"),
+                                name: "p_uniquity_video.PublishedDeleteForm",
+                                href: &delete_url,
+                                form_post_url: &delete_url,
+                                modal_uid: PublishedVideoDeleteModalKey::ID,
+                                classes: "btn-error",
+                                ..Default::default()
+                            }))
                         }))
                     },
                     ..Default::default()
@@ -1504,5 +1523,47 @@ impl RenderTemplate for EditorPointsPage {
             crumbs,
             self.body(),
         )
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", RawFootageDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            RawFootageDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = if self.modal_uid == EditedVideoDeleteModalKey::ID {
+            EditedDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == PublishedVideoDeleteModalKey::ID {
+            PublishedDeletePostRouteTag::new(self.id).url()
+        } else {
+            RawDeletePostRouteTag::new(self.id).url()
+        };
+        modal(lariv_rs::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
     }
 }

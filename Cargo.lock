@@ -2543,7 +2543,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=cd49c812cd6c56b5af460c3b72af667f63e2fd39#cd49c812cd6c56b5af460c3b72af667f63e2fd39"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=ef74afb11f0c36471a7f12311658006d187ef038#ef74afb11f0c36471a7f12311658006d187ef038"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2565,6 +2565,7 @@ dependencies = [
  "jsonwebtoken",
  "lariv-rs-macros",
  "lettre",
+ "libc",
  "maud",
  "mime_guess",
  "minijinja",
@@ -2604,7 +2605,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=cd49c812cd6c56b5af460c3b72af667f63e2fd39#cd49c812cd6c56b5af460c3b72af667f63e2fd39"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=ef74afb11f0c36471a7f12311658006d187ef038#ef74afb11f0c36471a7f12311658006d187ef038"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6261,6 +6262,7 @@ dependencies = [
  "sea-orm-migration",
  "thiserror",
  "tokio",
+ "tracing",
  "typst",
  "typst-kit",
  "typst-pdf",
@@ -6289,6 +6291,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -6300,7 +6303,6 @@ dependencies = [
  "chrono",
  "frunk",
  "lariv-rs",
- "libc",
  "rust_decimal",
  "sea-orm",
  "tokio",
