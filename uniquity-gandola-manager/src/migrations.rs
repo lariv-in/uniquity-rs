@@ -19,6 +19,9 @@ mod m00014_purchase_order_drop_additional_notes;
 mod m00015_pg_trgm;
 mod m00016_purchase_order_lines_drop_product_id;
 mod m00017_pg_trgm_lower;
+mod m00018_site_site_id;
+mod m00019_gandola_invoice_date_formats;
+mod m00020_drop_gandola_invoice_date_formats;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -44,6 +47,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00015_pg_trgm::Migration),
             Box::new(m00016_purchase_order_lines_drop_product_id::Migration),
             Box::new(m00017_pg_trgm_lower::Migration),
+            Box::new(m00018_site_site_id::Migration),
+            Box::new(m00019_gandola_invoice_date_formats::Migration),
+            Box::new(m00020_drop_gandola_invoice_date_formats::Migration),
         ]
     }
 }

@@ -14,17 +14,17 @@ impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
         rune_env.register_contextual(
             "find_site",
-            "find_site(#{ site_id?: int, name?: string, site_name?: string }) -> #{ id, name, customer_id, address?, status }",
+            "find_site(#{ site_id?: int|string, name?: string, site_name?: string }) -> #{ id, site_id?, name, customer_id, address?, status } — int site_id is the primary key; string site_id / name / site_name match name or string site_id",
             |_ctx| NativeBinding::Function(Arc::new(find_site)),
         );
         rune_env.register_contextual(
             "list_site_purchase_orders",
-            "list_site_purchase_orders(#{ site_id?: int, name?: string, site_name?: string }) -> #{ site: SiteSummary, purchase_orders: [#{ id, number, date, customer_id, already_invoiced, existing_invoice_id?, lines: [...] }] }",
+            "list_site_purchase_orders(#{ site_id?: int|string, name?: string, site_name?: string }) -> #{ site: SiteSummary, purchase_orders: [#{ id, number, date, customer_id, already_invoiced, existing_invoice_id?, lines: [...] }] }",
             |_ctx| NativeBinding::Function(Arc::new(list_site_purchase_orders)),
         );
         rune_env.register_contextual(
             "create_invoices_for_site",
-            "create_invoices_for_site(#{ site_id?: int, site_name?: string, name?: string, timezone?: string, dry_run?: bool }) -> #{ site_id, site_name, dry_run, created: [InvoiceAction], skipped: [InvoiceAction], errors: [InvoiceAction] }",
+            "create_invoices_for_site(#{ site_id?: int|string, site_name?: string, name?: string, timezone?: string, dry_run?: bool }) -> #{ site_id, site_name, dry_run, created: [InvoiceAction], skipped: [InvoiceAction], errors: [InvoiceAction] }",
             |_ctx| NativeBinding::Function(Arc::new(create_invoices_for_site)),
         );
         rune_env.register_contextual(
@@ -39,7 +39,7 @@ fn find_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, 
     let parsed: SiteLookupArgs = parse_object_args(args, "find_site")?;
     let db = ctx.db.clone();
     let site = block_on_async(async move {
-        crate::invoice_site_pos::find_site(&db, parsed.site_id, parsed.lookup_name()).await
+        crate::invoice_site_pos::find_site(&db, parsed.lookup_pk(), parsed.lookup_text()).await
     })?;
     lariv_rs::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&site)))
 }
@@ -52,7 +52,7 @@ fn list_site_purchase_orders(
     let db = ctx.db.clone();
     let (site, purchase_orders) = block_on_async(async move {
         let site =
-            crate::invoice_site_pos::find_site(&db, parsed.site_id, parsed.lookup_name()).await?;
+            crate::invoice_site_pos::find_site(&db, parsed.lookup_pk(), parsed.lookup_text()).await?;
         let (_, pos) = crate::invoice_site_pos::list_site_purchase_orders(&db, site.id).await?;
         Ok::<_, String>((site, pos))
     })?;
@@ -68,15 +68,15 @@ fn create_invoices_for_site(
 ) -> Result<rune::Value, String> {
     let parsed: CreateInvoicesArgs = parse_object_args(args, "create_invoices_for_site")?;
     let timezone = parsed.timezone.clone().unwrap_or_else(|| "UTC".to_string());
-    let site_name = parsed.lookup_name().map(str::to_string);
-    let site_id = parsed.site_id;
+    let site_text = parsed.lookup_text().map(str::to_string);
+    let site_pk = parsed.lookup_pk();
     let dry_run = parsed.dry_run.unwrap_or(false);
     let db = ctx.db.clone();
     let result = block_on_async(async move {
         crate::invoice_site_pos::create_invoices_for_site(
             &db,
-            site_id,
-            site_name.as_deref(),
+            site_pk,
+            site_text.as_deref(),
             &timezone,
             dry_run,
         )
@@ -125,9 +125,16 @@ where
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum FlexibleSiteId {
+    Id(i64),
+    Code(String),
+}
+
+#[derive(Debug, Deserialize)]
 struct SiteLookupArgs {
     #[serde(default)]
-    site_id: Option<i64>,
+    site_id: Option<FlexibleSiteId>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -135,15 +142,32 @@ struct SiteLookupArgs {
 }
 
 impl SiteLookupArgs {
-    fn lookup_name(&self) -> Option<&str> {
-        self.name.as_deref().or(self.site_name.as_deref())
+    fn lookup_pk(&self) -> Option<i64> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Id(id)) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn lookup_text(&self) -> Option<&str> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Code(code)) => {
+                let trimmed = code.trim();
+                if trimmed.is_empty() {
+                    self.name.as_deref().or(self.site_name.as_deref())
+                } else {
+                    Some(trimmed)
+                }
+            }
+            _ => self.name.as_deref().or(self.site_name.as_deref()),
+        }
     }
 }
 
 #[derive(Debug, Deserialize)]
 struct CreateInvoicesArgs {
     #[serde(default)]
-    site_id: Option<i64>,
+    site_id: Option<FlexibleSiteId>,
     #[serde(default)]
     site_name: Option<String>,
     #[serde(default)]
@@ -155,8 +179,25 @@ struct CreateInvoicesArgs {
 }
 
 impl CreateInvoicesArgs {
-    fn lookup_name(&self) -> Option<&str> {
-        self.site_name.as_deref().or(self.name.as_deref())
+    fn lookup_pk(&self) -> Option<i64> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Id(id)) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn lookup_text(&self) -> Option<&str> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Code(code)) => {
+                let trimmed = code.trim();
+                if trimmed.is_empty() {
+                    self.site_name.as_deref().or(self.name.as_deref())
+                } else {
+                    Some(trimmed)
+                }
+            }
+            _ => self.site_name.as_deref().or(self.name.as_deref()),
+        }
     }
 }
 

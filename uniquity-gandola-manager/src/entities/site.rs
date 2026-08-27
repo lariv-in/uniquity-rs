@@ -14,6 +14,8 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub name: String,
+    /// External / business site identifier (distinct from primary key `id`).
+    pub site_id: Option<String>,
     pub address: Option<String>,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,

@@ -77,6 +77,16 @@ pub fn apply_name_filter_sites(
     query
 }
 
+pub fn apply_site_id_filter_sites(
+    mut query: Select<SiteEntity>,
+    site_id: Option<&str>,
+) -> Select<SiteEntity> {
+    if let Some(s) = site_id.filter(|s| !s.is_empty()) {
+        query = query.filter(site::Column::SiteId.contains(s));
+    }
+    query
+}
+
 pub fn apply_number_filter_purchase_orders(
     mut query: Select<PurchaseOrderEntity>,
     number: Option<&str>,

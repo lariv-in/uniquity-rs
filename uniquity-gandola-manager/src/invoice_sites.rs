@@ -142,6 +142,7 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
                 .map(|s| {
                     json!({
                         "ID": s.id,
+                        "SiteId": s.site_id.unwrap_or_default(),
                         "Name": s.name,
                         "Address": s.address.unwrap_or_default(),
                     })
@@ -154,6 +155,7 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
         json!({
             "Sites": [{
                 "ID": 1,
+                "SiteId": "SITE-001",
                 "Name": "Sample Site",
                 "Address": "Plot 12, Industrial Area",
             }]

@@ -60,7 +60,8 @@ impl LlmTool for SearchSitesTool {
     fn declaration(&self) -> FunctionDeclaration {
         FunctionDeclaration {
             name: "search_sites".into(),
-            description: "Search sites by name or address using trigram fuzzy matching.".into(),
+            description: "Search sites by name, site id, or address using trigram fuzzy matching."
+                .into(),
             parameters: Some(search_params()),
         }
     }
@@ -69,7 +70,11 @@ impl LlmTool for SearchSitesTool {
         let (query, limit) = parse_query(args)?;
         let rows = trigram::search::<SiteEntity, _>(
             ctx.db,
-            &[site::Column::Name, site::Column::Address],
+            &[
+                site::Column::Name,
+                site::Column::SiteId,
+                site::Column::Address,
+            ],
             &query,
             limit,
         )
@@ -80,6 +85,7 @@ impl LlmTool for SearchSitesTool {
             .map(|s| {
                 json!({
                     "id": s.id,
+                    "site_id": s.site_id,
                     "name": s.name,
                     "address": s.address,
                     "customer_id": s.customer_id,

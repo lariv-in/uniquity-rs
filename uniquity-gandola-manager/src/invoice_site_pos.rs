@@ -29,6 +29,7 @@ use crate::scope::{link_site_invoice, load_purchase_orders_for_site};
 #[derive(Debug, Clone, Serialize)]
 pub struct SiteSummary {
     pub id: i64,
+    pub site_id: Option<String>,
     pub name: String,
     pub customer_id: i64,
     pub address: Option<String>,
@@ -90,12 +91,17 @@ pub async fn find_site(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "provide site_id or site_name".to_string())?;
-    let sites = trigram::search::<SiteEntity, _>(db, &[site::Column::Name], needle, 50)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sites = trigram::search::<SiteEntity, _>(
+        db,
+        &[site::Column::Name, site::Column::SiteId],
+        needle,
+        50,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     let exact: Vec<_> = sites
         .iter()
-        .filter(|s| s.name.eq_ignore_ascii_case(needle))
+        .filter(|s| site_matches_needle(s, needle))
         .cloned()
         .collect();
     if exact.len() == 1 {
@@ -103,7 +109,7 @@ pub async fn find_site(
     }
     if exact.len() > 1 {
         return Err(format!(
-            "multiple sites named {:?}: {}",
+            "multiple sites matching {:?}: {}",
             needle,
             site_id_list(&exact)
         ));
@@ -118,9 +124,18 @@ pub async fn find_site(
     }
 }
 
+fn site_matches_needle(site: &site::Model, needle: &str) -> bool {
+    site.name.eq_ignore_ascii_case(needle)
+        || site
+            .site_id
+            .as_deref()
+            .is_some_and(|id| id.eq_ignore_ascii_case(needle))
+}
+
 pub fn site_summary(site: &site::Model) -> SiteSummary {
     SiteSummary {
         id: site.id,
+        site_id: site.site_id.clone(),
         name: site.name.clone(),
         customer_id: site.customer_id,
         address: site.address.clone(),

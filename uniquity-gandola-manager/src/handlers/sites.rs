@@ -32,11 +32,12 @@ use crate::{
     },
     routes::SiteDetailRouteTag,
     scope::{
-        apply_name_filter_sites, customer_name, find_site_scoped, gandola_items_for_site,
-        gandola_items_from_ids, invoice_items_for_site, invoice_items_from_ids, is_superuser,
-        load_gandolas_for_site, load_purchase_orders_for_site, opt_string,
-        purchase_order_items_for_site, purchase_order_items_from_ids, related_invoices_for_site,
-        scope_sites, sync_site_gandolas, sync_site_invoices, sync_site_purchase_orders,
+        apply_name_filter_sites, apply_site_id_filter_sites, customer_name, find_site_scoped,
+        gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
+        invoice_items_from_ids, is_superuser, load_gandolas_for_site, load_purchase_orders_for_site,
+        opt_string, purchase_order_items_for_site, purchase_order_items_from_ids,
+        related_invoices_for_site, scope_sites, sync_site_gandolas, sync_site_invoices,
+        sync_site_purchase_orders,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
@@ -57,6 +58,8 @@ const GANDOLA_NAME_SORT_EXPR: &str = "COALESCE((SELECT MIN(g.name) FROM gandola_
 pub struct SiteListQuery {
     #[serde(default, rename = "Name", alias = "name")]
     pub name: Option<String>,
+    #[serde(default, rename = "SiteId", alias = "site_id")]
+    pub site_id: Option<String>,
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
@@ -96,6 +99,7 @@ async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRo
     SiteRow {
         id: s.id,
         name: s.name,
+        site_id: s.site_id.unwrap_or_default(),
         address: s.address.unwrap_or_default(),
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
@@ -113,6 +117,7 @@ async fn query_sites(
 ) -> ObjectList<SiteRow> {
     let mut query = SiteEntity::find();
     query = apply_name_filter_sites(query, q.name.as_deref());
+    query = apply_site_id_filter_sites(query, q.site_id.as_deref());
     query = scope_sites(query, auth);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
@@ -170,6 +175,7 @@ pub async fn list(
     let page = SiteListPage {
         sites,
         filter_name: q.name.clone().unwrap_or_default(),
+        filter_site_id: q.site_id.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: is_superuser(&ctx),
@@ -204,6 +210,7 @@ pub async fn detail(
     let page = SiteDetailPage {
         id: s.id,
         name: s.name,
+        site_id: s.site_id.unwrap_or_default(),
         customer_id: s.customer_id,
         customer_name: customer_name(&state.db, s.customer_id).await,
         status_label: s.status.label().to_string(),
@@ -243,6 +250,7 @@ pub async fn detail(
 
 struct ParsedSite {
     name: String,
+    site_id: Option<String>,
     customer_id: i64,
     status: SiteStatus,
     start_date: Option<NaiveDate>,
@@ -262,6 +270,7 @@ fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
     let end_date = parse_date(&form.end_date).map_err(|e| e.to_string())?;
     Ok(ParsedSite {
         name: form.name.trim().to_string(),
+        site_id: opt_string(form.site_id.clone()),
         customer_id: form.customer_id,
         status,
         start_date,
@@ -286,6 +295,7 @@ async fn create_page_from_form(
         refresh_table,
         target_input,
         name: form.name.clone(),
+        site_id: form.site_id.clone(),
         customer_id: form.customer_id,
         customer_display: customer_name(db, form.customer_id).await,
         status: form.status.clone(),
@@ -312,6 +322,7 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         name: String::new(),
+        site_id: String::new(),
         customer_id: 0,
         customer_display: String::new(),
         status: SiteStatus::default().as_str().to_string(),
@@ -362,6 +373,7 @@ pub async fn create_post(
     let now = Utc::now();
     let model = site::ActiveModel {
         name: Set(parsed.name),
+        site_id: Set(parsed.site_id),
         customer_id: Set(parsed.customer_id),
         status: Set(parsed.status),
         start_date: Set(parsed.start_date),
@@ -472,6 +484,7 @@ pub async fn edit_get(
         id: s.id,
         form_name: q.form_name(),
         name: s.name,
+        site_id: s.site_id.unwrap_or_default(),
         customer_id: s.customer_id,
         customer_display: customer_name(&state.db, s.customer_id).await,
         status: s.status.as_str().to_string(),
@@ -500,6 +513,7 @@ async fn edit_page_from_form(
         id,
         form_name,
         name: form.name.clone(),
+        site_id: form.site_id.clone(),
         customer_id: form.customer_id,
         customer_display: customer_name(db, form.customer_id).await,
         status: form.status.clone(),
@@ -553,6 +567,7 @@ pub async fn edit_post(
     let model = site::ActiveModel {
         id: Set(existing.id),
         name: Set(parsed.name),
+        site_id: Set(parsed.site_id),
         customer_id: Set(parsed.customer_id),
         status: Set(parsed.status),
         start_date: Set(parsed.start_date),
@@ -689,6 +704,7 @@ pub async fn select(
     let page = SiteSelectPage {
         sites,
         filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_site_id: q.filter.site_id.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Sites".into()),
@@ -708,6 +724,7 @@ pub async fn fk_select(
     let page = SiteFkSelectPage {
         sites,
         filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_site_id: q.filter.site_id.clone().unwrap_or_default(),
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "SiteID".into()),

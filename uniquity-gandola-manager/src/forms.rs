@@ -42,6 +42,9 @@ pub struct SiteForm {
     #[form(label = "Site Name", required, widget = Text)]
     pub name: String,
 
+    #[form(label = "Site ID", widget = Text)]
+    pub site_id: String,
+
     #[form(
         label = "Customer",
         required,
@@ -115,6 +118,9 @@ pub struct DraftInvoiceSitesForm {
 pub struct SiteFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,
+
+    #[form(label = "Site ID", widget = Text)]
+    pub site_id: String,
 }
 
 #[html_form]

@@ -764,6 +764,7 @@ impl RenderTemplate for GandolaSelectPage {
 pub struct SiteRow {
     pub id: i64,
     pub name: String,
+    pub site_id: String,
     pub address: String,
     pub start_date: String,
     pub end_date: String,
@@ -776,6 +777,7 @@ pub struct SiteRow {
 pub struct SiteListPage {
     pub sites: ObjectList<SiteRow>,
     pub filter_name: String,
+    pub filter_site_id: String,
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
@@ -798,6 +800,12 @@ impl SiteListPage {
                 key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "SiteId",
+                label: "Site ID",
+                sort_url: None,
                 push_url: true,
             },
             TableColumnHeader {
@@ -845,6 +853,10 @@ impl SiteListPage {
                             classes: "",
                         }),
                         field_text(FieldText {
+                            value: &s.site_id,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
                             value: &s.address,
                             classes: "",
                         }),
@@ -871,7 +883,8 @@ impl SiteListPage {
                     attrs: form_hx_get_route::<SiteTableKey, SiteDefaultRouteTag>(SiteDefaultRouteTag),
                     inputs: SiteFilterForm::render_inputs(
                         &FormCtx::form::<SiteFilterForm>()
-                            .value(SiteFilterFormField::Name, &self.filter_name),
+                            .value(SiteFilterFormField::Name, &self.filter_name)
+                            .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -938,6 +951,7 @@ impl RenderTemplate for SiteListPage {
 pub struct SiteDetailPage {
     pub id: i64,
     pub name: String,
+    pub site_id: String,
     pub customer_id: i64,
     pub customer_name: String,
     pub status_label: String,
@@ -986,6 +1000,7 @@ impl SiteDetailPage {
                         title: &self.name,
                         actions,
                     }))
+                    (label("Site ID", field_text(FieldText { value: &self.site_id, classes: "" })))
                     (label("Customer", html! {
                         a class="link" href=(customer_url) { (self.customer_name) }
                     }))
@@ -1081,6 +1096,7 @@ impl RenderTemplate for SiteDetailPage {
 
 fn site_form_inputs(
     name: &str,
+    site_id: &str,
     customer_id: i64,
     customer_display: &str,
     status: &str,
@@ -1096,6 +1112,7 @@ fn site_form_inputs(
     SiteForm::render_inputs(
         &FormCtx::form::<SiteForm>()
             .value(SiteFormField::Name, name)
+            .value(SiteFormField::SiteId, site_id)
             .value(SiteFormField::CustomerId, customer_id_s.as_str())
             .display(SiteFormField::CustomerId, customer_display)
             .value(SiteFormField::Status, status)
@@ -1114,6 +1131,7 @@ pub struct SiteEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub name: String,
+    pub site_id: String,
     pub customer_id: i64,
     pub customer_display: String,
     pub status: String,
@@ -1141,6 +1159,7 @@ impl RenderTemplate for SiteEditModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: site_form_inputs(
                         &self.name,
+                        &self.site_id,
                         self.customer_id,
                         &self.customer_display,
                         &self.status,
@@ -1177,6 +1196,7 @@ pub struct SiteCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub name: String,
+    pub site_id: String,
     pub customer_id: i64,
     pub customer_display: String,
     pub status: String,
@@ -1211,6 +1231,7 @@ impl RenderTemplate for SiteCreateModalPage {
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: site_form_inputs(
                     &self.name,
+                    &self.site_id,
                     self.customer_id,
                     &self.customer_display,
                     &self.status,
@@ -1240,6 +1261,7 @@ impl RenderTemplate for SiteCreateModalPage {
 pub struct SiteSelectPage {
     pub sites: ObjectList<SiteRow>,
     pub filter_name: String,
+    pub filter_site_id: String,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -1295,7 +1317,8 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
                     inputs: html! {
                         (SiteFilterForm::render_inputs(
                             &FormCtx::form::<SiteFilterForm>()
-                                .value(SiteFilterFormField::Name, &self.filter_name),
+                                .value(SiteFilterFormField::Name, &self.filter_name)
+                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
@@ -1346,6 +1369,7 @@ impl RenderTemplate for SiteSelectPage {
 pub struct SiteFkSelectPage {
     pub sites: ObjectList<SiteRow>,
     pub filter_name: String,
+    pub filter_site_id: String,
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
@@ -1396,7 +1420,8 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
                     inputs: html! {
                         (SiteFilterForm::render_inputs(
                             &FormCtx::form::<SiteFilterForm>()
-                                .value(SiteFilterFormField::Name, &self.filter_name),
+                                .value(SiteFilterFormField::Name, &self.filter_name)
+                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
