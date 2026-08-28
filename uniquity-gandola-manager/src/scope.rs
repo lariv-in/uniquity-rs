@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
@@ -7,15 +9,25 @@ use sea_orm::{
 use lariv_rs::components::ManyToManyItem;
 use lariv_rs::plugins::customer::entities::customer::Entity as CustomerEntity;
 use lariv_rs::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+use lariv_rs::plugins::finance_invoices::entities::cancelled_invoice::{
+    self, Entity as CancelledInvoiceEntity,
+};
 use lariv_rs::plugins::finance_invoices::entities::draft_invoice::{
     self, Entity as DraftInvoiceEntity,
+};
+use lariv_rs::plugins::finance_invoices::entities::paid_invoice::{
+    self, Entity as PaidInvoiceEntity,
+};
+use lariv_rs::plugins::finance_invoices::entities::partially_paid_invoice::{
+    self, Entity as PartiallyPaidInvoiceEntity,
 };
 use lariv_rs::plugins::finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
 use lariv_rs::plugins::finance_invoices::logic::default_payment_term_lines_json;
 use lariv_rs::plugins::finance_invoices::routes::{
-    DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+    CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
+    PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
 };
 use lariv_rs::plugins::finance_products::entities::product::Entity as ProductEntity;
 use lariv_rs::plugins::users::state::AuthContext;
@@ -345,20 +357,97 @@ fn invoice_label(id: i64, number: &Option<String>) -> String {
     }
 }
 
-async fn invoice_status_and_href(db: &DatabaseConnection, draft_id: i64) -> (String, String) {
-    if let Ok(Some(posted)) = PostedInvoiceEntity::find()
+/// Group key for collapsing draft/posted (and replacement drafts) of one logical invoice.
+fn invoice_group_key(d: &draft_invoice::Model, display_number: &str) -> String {
+    if let Some(n) = Some(display_number.trim()).filter(|s| !s.is_empty()) {
+        if !n.starts_with('#') {
+            return n.to_ascii_lowercase();
+        }
+    }
+    if let Some(n) = d
+        .number
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return n.to_ascii_lowercase();
+    }
+    if let Some(r) = d
+        .reference
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return r.to_ascii_lowercase();
+    }
+    format!("id:{}", d.id)
+}
+
+fn invoice_status_rank(status: &str) -> u8 {
+    match status {
+        "Paid" => 5,
+        "Partial" => 4,
+        "Posted" => 3,
+        "Draft" => 2,
+        "Cancelled" => 1,
+        _ => 0,
+    }
+}
+
+/// Resolve the furthest lifecycle state for a linked draft invoice.
+async fn invoice_status_and_href(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> (String, String, Option<String>) {
+    let Ok(Some(posted)) = PostedInvoiceEntity::find()
         .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
+        .one(db)
+        .await
+    else {
+        return (
+            "Draft".into(),
+            DraftInvoiceDetailRouteTag::new(draft_id).url(),
+            None,
+        );
+    };
+
+    if let Ok(Some(cancelled)) = CancelledInvoiceEntity::find()
+        .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted.id))
         .one(db)
         .await
     {
         return (
-            "Posted".into(),
-            PostedInvoiceDetailRouteTag::new(posted.id).url(),
+            "Cancelled".into(),
+            CancelledInvoiceDetailRouteTag::new(cancelled.id).url(),
+            Some(cancelled.number),
+        );
+    }
+    if let Ok(Some(paid)) = PaidInvoiceEntity::find()
+        .filter(paid_invoice::Column::PostedInvoiceId.eq(posted.id))
+        .one(db)
+        .await
+    {
+        return (
+            "Paid".into(),
+            PaidInvoiceDetailRouteTag::new(paid.id).url(),
+            Some(posted.number),
+        );
+    }
+    if let Ok(Some(partial)) = PartiallyPaidInvoiceEntity::find()
+        .filter(partially_paid_invoice::Column::PostedInvoiceId.eq(posted.id))
+        .one(db)
+        .await
+    {
+        return (
+            "Partial".into(),
+            PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
+            Some(posted.number),
         );
     }
     (
-        "Draft".into(),
-        DraftInvoiceDetailRouteTag::new(draft_id).url(),
+        "Posted".into(),
+        PostedInvoiceDetailRouteTag::new(posted.id).url(),
+        Some(posted.number),
     )
 }
 
@@ -388,18 +477,45 @@ pub async fn related_invoices_for_site(
 ) -> Vec<(i64, String, String, String, String)> {
     let mut drafts = load_invoices_for_site(db, site_id).await;
     drafts.sort_by(|a, b| b.datetime.cmp(&a.datetime).then(b.id.cmp(&a.id)));
-    let mut out = Vec::with_capacity(drafts.len());
+
+    // One row per logical invoice: prefer the furthest lifecycle state (e.g. Posted over Draft).
+    let mut best: HashMap<
+        String,
+        (
+            i64,
+            String,
+            String,
+            String,
+            String,
+            u8,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    > = HashMap::new();
     for d in drafts {
-        let (status, href) = invoice_status_and_href(db, d.id).await;
-        out.push((
-            d.id,
-            invoice_label(d.id, &d.number),
-            href,
-            lariv_rs::datetime::format_date_in_tz(d.datetime, tz),
-            status,
-        ));
+        let (status, href, posted_number) = invoice_status_and_href(db, d.id).await;
+        let name = match posted_number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(n) => n.to_string(),
+            None => invoice_label(d.id, &d.number),
+        };
+        let key = invoice_group_key(&d, &name);
+        let rank = invoice_status_rank(&status);
+        let date = lariv_rs::datetime::format_date_in_tz(d.datetime, tz);
+        let row = (d.id, name, href, date, status, rank, d.datetime);
+        match best.get(&key) {
+            Some((existing_id, _, _, _, _, existing_rank, _))
+                if *existing_rank > rank
+                    || (*existing_rank == rank && *existing_id >= d.id) => {}
+            _ => {
+                best.insert(key, row);
+            }
+        }
     }
-    out
+
+    let mut out: Vec<_> = best.into_values().collect();
+    out.sort_by(|a, b| b.6.cmp(&a.6).then(b.0.cmp(&a.0)));
+    out.into_iter()
+        .map(|(id, name, href, date, status, _, _)| (id, name, href, date, status))
+        .collect()
 }
 
 pub async fn load_purchase_orders_for_site(
