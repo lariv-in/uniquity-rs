@@ -206,7 +206,7 @@ pub async fn run_import_po_pdfs(
             )
             .await
             {
-                Ok(number) => PoImportReportEntry {
+                Ok(result) => PoImportReportEntry {
                     file: path.display().to_string(),
                     po_number,
                     site_id: Some(site_id),
@@ -214,7 +214,7 @@ pub async fn run_import_po_pdfs(
                     detail: if dry_run {
                         "would import".into()
                     } else {
-                        format!("created PO {number}")
+                        format!("created PO {} (id {})", result.number, result.id)
                     },
                 },
                 Err(e) => PoImportReportEntry {

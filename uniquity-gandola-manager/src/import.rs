@@ -594,6 +594,14 @@ pub fn match_po_number_in_filename(filename: &str, known_numbers: &[String]) -> 
     None
 }
 
+/// Result of importing a purchase-order PDF (Gemini extract + store + persist).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ImportPoPdfResult {
+    pub id: i64,
+    pub number: String,
+    pub file_id: i64,
+}
+
 pub async fn import_po_pdf(
     db: &DatabaseConnection,
     fs: &FilesystemState,
@@ -604,9 +612,13 @@ pub async fn import_po_pdf(
     filename: &str,
     tz: &str,
     dry_run: bool,
-) -> Result<String, String> {
+) -> Result<ImportPoPdfResult, String> {
     if dry_run {
-        return Ok("dry-run".into());
+        return Ok(ImportPoPdfResult {
+            id: 0,
+            number: String::new(),
+            file_id: 0,
+        });
     }
     let extracted =
         extract_purchase_order_from_pdf(&prefs.gemini_api_key, &prefs.gemini_model, pdf_bytes)
@@ -618,7 +630,11 @@ pub async fn import_po_pdf(
     let file_id = store_purchase_order_pdf(fs, filename, pdf_bytes.to_vec()).await?;
     let form = form_from_extracted(&extracted, customer_id, site_id, file_id);
     let saved = persist_new_purchase_order(db, &form, tz).await?;
-    Ok(saved.number)
+    Ok(ImportPoPdfResult {
+        id: saved.id,
+        number: saved.number,
+        file_id,
+    })
 }
 
 pub fn collect_pdf_paths(dir: &Path, recursive: bool) -> Result<Vec<std::path::PathBuf>, String> {

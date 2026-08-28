@@ -96,7 +96,7 @@ where
     M: GetByTag<GandolaManagerTag, Idx, Value = GandolaManagerState> + Sync,
 {
     async fn run_seed(app: &MountedApp<M>) -> anyhow::Result<()> {
-        crate::skill_seed::ensure_invoice_site_pos_skill(
+        crate::skill_seed::ensure_all_skills(
             &app.get_capability_output::<GandolaManagerTag, Idx>().db,
         )
         .await

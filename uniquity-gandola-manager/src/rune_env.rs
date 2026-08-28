@@ -1,12 +1,20 @@
-//! Rune sandbox bindings for site purchase-order invoicing.
+//! Rune sandbox bindings for Gandola site purchase-order workflows.
 
 use std::sync::Arc;
 
-use lariv_rs::rune_env::{NativeBinding, RuneEnvCapability, RuneEnvCtx, RuneEnvRegistrar};
+use lariv_rs::{
+    plugins::filesystem::{
+        config::FilesystemConfig,
+        node,
+        state::FilesystemState,
+        zip::read_file_bytes,
+    },
+    rune_env::{NativeBinding, RuneEnvCapability, RuneEnvCtx, RuneEnvRegistrar},
+};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value as JsonValue, json};
 
-/// Registers site invoicing helpers onto the assistant Rune environment.
+/// Registers site invoicing and PO-import helpers onto the assistant Rune environment.
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
 
@@ -31,6 +39,11 @@ impl RuneEnvRegistrar for Hook {
             "link_site_invoice",
             "link_site_invoice(#{ site_id: int, invoice_id?: int, draft_invoice_id?: int }) -> #{ site_id, invoice_id, linked: true }",
             |_ctx| NativeBinding::Function(Arc::new(link_site_invoice)),
+        );
+        rune_env.register_contextual(
+            "create_purchase_order_from_pdf",
+            "create_purchase_order_from_pdf(#{ site_id?: int|string, name?: string, site_name?: string, file_id?: int, path?: string, timezone?: string, dry_run?: bool }) -> #{ id, number, site_id, customer_id, file_id, dry_run? }",
+            |_ctx| NativeBinding::Function(Arc::new(create_purchase_order_from_pdf)),
         );
     }
 }
@@ -98,6 +111,133 @@ fn link_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune:
         "invoice_id": invoice_id,
         "linked": true,
     }))
+}
+
+fn create_purchase_order_from_pdf(
+    ctx: &RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let parsed: CreatePoFromPdfArgs = parse_object_args(args, "create_purchase_order_from_pdf")?;
+    let timezone = parsed
+        .timezone
+        .clone()
+        .unwrap_or_else(|| "Asia/Kolkata".to_string());
+    let dry_run = parsed.dry_run.unwrap_or(false);
+    let site_pk = parsed.lookup_pk();
+    let site_text = parsed.lookup_text().map(str::to_string);
+    let file_id = parsed.file_id;
+    let path = parsed.path.clone();
+    if file_id.filter(|&id| id > 0).is_none()
+        && path.as_deref().map(str::trim).filter(|p| !p.is_empty()).is_none()
+    {
+        return Err("create_purchase_order_from_pdf requires file_id or path".into());
+    }
+    let db = ctx.db.clone();
+    let store = Arc::clone(&ctx.store);
+
+    let result: Result<JsonValue, String> = block_on_async(async move {
+        let site = crate::invoice_site_pos::find_site(
+            &db,
+            site_pk,
+            site_text.as_deref(),
+        )
+        .await?;
+
+        let (filename, pdf_bytes) = load_pdf_vnode(&db, store.as_ref(), file_id, path.as_deref())
+            .await?;
+
+        if dry_run {
+            return Ok(json!({
+                "id": 0,
+                "number": "",
+                "site_id": site.id,
+                "customer_id": site.customer_id,
+                "file_id": 0,
+                "dry_run": true,
+                "filename": filename,
+            }));
+        }
+
+        let prefs = crate::scope::load_preferences(&db).await;
+        if prefs.gemini_api_key.trim().is_empty() {
+            return Err("Set the Gemini API key in Gandola preferences.".into());
+        }
+
+        let fs = FilesystemState::new(db.clone(), store, FilesystemConfig::default());
+        let imported = crate::import::import_po_pdf(
+            &db,
+            &fs,
+            &prefs,
+            site.id,
+            site.customer_id,
+            &pdf_bytes,
+            &filename,
+            &timezone,
+            false,
+        )
+        .await?;
+
+        Ok(json!({
+            "id": imported.id,
+            "number": imported.number,
+            "site_id": site.id,
+            "customer_id": site.customer_id,
+            "file_id": imported.file_id,
+        }))
+    });
+
+    lariv_rs::rune_env::json_to_rune(result?)
+}
+
+async fn load_pdf_vnode(
+    db: &sea_orm::DatabaseConnection,
+    store: &lariv_rs::plugins::filesystem::storage::DynFilestore,
+    file_id: Option<i64>,
+    path: Option<&str>,
+) -> Result<(String, Vec<u8>), String> {
+    let path_trimmed = path.map(str::trim).filter(|p| !p.is_empty());
+    let file_id = file_id.filter(|&id| id > 0);
+
+    if file_id.is_none() && path_trimmed.is_none() {
+        return Err("create_purchase_order_from_pdf requires file_id or path".into());
+    }
+
+    let vnode = if let Some(id) = file_id {
+        node::get_by_id(db, id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("file not found (file_id {id})"))?
+    } else {
+        let path = path_trimmed.expect("path checked above");
+        let (node, _) = node::get_by_path(db, path)
+            .await
+            .map_err(|e| e.to_string())?;
+        node.ok_or_else(|| format!("file not found at path \"{path}\""))?
+    };
+
+    if vnode.is_directory {
+        return Err("path is a directory, not a PDF file".into());
+    }
+    if !vnode
+        .name
+        .rsplit('.')
+        .next()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+    {
+        return Err(format!(
+            "file \"{}\" is not a PDF (expected .pdf extension)",
+            vnode.name
+        ));
+    }
+
+    let bytes = read_file_bytes(store, &vnode)
+        .await
+        .map_err(|e| e.to_string())?;
+    if bytes.is_empty() {
+        return Err("PDF file is empty".into());
+    }
+
+    Ok((vnode.name.clone(), bytes))
 }
 
 fn block_on_async<T, F>(fut: F) -> T
@@ -202,6 +342,47 @@ impl CreateInvoicesArgs {
 }
 
 #[derive(Debug, Deserialize)]
+struct CreatePoFromPdfArgs {
+    #[serde(default)]
+    site_id: Option<FlexibleSiteId>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    site_name: Option<String>,
+    #[serde(default)]
+    file_id: Option<i64>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    timezone: Option<String>,
+    #[serde(default)]
+    dry_run: Option<bool>,
+}
+
+impl CreatePoFromPdfArgs {
+    fn lookup_pk(&self) -> Option<i64> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Id(id)) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn lookup_text(&self) -> Option<&str> {
+        match &self.site_id {
+            Some(FlexibleSiteId::Code(code)) => {
+                let trimmed = code.trim();
+                if trimmed.is_empty() {
+                    self.name.as_deref().or(self.site_name.as_deref())
+                } else {
+                    Some(trimmed)
+                }
+            }
+            _ => self.name.as_deref().or(self.site_name.as_deref()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct LinkSiteInvoiceArgs {
     site_id: i64,
     #[serde(default)]
@@ -261,6 +442,7 @@ mod tests {
             "list_site_purchase_orders",
             "create_invoices_for_site",
             "link_site_invoice",
+            "create_purchase_order_from_pdf",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -340,5 +522,37 @@ mod tests {
             err.contains("invoice_id"),
             "unexpected error: {err}"
         );
+    }
+
+    fn assert_create_po_from_pdf_rejects_missing_pdf() {
+        let cap = registered_env();
+        let db = DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let resolved = cap.resolve(&env_ctx);
+        let f = resolved
+            .functions
+            .iter()
+            .find(|(name, _)| name == "create_purchase_order_from_pdf")
+            .map(|(_, f)| f)
+            .expect("create_purchase_order_from_pdf");
+        let mut args = HashMap::<String, rune::Value>::new();
+        args.insert("site_id".into(), rune::to_value(12i64).expect("site_id"));
+        let arg = rune::to_value(args).expect("object");
+        let err = f(&env_ctx, &[arg]).expect_err("missing pdf should fail");
+        assert!(
+            err.contains("file_id") || err.contains("path"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_po_from_pdf_rejects_missing_pdf_on_current_thread() {
+        assert_create_po_from_pdf_rejects_missing_pdf();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_po_from_pdf_rejects_missing_pdf() {
+        assert_create_po_from_pdf_rejects_missing_pdf();
     }
 }
