@@ -23,6 +23,7 @@ use crate::{
 };
 
 const LIST_URL: &str = "/gandola/sites/";
+const DEFAULT_GEMINI_MODEL: &str = "gemini-2.5-flash";
 
 fn product_id_str(id: Option<i64>) -> String {
     id.filter(|&id| id > 0)
@@ -33,7 +34,7 @@ fn product_id_str(id: Option<i64>) -> String {
 fn gemini_model_or_default(raw: &str) -> String {
     let model = raw.trim();
     if model.is_empty() {
-        crate::po_from_pdf::DEFAULT_GEMINI_PO_MODEL.to_string()
+        DEFAULT_GEMINI_MODEL.to_string()
     } else {
         model.to_string()
     }

@@ -3,21 +3,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 
-use lariv_rs::plugins::filesystem::state::FilesystemState;
-
-use crate::entities::site::Entity as SiteEntity;
 use crate::import::{
-    apply_gandola_site_links, build_po_number_index_for_sites, collect_pdf_paths,
-    ensure_site_gandola_link_for_import, find_existing_site, import_gandolas_from_csv,
-    import_po_pdf, import_site_row, known_po_numbers, load_customer_map_csv, load_sites_csv,
-    match_po_number_in_filename, resolve_customer_ids, resolve_import_gandola_id,
-    write_po_report, PoImportReportEntry,
+    apply_gandola_site_links, ensure_site_gandola_link_for_import, find_existing_site,
+    import_gandolas_from_csv, import_site_row, load_customer_map_csv, load_sites_csv,
+    resolve_customer_ids, resolve_import_gandola_id,
 };
-use crate::scope::{customer_name, load_preferences};
-
-const DEFAULT_TZ: &str = "Asia/Kolkata";
+use crate::scope::customer_name;
 
 pub async fn run_import_sites(
     db: &DatabaseConnection,
@@ -124,123 +117,6 @@ pub async fn run_import_sites(
                     .map_err(|e| anyhow::anyhow!("link site {lariv_site_id}: {e}"))?;
             }
         }
-    }
-
-    Ok(())
-}
-
-pub async fn run_import_po_pdfs(
-    db: &DatabaseConnection,
-    fs: &FilesystemState,
-    sites_path: &PathBuf,
-    customers_path: &PathBuf,
-    pdf_dir: &PathBuf,
-    out_path: &PathBuf,
-    recursive: bool,
-    dry_run: bool,
-) -> anyhow::Result<()> {
-    let customer_rows = load_customer_map_csv(customers_path)
-        .map_err(|e| anyhow::anyhow!("load customers: {e}"))?;
-    let site_rows = load_sites_csv(sites_path).map_err(|e| anyhow::anyhow!("load sites: {e}"))?;
-
-    let customer_ids = resolve_customer_ids(db, &customer_rows, false, dry_run)
-        .await
-        .map_err(|e| anyhow::anyhow!("resolve customers: {e}"))?;
-
-    let po_index = build_po_number_index_for_sites(db, &site_rows, &customer_ids)
-        .await
-        .map_err(|e| anyhow::anyhow!("build PO index: {e}"))?;
-    let known = known_po_numbers(&po_index);
-    let prefs = load_preferences(db).await;
-
-    if !dry_run && prefs.gemini_api_key.trim().is_empty() {
-        anyhow::bail!("Gemini API key not set in Gandola preferences");
-    }
-
-    let pdf_paths = collect_pdf_paths(pdf_dir, recursive)
-        .map_err(|e| anyhow::anyhow!("collect PDFs: {e}"))?;
-
-    let mut report = Vec::new();
-    for path in pdf_paths {
-        let filename = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown.pdf");
-        let po_number = match_po_number_in_filename(filename, &known);
-        let site_id = po_number.as_ref().and_then(|n| po_index.get(n).copied());
-
-        let entry = if po_number.is_none() {
-            PoImportReportEntry {
-                file: path.display().to_string(),
-                po_number: None,
-                site_id: None,
-                status: "unmatched".into(),
-                detail: "no known PO number in filename".into(),
-            }
-        } else if site_id.is_none() {
-            PoImportReportEntry {
-                file: path.display().to_string(),
-                po_number,
-                site_id: None,
-                status: "unmapped".into(),
-                detail: "PO matched but site not found in database".into(),
-            }
-        } else {
-            let site_id = site_id.unwrap();
-            let site = SiteEntity::find_by_id(site_id)
-                .one(db)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("site id {site_id} not found"))?;
-
-            let bytes = std::fs::read(&path)?;
-            match import_po_pdf(
-                db,
-                fs,
-                &prefs,
-                site.id,
-                site.customer_id,
-                &bytes,
-                filename,
-                DEFAULT_TZ,
-                dry_run,
-            )
-            .await
-            {
-                Ok(result) => PoImportReportEntry {
-                    file: path.display().to_string(),
-                    po_number,
-                    site_id: Some(site_id),
-                    status: if dry_run { "dry-run" } else { "ok" }.into(),
-                    detail: if dry_run {
-                        "would import".into()
-                    } else {
-                        format!("created PO {} (id {})", result.number, result.id)
-                    },
-                },
-                Err(e) => PoImportReportEntry {
-                    file: path.display().to_string(),
-                    po_number,
-                    site_id: Some(site_id),
-                    status: "error".into(),
-                    detail: e,
-                },
-            }
-        };
-
-        println!(
-            "{} {} {:?} site_id={:?} {}",
-            entry.status,
-            entry.file,
-            entry.po_number,
-            entry.site_id,
-            entry.detail
-        );
-        report.push(entry);
-    }
-
-    if !dry_run {
-        write_po_report(out_path, &report).map_err(|e| anyhow::anyhow!("write report: {e}"))?;
-        println!("wrote {}", out_path.display());
     }
 
     Ok(())

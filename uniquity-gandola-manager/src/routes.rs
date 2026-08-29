@@ -38,10 +38,6 @@ lariv_rs::define_plugin_routes! {
         get PurchaseOrderDefaultRouteTag, "/gandola/purchase-orders", handlers::purchase_orders::list, fragment(PurchaseOrderTableKey);
         get PurchaseOrderCreateGetRouteTag, "/gandola/purchase-orders/create", handlers::purchase_orders::create_get, modal;
         post PurchaseOrderCreatePostRouteTag, "/gandola/purchase-orders/create", handlers::purchase_orders::create_post;
-        get PurchaseOrderFromPdfGetRouteTag, "/gandola/sites/s/{id}/purchase-orders/create-from-pdf", handlers::purchase_orders::from_pdf_get, modal;
-        post PurchaseOrderFromPdfPostRouteTag, "/gandola/sites/s/{id}/purchase-orders/create-from-pdf", handlers::purchase_orders::from_pdf_post;
-        get PurchaseOrderImportJobsRouteTag, "/gandola/sites/s/{id}/purchase-orders/import-jobs", bare handlers::purchase_orders::import_jobs_get, raw;
-        post PurchaseOrderImportJobsDismissRouteTag, "/gandola/sites/s/{id}/purchase-orders/import-jobs/dismiss", bare handlers::purchase_orders::import_jobs_dismiss, raw;
         get PurchaseOrderDetailRouteTag, "/gandola/purchase-orders/po/{id}", handlers::purchase_orders::detail;
         get PurchaseOrderEditGetRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_get, modal;
         post PurchaseOrderEditPostRouteTag, "/gandola/purchase-orders/po/{id}/edit", handlers::purchase_orders::edit_post;

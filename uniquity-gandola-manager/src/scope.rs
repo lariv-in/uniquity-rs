@@ -796,7 +796,7 @@ pub async fn load_preferences(db: &DatabaseConnection) -> preferences::Model {
         dti_product_id: Set(None),
         payment_term_lines_json: Set(Some(default_payment_term_lines_json())),
         gemini_api_key: Set(String::new()),
-        gemini_model: Set(crate::po_from_pdf::DEFAULT_GEMINI_PO_MODEL.to_string()),
+        gemini_model: Set("gemini-2.5-flash".to_string()),
     };
     am.insert(db).await.unwrap_or(preferences::Model {
         id: 1,
@@ -807,7 +807,7 @@ pub async fn load_preferences(db: &DatabaseConnection) -> preferences::Model {
         dti_product_id: None,
         payment_term_lines_json: Some(default_payment_term_lines_json()),
         gemini_api_key: String::new(),
-        gemini_model: crate::po_from_pdf::DEFAULT_GEMINI_PO_MODEL.to_string(),
+        gemini_model: "gemini-2.5-flash".to_string(),
     })
 }
 

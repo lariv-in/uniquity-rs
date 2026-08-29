@@ -1,4 +1,4 @@
-//! Site and PO PDF import helpers for the CLI.
+//! Site import helpers for the CLI.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -7,20 +7,14 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use lariv_rs::plugins::customer::customer_type::CustomerType;
 use lariv_rs::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
-use lariv_rs::plugins::filesystem::state::FilesystemState;
 
 use crate::entities::gandola::{self, Entity as GandolaEntity};
 use crate::entities::gandola_site_link::{self, Entity as GandolaSiteLinkEntity};
-use crate::entities::preferences::Model as PreferencesModel;
 use crate::entities::site::{self, Entity as SiteEntity};
-use crate::po_from_pdf::{
-    extract_purchase_order_from_pdf, form_from_extracted, store_purchase_order_pdf,
-};
-use crate::po_persist::{persist_new_purchase_order, purchase_order_number_taken};
 use crate::scope::opt_string;
 use crate::site_status::SiteStatus;
 
@@ -56,19 +50,6 @@ pub struct SiteCsvRow {
     pub address: String,
     pub create_date: String,
     pub write_date: String,
-    pub po_rent: String,
-    pub po_dti: String,
-    pub po_tpi: String,
-    pub po_extn1: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct PoImportReportEntry {
-    pub file: String,
-    pub po_number: Option<String>,
-    pub site_id: Option<i64>,
-    pub status: String,
-    pub detail: String,
 }
 
 pub fn load_customer_map_csv(path: &Path) -> Result<Vec<CustomerMapRow>, String> {
@@ -524,211 +505,4 @@ pub async fn import_site_row(
         .await
         .map(|m| m.id)
         .map_err(|e| e.to_string())
-}
-
-pub fn po_numbers_from_field(raw: &str) -> Vec<String> {
-    raw.split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
-}
-
-pub fn build_po_number_index(rows: &[SiteCsvRow]) -> HashMap<String, i64> {
-    let mut index = HashMap::new();
-    for row in rows {
-        for number in po_numbers_for_csv_row(row) {
-            index.insert(number, row.legacy_id);
-        }
-    }
-    index
-}
-
-/// Maps PO numbers from the import CSV to Lariv `sites.id` rows already in the database.
-pub async fn build_po_number_index_for_sites(
-    db: &DatabaseConnection,
-    rows: &[SiteCsvRow],
-    customer_ids: &HashMap<i64, i64>,
-) -> Result<HashMap<String, i64>, String> {
-    let mut index = HashMap::new();
-    for row in rows {
-        let customer_id = customer_ids
-            .get(&row.legacy_customer_id)
-            .copied()
-            .ok_or_else(|| format!("no Lariv customer for map id {}", row.legacy_customer_id))?;
-        let site = find_existing_site(db, customer_id, &row.name)
-            .await
-            .ok_or_else(|| format!("site not in database: {}", row.name.trim()))?;
-        for number in po_numbers_for_csv_row(row) {
-            index.insert(number, site.id);
-        }
-    }
-    Ok(index)
-}
-
-fn po_numbers_for_csv_row(row: &SiteCsvRow) -> Vec<String> {
-    po_numbers_from_fields([&row.po_rent, &row.po_dti, &row.po_tpi, &row.po_extn1])
-}
-
-fn po_numbers_from_fields(fields: [&str; 4]) -> Vec<String> {
-    let mut numbers = Vec::new();
-    for field in fields {
-        numbers.extend(po_numbers_from_field(field));
-    }
-    numbers
-}
-
-pub fn known_po_numbers(index: &HashMap<String, i64>) -> Vec<String> {
-    let mut numbers: Vec<String> = index.keys().cloned().collect();
-    numbers.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-    numbers
-}
-
-pub fn match_po_number_in_filename(filename: &str, known_numbers: &[String]) -> Option<String> {
-    let upper = filename.to_ascii_uppercase();
-    for number in known_numbers {
-        if upper.contains(&number.to_ascii_uppercase()) {
-            return Some(number.clone());
-        }
-    }
-    None
-}
-
-/// Result of importing a purchase-order PDF (Gemini extract + store + persist).
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ImportPoPdfResult {
-    pub id: i64,
-    pub number: String,
-    pub file_id: i64,
-}
-
-pub async fn import_po_pdf(
-    db: &DatabaseConnection,
-    fs: &FilesystemState,
-    prefs: &PreferencesModel,
-    site_id: i64,
-    customer_id: i64,
-    pdf_bytes: &[u8],
-    filename: &str,
-    tz: &str,
-    dry_run: bool,
-) -> Result<ImportPoPdfResult, String> {
-    if dry_run {
-        return Ok(ImportPoPdfResult {
-            id: 0,
-            number: String::new(),
-            file_id: 0,
-        });
-    }
-    let extracted =
-        extract_purchase_order_from_pdf(&prefs.gemini_api_key, &prefs.gemini_model, pdf_bytes)
-            .await?;
-    let number = extracted.number.trim();
-    if !number.is_empty() && purchase_order_number_taken(db, number, None).await {
-        return Err(format!("purchase order {number} already exists"));
-    }
-    let file_id = store_purchase_order_pdf(fs, filename, pdf_bytes.to_vec()).await?;
-    let form = form_from_extracted(&extracted, customer_id, site_id, file_id);
-    let saved = persist_new_purchase_order(db, &form, tz).await?;
-    Ok(ImportPoPdfResult {
-        id: saved.id,
-        number: saved.number,
-        file_id,
-    })
-}
-
-pub fn collect_pdf_paths(dir: &Path, recursive: bool) -> Result<Vec<std::path::PathBuf>, String> {
-    let mut paths = Vec::new();
-    if !dir.is_dir() {
-        return Err(format!("not a directory: {}", dir.display()));
-    }
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        if path.is_dir() {
-            if recursive {
-                paths.extend(collect_pdf_paths(&path, true)?);
-            }
-            continue;
-        }
-        if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
-        {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
-}
-
-pub fn write_po_report(path: &Path, entries: &[PoImportReportEntry]) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample_row(legacy_id: i64, po_rent: &str, po_dti: &str, po_tpi: &str) -> SiteCsvRow {
-        SiteCsvRow {
-            legacy_id,
-            legacy_customer_id: 21,
-            name: format!("Site {legacy_id}"),
-            status: "started".into(),
-            start_date: String::new(),
-            end_date: String::new(),
-            address: String::new(),
-            create_date: String::new(),
-            write_date: String::new(),
-            po_rent: po_rent.into(),
-            po_dti: po_dti.into(),
-            po_tpi: po_tpi.into(),
-            po_extn1: String::new(),
-        }
-    }
-
-    #[test]
-    fn build_po_number_index_splits_comma_separated() {
-        let rows = vec![
-            sample_row(
-                7,
-                "P25RIN100982, P25RIN100984",
-                "P25RIN100809",
-                "P25RIN100983",
-            ),
-            sample_row(22, "WO/0038/25-26", "WO/0038/25-26", "WO/0038/25-26"),
-        ];
-        let index = build_po_number_index(&rows);
-        assert_eq!(index.get("P25RIN100982"), Some(&7));
-        assert_eq!(index.get("P25RIN100984"), Some(&7));
-        assert_eq!(index.get("WO/0038/25-26"), Some(&22));
-        assert_eq!(index.len(), 5);
-    }
-
-    #[test]
-    fn match_po_number_prefers_longest_in_filename() {
-        let numbers = vec![
-            "P25RIN100982".into(),
-            "P25RIN100984".into(),
-            "P25RIN101616".into(),
-        ];
-        assert_eq!(
-            match_po_number_in_filename("scan_P25RIN100984_final.pdf", &numbers),
-            Some("P25RIN100984".into())
-        );
-        assert_eq!(
-            match_po_number_in_filename("P25RIN101616.pdf", &numbers),
-            Some("P25RIN101616".into())
-        );
-        assert_eq!(match_po_number_in_filename("no_match.pdf", &numbers), None);
-    }
-
-    #[test]
-    fn po_numbers_from_field_trims_and_skips_empty() {
-        let nums = po_numbers_from_field("  A, , B ,");
-        assert_eq!(nums, vec!["A", "B"]);
-    }
 }

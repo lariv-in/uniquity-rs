@@ -22,4 +22,3 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 rune = "0.14"
-base64 = "0.22"

@@ -10,7 +10,7 @@ use lariv_rs::plugins::finance_common::decimal::{self, parse_decimal};
 
 use crate::entities::purchase_order_line::{self, Entity as PurchaseOrderLineEntity};
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PoLinePending {
     pub item_code: String,
     pub description: String,

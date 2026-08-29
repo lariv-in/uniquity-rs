@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Multipart, Path, Query},
-    http::{StatusCode, Uri, header},
+    extract::{Path, Query},
+    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -9,12 +9,11 @@ use sea_orm::{
 };
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, oob_delete},
-    html_form::{HtmlForm, HtmlFormBody, UploadedFile},
+    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
     plugins::{
-        filesystem::state::FilesystemState,
         finance_invoices::logic::{default_payment_term_lines_json, parse_payment_term_lines_json},
         users::{middleware::RequireAuth, state::AuthContext},
     },
@@ -30,14 +29,12 @@ use crate::{
         PurchaseOrderPaymentTermEntity,
         purchase_order::{self, Entity as PurchaseOrderEntity},
     },
-    forms::{PurchaseOrderForm, PurchaseOrderFromPdfForm},
+    forms::PurchaseOrderForm,
     handlers::ModalNameQuery,
     keys::{
         PurchaseOrderCreateModalKey, PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey,
-        PurchaseOrderFromPdfModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
-        PurchaseOrderTableKey,
+        PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
     },
-    po_import_queue::PoImportEnqueue,
     po_lines::{
         default_po_lines_json, load_po_line_displays, parse_po_lines_json, po_lines_form_json,
         replace_po_lines,
@@ -45,23 +42,20 @@ use crate::{
     po_payment_term::{
         payment_term_lines_form_json_for_po_term, upsert_purchase_order_payment_term_lines,
     },
-    routes::{PurchaseOrderDetailRouteTag, SiteDetailRouteTag},
+    routes::PurchaseOrderDetailRouteTag,
     scope::{
         apply_number_filter_purchase_orders, customer_name, find_purchase_order_scoped,
-        find_site_scoped, is_superuser, load_preferences, opt_string, parse_optional_i64,
-        scope_purchase_orders, site_name, vnode_name,
+        is_superuser, opt_string, parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
     },
     state::GandolaManagerState,
     templates::{
         ConfirmDeletePage, PoLineRow, PurchaseOrderCreateModalPage, PurchaseOrderDetailPage,
-        PurchaseOrderEditModalPage, PurchaseOrderFromPdfModalPage, PurchaseOrderListPage,
-        PurchaseOrderRow, PurchaseOrderSelectPage, render_po_from_pdf_progress,
+        PurchaseOrderEditModalPage, PurchaseOrderListPage, PurchaseOrderRow, PurchaseOrderSelectPage,
     },
 };
 
 const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 const LIST_URL: &str = "/gandola/purchase-orders/";
-const MAX_PO_PDF_BYTES: usize = 15 * 1024 * 1024;
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct PurchaseOrderListQuery {
@@ -360,194 +354,6 @@ pub async fn create_post(
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
-}
-
-fn from_pdf_modal(
-    site_id: i64,
-    q: &ModalNameQuery,
-    error: String,
-    jobs: Vec<crate::po_import_queue::PoImportJobSnapshot>,
-) -> PurchaseOrderFromPdfModalPage {
-    PurchaseOrderFromPdfModalPage {
-        site_id,
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        target_input: q.target_input(),
-        error,
-        jobs,
-    }
-}
-
-pub async fn from_pdf_get(
-    Cap(state): Cap<GandolaManagerState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-    Query(q): Query<ModalNameQuery>,
-) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
-    }
-    if find_site_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/gandola/sites/").into_response();
-    }
-    let jobs = state.po_imports.jobs_for_site(id).await;
-    html_built_page_with_slots(
-        &from_pdf_modal(id, &q, String::new(), jobs),
-        &chrome,
-        &SlotCtx::from_auth(&ctx),
-    )
-    .into_response()
-}
-
-fn looks_like_po_pdf(filename: &str, content_type: &str, bytes: &[u8]) -> bool {
-    bytes.starts_with(b"%PDF")
-        || content_type.eq_ignore_ascii_case("application/pdf")
-        || filename
-            .rsplit('.')
-            .next()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
-}
-
-async fn read_po_pdf_upload(file: UploadedFile) -> Result<(String, Vec<u8>), String> {
-    let filename = file.filename().to_string();
-    let content_type = file.content_type().unwrap_or("").to_string();
-    let bytes = file
-        .into_bytes()
-        .await
-        .map_err(|e| format!("{filename}: {e}"))?;
-    if bytes.len() > MAX_PO_PDF_BYTES {
-        return Err(format!("{filename}: PDF is too large (max 15 MB)"));
-    }
-    if !looks_like_po_pdf(&filename, &content_type, &bytes) {
-        return Err(format!("{filename}: not a PDF file"));
-    }
-    Ok((filename, bytes.to_vec()))
-}
-
-pub async fn from_pdf_post(
-    Cap(state): Cap<GandolaManagerState>,
-    Cap(fs): Cap<FilesystemState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-    Query(q): Query<ModalNameQuery>,
-    multipart: Multipart,
-) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
-    }
-    let Some(site) = find_site_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/gandola/sites/").into_response();
-    };
-    let parsed = match PurchaseOrderFromPdfForm::from_multipart(multipart).await {
-        Ok(p) => p,
-        Err(e) => {
-            let page = from_pdf_modal(id, &q, e.to_string(), Vec::new());
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
-    };
-    if parsed.files.is_empty() {
-        let page = from_pdf_modal(id, &q, "Upload at least one PDF file".into(), Vec::new());
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-
-    let mut prepared = Vec::with_capacity(parsed.files.len());
-    for file in parsed.files {
-        match read_po_pdf_upload(file).await {
-            Ok(pdf) => prepared.push(pdf),
-            Err(e) => {
-                let page = from_pdf_modal(id, &q, e, Vec::new());
-                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                    .into_response();
-            }
-        }
-    }
-
-    let prefs = load_preferences(&state.db).await;
-    if prefs.gemini_api_key.trim().is_empty() {
-        let page = from_pdf_modal(
-            id,
-            &q,
-            "Set the Gemini API key in Gandola preferences.".into(),
-            Vec::new(),
-        );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-
-    let items: Vec<_> = prepared
-        .into_iter()
-        .map(|(filename, pdf_bytes)| PoImportEnqueue {
-            site_id: site.id,
-            customer_id: site.customer_id,
-            filename,
-            pdf_bytes,
-            timezone: ctx.timezone.clone(),
-        })
-        .collect();
-
-    if let Err(e) = state
-        .po_imports
-        .enqueue_many(
-            items,
-            state.db.clone(),
-            fs,
-            prefs.gemini_api_key.clone(),
-            prefs.gemini_model.clone(),
-        )
-        .await
-    {
-        let page = from_pdf_modal(id, &q, e, Vec::new());
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-
-    let jobs = state.po_imports.jobs_for_site(id).await;
-    let page = from_pdf_modal(id, &q, String::new(), jobs);
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
-pub async fn import_jobs_get(
-    Cap(state): Cap<GandolaManagerState>,
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-) -> Response {
-    if find_site_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/gandola/sites/").into_response();
-    }
-    let jobs = state.po_imports.jobs_for_site(id).await;
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(render_po_from_pdf_progress(id, &jobs).into_string().into())
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
-}
-
-pub async fn import_jobs_dismiss(
-    Cap(state): Cap<GandolaManagerState>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    Path(id): Path<i64>,
-) -> Response {
-    if find_site_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/gandola/sites/").into_response();
-    }
-    state.po_imports.clear_terminal_for_site(id).await;
-    let detail_url = SiteDetailRouteTag::new(id).url();
-    if !htmx.request {
-        return Redirect::to(&detail_url).into_response();
-    }
-    let body = oob_delete::<PurchaseOrderFromPdfModalKey>().into_string();
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .header("HX-Reswap", "none")
-        .header("HX-Redirect", detail_url)
-        .body(body.into())
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 async fn form_from_model(

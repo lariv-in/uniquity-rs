@@ -7,16 +7,11 @@ use frunk::{HCons, hlist::HList};
 use lariv_rs::{
     app::MountedApp,
     command::{CommandCapability, CommandRegistrar, RunCommand},
-    plugins::filesystem::{FilesystemTag, state::FilesystemState},
     tag::Tagged,
     traits::get::GetByTag,
 };
 
-use crate::{
-    GandolaManagerTag,
-    import_cmd::{run_import_po_pdfs, run_import_sites},
-    state::GandolaManagerState,
-};
+use crate::{GandolaManagerTag, import_cmd::run_import_sites, state::GandolaManagerState};
 
 pub struct GandolaImportCommandTag;
 
@@ -27,8 +22,6 @@ pub struct GandolaImportCommand;
 pub enum GandolaImportSubcommand {
     /// Import sites into the sites table.
     Sites(ImportSitesArgs),
-    /// Import purchase order PDFs matched by PO number in filenames.
-    PoPdfs(ImportPoPdfsArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -57,33 +50,15 @@ pub struct ImportSitesArgs {
     pub create_missing_customers: bool,
 }
 
-#[derive(Args, Debug, Clone)]
-pub struct ImportPoPdfsArgs {
-    #[arg(long)]
-    pub pdf_dir: PathBuf,
-    #[arg(long, default_value = "scripts/gandola-import/sites.csv")]
-    pub sites: PathBuf,
-    #[arg(long, default_value = "scripts/gandola-import/customers_map.csv")]
-    pub customers: PathBuf,
-    #[arg(long)]
-    pub out: Option<PathBuf>,
-    #[arg(long)]
-    pub recursive: bool,
-    #[arg(long)]
-    pub dry_run: bool,
-}
-
 #[async_trait::async_trait]
-impl<M, GmIdx, FsIdx> RunCommand<M, (GmIdx, FsIdx)> for GandolaImportCommand
+impl<M, GmIdx> RunCommand<M, GmIdx> for GandolaImportCommand
 where
     M: GetByTag<GandolaManagerTag, GmIdx, Value = GandolaManagerState> + Send + Sync + 'static,
-    M: GetByTag<FilesystemTag, FsIdx, Value = FilesystemState> + Send + Sync + 'static,
     GmIdx: Send + Sync + 'static,
-    FsIdx: Send + Sync + 'static,
 {
     type Args = GandolaImportArgs;
     const NAME: &'static str = "gandola-import";
-    const ABOUT: &'static str = "Import Gandola sites and purchase order PDFs";
+    const ABOUT: &'static str = "Import Gandola sites";
 
     async fn run(args: Self::Args, app: MountedApp<M>) -> anyhow::Result<()> {
         let gm = app.get_capability_output::<GandolaManagerTag, GmIdx>();
@@ -100,23 +75,6 @@ where
                     sites_args.gandola_id,
                     sites_args.dry_run,
                     sites_args.create_missing_customers,
-                )
-                .await?;
-            }
-            GandolaImportSubcommand::PoPdfs(po_args) => {
-                let fs = app.get_capability_output::<FilesystemTag, FsIdx>().clone();
-                let out = po_args
-                    .out
-                    .unwrap_or_else(|| PathBuf::from("po_import_report.json"));
-                run_import_po_pdfs(
-                    &db,
-                    &fs,
-                    &po_args.sites,
-                    &po_args.customers,
-                    &po_args.pdf_dir,
-                    &out,
-                    po_args.recursive,
-                    po_args.dry_run,
                 )
                 .await?;
             }
@@ -142,4 +100,3 @@ where
 
 pub type GandolaManagerCommands<C> =
     HCons<Tagged<GandolaImportCommandTag, GandolaImportCommand>, C>;
-

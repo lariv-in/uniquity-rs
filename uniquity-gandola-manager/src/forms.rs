@@ -1,6 +1,6 @@
 use lariv_rs::html_form::{
-    Upload, html_form,
-    widgets::{Date, File, Password, Select, Text, Textarea},
+    html_form,
+    widgets::{Date, Password, Select, Text, Textarea},
 };
 use lariv_rs::plugins::customer::routes::CustomerFkSelectRouteTag;
 use lariv_rs::plugins::filesystem::routes::VNodeFileSelectRouteTag;
@@ -222,16 +222,4 @@ pub struct PurchaseOrderForm {
 pub struct PurchaseOrderFilterForm {
     #[form(label = "Number", widget = Text)]
     pub number: String,
-}
-
-#[html_form]
-pub struct PurchaseOrderFromPdfForm {
-    #[form(
-        label = "Purchase order PDFs",
-        widget = File,
-        accept = ".pdf,application/pdf",
-        multiple,
-        required
-    )]
-    pub files: Vec<Upload>,
 }
