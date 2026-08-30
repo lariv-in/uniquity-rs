@@ -8,15 +8,18 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Pagi
 use serde::Deserialize;
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
     template::RenderAppPane,
 };
 use uniquity_employees::{
-    handlers::employees::{EmployeeListQuery, EmployeeSelectQuery},
+    handlers::employees::EmployeeSelectQuery,
     scope::{employee_display_name, query_employees},
 };
 
@@ -51,16 +54,14 @@ pub struct RawListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct RawSelectQuery {
-    #[serde(default, rename = "Title", alias = "title")]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub sort: Option<String>,
-    #[serde(default)]
-    pub page: Option<u32>,
+    #[serde(flatten)]
+    pub filter: RawListQuery,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -89,15 +90,17 @@ async fn load_rows(
     auth: &lariv_rs::plugins::users::state::AuthContext,
     q: &RawListQuery,
 ) -> ObjectList<RawFootageRow> {
+    let page_size = q.page_size.get();
     let (rows, page, total) = query_raw_footages(
         db,
         auth,
         q.title.as_deref(),
         q.page.unwrap_or(1),
+        page_size as u64,
         q.sort.as_deref(),
     )
     .await;
-    ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total)
+    ObjectList::from_page(rows, page, page_size, total)
 }
 
 pub async fn list(
@@ -114,6 +117,7 @@ pub async fn list(
         filter_title: q.title.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<RawFootageTableKey>() {
@@ -330,10 +334,10 @@ pub async fn select(
 ) -> maud::Markup {
     let mut query = crate::entities::RawFootageEntity::find();
     query = scope_raw_select(query, &state.db, &ctx).await;
-    if let Some(t) = q.title.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(t) = q.filter.title.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(RawFootageColumn::Title.contains(t));
     }
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let sort = q.filter.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(RawFootageColumn::Title),
         s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
@@ -341,8 +345,9 @@ pub async fn select(
         }
         _ => query.order_by_desc(RawFootageColumn::UpdatedAt),
     };
-    let page_num = q.page.unwrap_or(1).max(1);
-    let paginator = query.paginate(&state.db, DEFAULT_PAGE_SIZE as u64);
+    let page_size = q.filter.page_size.get();
+    let page_num = q.filter.page.unwrap_or(1).max(1);
+    let paginator = query.paginate(&state.db, page_size as u64);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page_num as u64).saturating_sub(1))
@@ -356,16 +361,17 @@ pub async fn select(
             assigned_to_name: String::new(),
         })
         .collect();
-    let items = ObjectList::from_page(rows, page_num, DEFAULT_PAGE_SIZE, total);
+    let items = ObjectList::from_page(rows, page_num, page_size, total);
     let page = RawSelectPage {
         items,
-        filter_title: q.title.clone().unwrap_or_default(),
-        sort: q.sort.clone().unwrap_or_default(),
+        filter_title: q.filter.title.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q
             .target_input
             .clone()
             .unwrap_or_else(|| "RawFootageID".into()),
+        page_size,
     };
     if htmx.targets::<RawFootageSelectTableKey>() {
         return page.render_table();
@@ -378,31 +384,30 @@ pub async fn employee_select(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Query(q): Query<EmployeeSelectQuery>,
 ) -> maud::Markup {
-    let list_q = EmployeeListQuery {
-        name: q.name.clone(),
-        email: q.email.clone(),
-        page: q.page,
-    };
+    let page_size = q.filter.page_size.get();
     let (rows, page, total) = query_employees(
         &state.db,
         &ctx,
-        list_q.name.as_deref(),
-        list_q.email.as_deref(),
-        list_q.page.unwrap_or(1),
-        20,
+        q.filter.name.as_deref(),
+        q.filter.email.as_deref(),
+        q.filter.page.unwrap_or(1),
+        page_size as u64,
     )
     .await;
-    let employees = ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total);
+    let employees = ObjectList::from_page(rows, page, page_size, total);
     let page = VideoEmployeeSelectPage {
         employees,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_email: q.email.clone().unwrap_or_default(),
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_email: q.filter.email.clone().unwrap_or_default(),
         target_input: q
             .target_input
             .clone()
             .unwrap_or_else(|| "AssignedToID".into()),
+        path_and_query: path_and_query(&uri),
+        page_size,
     };
     if htmx.targets::<VideoEmployeeSelectTableKey>() {
         return page.render_table();

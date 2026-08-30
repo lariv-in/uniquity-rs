@@ -5,7 +5,6 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 
-use lariv_rs::components::DEFAULT_PAGE_SIZE;
 use lariv_rs::plugins::{
     filesystem::entities::filesystem_node::{self, Entity as VNodeEntity},
     users::state::AuthContext,
@@ -21,8 +20,6 @@ use super::entities::{
     raw_footage::{self, Entity as RawFootageEntity},
     raw_footage_file::{self, Entity as RawFootageFileEntity},
 };
-
-const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
 
 #[derive(Clone, Debug)]
 pub struct RawFootageRow {
@@ -155,6 +152,7 @@ pub async fn query_raw_footages(
     auth: &AuthContext,
     title: Option<&str>,
     page: u32,
+    page_size: u64,
     sort: Option<&str>,
 ) -> (Vec<RawFootageRow>, u32, u64) {
     let mut query = RawFootageEntity::find();
@@ -173,7 +171,7 @@ pub async fn query_raw_footages(
         _ => query.order_by_desc(raw_footage::Column::UpdatedAt),
     };
     let page = page.max(1);
-    let paginator = query.paginate(db, PAGE_SIZE);
+    let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -213,10 +211,11 @@ pub async fn find_raw_footage(db: &DatabaseConnection, id: i64) -> Option<RawFoo
 pub async fn query_edited_videos(
     db: &DatabaseConnection,
     page: u32,
+    page_size: u64,
 ) -> (Vec<EditedVideoRow>, u32, u64) {
     let query = EditedVideoEntity::find().order_by_desc(edited_video::Column::UpdatedAt);
     let page = page.max(1);
-    let paginator = query.paginate(db, PAGE_SIZE);
+    let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))
@@ -270,6 +269,7 @@ pub async fn find_edited_video(db: &DatabaseConnection, id: i64) -> Option<Edite
 pub async fn query_published_videos(
     db: &DatabaseConnection,
     page: u32,
+    page_size: u64,
     sort: Option<&str>,
 ) -> (Vec<PublishedVideoRow>, u32, u64) {
     let mut query = PublishedVideoEntity::find();
@@ -284,7 +284,7 @@ pub async fn query_published_videos(
         _ => query.order_by_desc(published_video::Column::UpdatedAt),
     };
     let page = page.max(1);
-    let paginator = query.paginate(db, PAGE_SIZE);
+    let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await.unwrap_or(0);
     let models = paginator
         .fetch_page((page as u64).saturating_sub(1))

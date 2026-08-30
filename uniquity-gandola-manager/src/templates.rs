@@ -14,7 +14,7 @@ use lariv_rs::{
         layout_main, layout_sidebar, MainContentKey, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
-        table_create_button, table_pagination,
+        table_create_button, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -359,6 +359,7 @@ pub struct GandolaListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl GandolaListPage {
@@ -413,9 +414,12 @@ impl GandolaListPage {
                     attrs: form_hx_get_route::<GandolaTableKey, GandolaDefaultRouteTag>(
                         GandolaDefaultRouteTag,
                     ),
-                    inputs: GandolaFilterForm::render_inputs(
-                        &FormCtx::form::<GandolaFilterForm>()
-                            .value(GandolaFilterFormField::Name, &self.filter_name),
+                    inputs: with_list_filter_common(
+                        GandolaFilterForm::render_inputs(
+                            &FormCtx::form::<GandolaFilterForm>()
+                                .value(GandolaFilterFormField::Name, &self.filter_name),
+                        ),
+                        self.page_size,
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -670,6 +674,7 @@ pub struct GandolaSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for GandolaSelectPage {
@@ -708,9 +713,12 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
                         GandolaSelectRouteTag,
                     >(GandolaSelectRouteTag),
                     inputs: html! {
-                        (GandolaFilterForm::render_inputs(
-                            &FormCtx::form::<GandolaFilterForm>()
-                                .value(GandolaFilterFormField::Name, &self.filter_name),
+                        (with_list_filter_common(
+                            GandolaFilterForm::render_inputs(
+                                &FormCtx::form::<GandolaFilterForm>()
+                                    .value(GandolaFilterFormField::Name, &self.filter_name),
+                            ),
+                            self.page_size,
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
@@ -778,6 +786,7 @@ pub struct SiteListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl SiteListPage {
@@ -878,10 +887,13 @@ impl SiteListPage {
             (table_button_filter(TableButtonFilter {
                 panel: form(FormOpts {
                     attrs: form_hx_get_route::<SiteTableKey, SiteDefaultRouteTag>(SiteDefaultRouteTag),
-                    inputs: SiteFilterForm::render_inputs(
-                        &FormCtx::form::<SiteFilterForm>()
-                            .value(SiteFilterFormField::Name, &self.filter_name)
-                            .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                    inputs: with_list_filter_common(
+                        SiteFilterForm::render_inputs(
+                            &FormCtx::form::<SiteFilterForm>()
+                                .value(SiteFilterFormField::Name, &self.filter_name)
+                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                        ),
+                        self.page_size,
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -1253,6 +1265,7 @@ pub struct SiteSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPage {
@@ -1302,10 +1315,13 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
                         SiteSelectRouteTag,
                     >(SiteSelectRouteTag),
                     inputs: html! {
-                        (SiteFilterForm::render_inputs(
-                            &FormCtx::form::<SiteFilterForm>()
-                                .value(SiteFilterFormField::Name, &self.filter_name)
-                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                        (with_list_filter_common(
+                            SiteFilterForm::render_inputs(
+                                &FormCtx::form::<SiteFilterForm>()
+                                    .value(SiteFilterFormField::Name, &self.filter_name)
+                                    .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                            ),
+                            self.page_size,
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
@@ -1361,6 +1377,7 @@ pub struct SiteFkSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSelectPage {
@@ -1405,10 +1422,13 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
                         SiteFkSelectRouteTag,
                     >(SiteFkSelectRouteTag),
                     inputs: html! {
-                        (SiteFilterForm::render_inputs(
-                            &FormCtx::form::<SiteFilterForm>()
-                                .value(SiteFilterFormField::Name, &self.filter_name)
-                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                        (with_list_filter_common(
+                            SiteFilterForm::render_inputs(
+                                &FormCtx::form::<SiteFilterForm>()
+                                    .value(SiteFilterFormField::Name, &self.filter_name)
+                                    .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                            ),
+                            self.page_size,
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },
@@ -1575,6 +1595,7 @@ pub struct PurchaseOrderListPage {
     pub sort: String,
     pub path_and_query: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl PurchaseOrderListPage {
@@ -1641,9 +1662,12 @@ impl PurchaseOrderListPage {
                     attrs: form_hx_get_route::<PurchaseOrderTableKey, PurchaseOrderDefaultRouteTag>(
                         PurchaseOrderDefaultRouteTag,
                     ),
-                    inputs: PurchaseOrderFilterForm::render_inputs(
-                        &FormCtx::form::<PurchaseOrderFilterForm>()
-                            .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                    inputs: with_list_filter_common(
+                        PurchaseOrderFilterForm::render_inputs(
+                            &FormCtx::form::<PurchaseOrderFilterForm>()
+                                .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                        ),
+                        self.page_size,
                     ),
                     actions: html! {
                         (container_row("flex gap-2", html! {
@@ -1999,6 +2023,7 @@ pub struct PurchaseOrderSelectPage {
     pub path_and_query: String,
     pub target_input: String,
     pub can_edit: bool,
+    pub page_size: u32,
 }
 
 impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey>
@@ -2053,9 +2078,12 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
                         PurchaseOrderSelectRouteTag,
                     >(PurchaseOrderSelectRouteTag),
                     inputs: html! {
-                        (PurchaseOrderFilterForm::render_inputs(
-                            &FormCtx::form::<PurchaseOrderFilterForm>()
-                                .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                        (with_list_filter_common(
+                            PurchaseOrderFilterForm::render_inputs(
+                                &FormCtx::form::<PurchaseOrderFilterForm>()
+                                    .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
+                            ),
+                            self.page_size,
                         ))
                         input type="hidden" name="target_input" value=(self.target_input) {}
                     },

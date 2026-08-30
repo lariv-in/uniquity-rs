@@ -8,11 +8,11 @@ use lariv_rs::{
         ShellScaffold, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_link,
         button_modal_form, button_submit, container_column, container_row, column_sort_url,
-        data_table_list, data_table_list_refresh, delete_confirmation, detail, field_text,
+        data_table_list_refresh, delete_confirmation, detail, field_text,
         field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
         form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, shell_scaffold, sort_indicator,
-        table_button_filter, table_pagination,
+        page_size_only_filter_form, row_attr_navigate_route, row_attr_select, shell_scaffold,
+        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -31,8 +31,8 @@ use super::keys::{
 use super::routes::{
     EmployeesCreateGetRouteTag, EmployeesCreatePostRouteTag, EmployeesDefaultRouteTag,
     EmployeesDeleteGetRouteTag, EmployeesDeletePostRouteTag, EmployeesDetailRouteTag,
-    EmployeesEditGetRouteTag, EmployeesEditPostRouteTag, PointsCreateGetRouteTag,
-    PointsCreatePostRouteTag, PointsDetailRouteTag, PointsListRouteTag,
+    EmployeesEditGetRouteTag, EmployeesEditPostRouteTag, EmployeesSelectRouteTag,
+    PointsCreateGetRouteTag, PointsCreatePostRouteTag, PointsDetailRouteTag, PointsListRouteTag,
 };
 use super::scope::{EmployeeRow, PointsRow};
 
@@ -165,19 +165,54 @@ fn points_crumbs(_id: i64, label: &str) -> Markup {
     ])
 }
 
-fn employee_filter_form(name: &str, email: &str) -> Markup {
+fn employee_filter_form(name: &str, email: &str, page_size: u32) -> Markup {
     form(FormOpts {
         attrs: form_hx_get_route::<EmployeeTableKey, EmployeesDefaultRouteTag>(
             EmployeesDefaultRouteTag,
         ),
-        inputs: EmployeeFilterForm::render_inputs(
-            &FormCtx::form::<EmployeeFilterForm>()
-                .value(EmployeeFilterFormField::Name, name)
-                .value(EmployeeFilterFormField::Email, email),
+        inputs: with_list_filter_common(
+            EmployeeFilterForm::render_inputs(
+                &FormCtx::form::<EmployeeFilterForm>()
+                    .value(EmployeeFilterFormField::Name, name)
+                    .value(EmployeeFilterFormField::Email, email),
+            ),
+            page_size,
         ),
         actions: html! {
             (container_row("flex gap-2", html! {
                 (button_submit(ButtonSubmit { label: "Apply Filters", ..Default::default() }))
+                (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+            }))
+        },
+        ..Default::default()
+    })
+}
+
+fn employee_select_filter_form(
+    name: &str,
+    email: &str,
+    target_input: &str,
+    page_size: u32,
+) -> Markup {
+    form(FormOpts {
+        attrs: form_hx_get_route::<EmployeeSelectTableKey, EmployeesSelectRouteTag>(
+            EmployeesSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        inputs: html! {
+            (with_list_filter_common(
+                EmployeeFilterForm::render_inputs(
+                    &FormCtx::form::<EmployeeFilterForm>()
+                        .value(EmployeeFilterFormField::Name, name)
+                        .value(EmployeeFilterFormField::Email, email),
+                ),
+                page_size,
+            ))
+            input type="hidden" name="target_input" value=(target_input) {}
+        },
+        actions: html! {
+            (container_row("flex gap-2", html! {
+                (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
                 (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
             }))
         },
@@ -209,6 +244,7 @@ pub struct EmployeeListPage {
     pub filter_name: String,
     pub filter_email: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl EmployeeListPage {
@@ -231,7 +267,7 @@ impl EmployeeListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: employee_filter_form(&self.filter_name, &self.filter_email),
+                panel: employee_filter_form(&self.filter_name, &self.filter_email, self.page_size),
                 ..Default::default()
             }))
             (button_modal_form(ButtonModalForm {
@@ -460,6 +496,8 @@ pub struct EmployeeSelectPage {
     pub filter_name: String,
     pub filter_email: String,
     pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl EmployeeSelectPage {
@@ -480,12 +518,29 @@ impl EmployeeSelectPage {
                 ],
             })
             .collect();
-        data_table_list::<EmployeeSelectTableKey>(
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: employee_select_filter_form(
+                    &self.filter_name,
+                    &self.filter_email,
+                    &self.target_input,
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<EmployeeSelectTableKey>(
+            &self.path_and_query,
+            self.employees.number,
+            self.employees.num_pages,
+        );
+        data_table_list_refresh::<EmployeeSelectTableKey>(
             "Select employee",
-            html! {},
+            actions,
             &headers,
             &rows,
-            html! {},
+            pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -501,6 +556,7 @@ pub struct PointsListPage {
     pub points: ObjectList<PointsRow>,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl PointsListPage {
@@ -540,6 +596,12 @@ impl PointsListPage {
             })
             .collect();
         let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: page_size_only_filter_form::<PointsTableKey, PointsListRouteTag>(
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
             (button_modal_form(ButtonModalForm {
                 name: "p_uniquity_employees.PointsCreateForm",
                 href: &PointsCreateGetRouteTag.url(),

@@ -12,10 +12,13 @@ use tracing::warn;
 
 use lariv_rs::{
     html_form::HtmlFormBody,
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::middleware::RequireAuth,
-    web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done},
+    web::{
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
+    },
     template::RenderAppPane,
 };
 use uniquity_common::require_superuser;
@@ -51,14 +54,14 @@ pub struct PublishedListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct PublishedSelectQuery {
-    #[serde(default)]
-    pub sort: Option<String>,
-    #[serde(default)]
-    pub page: Option<u32>,
+    #[serde(flatten)]
+    pub filter: PublishedListQuery,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -91,13 +94,20 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PublishedListQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) =
-        query_published_videos(&state.db, q.page.unwrap_or(1), q.sort.as_deref()).await;
-    let items = ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total);
+    let page_size = q.page_size.get();
+    let (rows, page, total) = query_published_videos(
+        &state.db,
+        q.page.unwrap_or(1),
+        page_size as u64,
+        q.sort.as_deref(),
+    )
+    .await;
+    let items = ObjectList::from_page(rows, page, page_size, total);
     let page = PublishedListPage {
         items,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<PublishedVideoTableKey>() {
@@ -312,17 +322,24 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<PublishedSelectQuery>,
 ) -> maud::Markup {
-    let (rows, page, total) =
-        query_published_videos(&state.db, q.page.unwrap_or(1), q.sort.as_deref()).await;
-    let items = ObjectList::from_page(rows, page, DEFAULT_PAGE_SIZE, total);
+    let page_size = q.filter.page_size.get();
+    let (rows, page, total) = query_published_videos(
+        &state.db,
+        q.filter.page.unwrap_or(1),
+        page_size as u64,
+        q.filter.sort.as_deref(),
+    )
+    .await;
+    let items = ObjectList::from_page(rows, page, page_size, total);
     let page = PublishedSelectPage {
         items,
-        sort: q.sort.clone().unwrap_or_default(),
+        sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q
             .target_input
             .clone()
             .unwrap_or_else(|| "PublishedVideoID".into()),
+        page_size,
     };
     if htmx.targets::<PublishedVideoSelectTableKey>() {
         return page.render_table();

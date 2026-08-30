@@ -11,14 +11,15 @@ use std::str::FromStr;
 
 use lariv_rs::{
     html_form::HtmlFormBody,
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     http::Cap,
     plugins::users::{
         middleware::RequireAuth,
         state::AuthContext,
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
     },
     template::RenderAppPane,
 };
@@ -37,14 +38,14 @@ use crate::{
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct PointsListQuery {
     #[serde(default)]
     pub sort: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 fn path_and_query(uri: &Uri) -> String {
@@ -58,9 +59,10 @@ async fn load_rows(
     q: &PointsListQuery,
     auth: &AuthContext,
 ) -> ObjectList<PointsRow> {
+    let page_size = q.page_size.get() as u64;
     let (rows, page, total) =
-        query_points(db, auth, q.page.unwrap_or(1), PAGE_SIZE, q.sort.as_deref()).await;
-    ObjectList::from_page(rows, page, PAGE_SIZE as u32, total)
+        query_points(db, auth, q.page.unwrap_or(1), page_size, q.sort.as_deref()).await;
+    ObjectList::from_page(rows, page, page_size as u32, total)
 }
 
 pub async fn list(
@@ -79,6 +81,7 @@ pub async fn list(
         points,
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<PointsTableKey>() {

@@ -9,14 +9,15 @@ use serde::Deserialize;
 
 use lariv_rs::{
     html_form::HtmlFormBody,
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     http::Cap,
     plugins::users::{
         middleware::RequireAuth,
         state::AuthContext,
     },
     web::{
-        Htmx, html_built_page_or_app_layout, html_built_page_with_slots, respond_create_modal_done,
+        Htmx, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+        respond_create_modal_done,
     },
     template::RenderAppPane,
 };
@@ -45,8 +46,6 @@ use crate::{
 
 use super::ModalNameQuery;
 
-const PAGE_SIZE: u64 = DEFAULT_PAGE_SIZE as u64;
-
 #[derive(Debug, Deserialize, Default)]
 pub struct EmployeeListQuery {
     #[serde(default, rename = "Name", alias = "name")]
@@ -55,16 +54,14 @@ pub struct EmployeeListQuery {
     pub email: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct EmployeeSelectQuery {
-    #[serde(default, rename = "Name", alias = "name")]
-    pub name: Option<String>,
-    #[serde(default, rename = "Email", alias = "email")]
-    pub email: Option<String>,
-    #[serde(default)]
-    pub page: Option<u32>,
+    #[serde(flatten)]
+    pub filter: EmployeeListQuery,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -80,16 +77,17 @@ async fn load_rows(
     q: &EmployeeListQuery,
     auth: &AuthContext,
 ) -> ObjectList<EmployeeRow> {
+    let page_size = q.page_size.get() as u64;
     let (rows, page, total) = query_employees(
         db,
         auth,
         q.name.as_deref(),
         q.email.as_deref(),
         q.page.unwrap_or(1),
-        PAGE_SIZE,
+        page_size,
     )
     .await;
-    ObjectList::from_page(rows, page, PAGE_SIZE as u32, total)
+    ObjectList::from_page(rows, page, page_size as u32, total)
 }
 
 pub async fn list(
@@ -109,6 +107,7 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         filter_email: q.email.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<EmployeeTableKey>() {
@@ -309,22 +308,20 @@ pub async fn select(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Query(q): Query<EmployeeSelectQuery>,
 ) -> maud::Markup {
-    let list_q = EmployeeListQuery {
-        name: q.name.clone(),
-        email: q.email.clone(),
-        page: q.page,
-    };
-    let employees = load_rows(&state.db, &list_q, &ctx).await;
+    let employees = load_rows(&state.db, &q.filter, &ctx).await;
     let page = EmployeeSelectPage {
         employees,
-        filter_name: q.name.clone().unwrap_or_default(),
-        filter_email: q.email.clone().unwrap_or_default(),
+        filter_name: q.filter.name.clone().unwrap_or_default(),
+        filter_email: q.filter.email.clone().unwrap_or_default(),
         target_input: q
             .target_input
             .clone()
             .unwrap_or_else(|| "ToEmployeeID".into()),
+        path_and_query: path_and_query(&uri),
+        page_size: q.filter.page_size.get(),
     };
     if htmx.targets::<EmployeeSelectTableKey>() {
         return page.render_table();

@@ -3,16 +3,17 @@ use maud::{Markup, html};
 
 use lariv_rs::{
     components::{
-        ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FieldTitle,
-        FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
+        ButtonClear, ButtonLink, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText,
+        FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem, ObjectList, PaginationPage,
         ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-        SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_link,
-        button_modal_form, button_submit, column_sort_url, container_column, container_row,
-        data_table_list, data_table_list_refresh, delete_confirmation, detail, field_text,
-        field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
-        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+        SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
+        button_clear, button_link, button_modal_form, button_submit, column_sort_url,
+        container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
+        field_text, field_title, form, form_hx_get_route, form_hx_post_main, form_hx_post_selector,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed,
+        page_size_only_filter_form, pagination_pages,
         row_attr_navigate_route, row_attr_select, shell_scaffold, sidebar_menu, sidebar_menu_item,
-        sort_indicator, table_pagination,
+        sort_indicator, table_button_filter, table_pagination, with_list_filter_common,
     },
     html_form::{FormCtx, HtmlForm},
     http::ProvideRequestCaps,
@@ -20,6 +21,7 @@ use lariv_rs::{
     web::modal_create_post_url,
 };
 use uniquity_employees::{
+    forms::{EmployeeFilterForm, EmployeeFilterFormField},
     routes::EmployeesDetailRouteTag,
     scope::EmployeeRow,
 };
@@ -38,12 +40,13 @@ use super::keys::{
 use super::routes::{
     EditedCreateGetRouteTag, EditedCreatePostRouteTag, EditedDeleteGetRouteTag,
     EditedDeletePostRouteTag, EditedDetailRouteTag, EditedEditGetRouteTag, EditedEditPostRouteTag,
-    EditedListRouteTag, PublishedCreateGetRouteTag, PublishedCreatePostRouteTag,
+    EditedListRouteTag, EditedSelectRouteTag, PublishedCreateGetRouteTag, PublishedCreatePostRouteTag,
     PublishedDeleteGetRouteTag, PublishedDeletePostRouteTag, PublishedDetailRouteTag,
     PublishedEditGetRouteTag, PublishedEditPostRouteTag, PublishedEditorPointsGetRouteTag,
-    PublishedEditorPointsPostRouteTag, PublishedListRouteTag, RawCreateGetRouteTag,
-    RawCreatePostRouteTag, RawDeleteGetRouteTag, RawDeletePostRouteTag, RawDetailRouteTag,
-    RawEditGetRouteTag, RawEditPostRouteTag, RawListRouteTag, VideoHubRouteTag,
+    PublishedEditorPointsPostRouteTag, PublishedListRouteTag, PublishedSelectRouteTag,
+    RawCreateGetRouteTag, RawCreatePostRouteTag, RawDeleteGetRouteTag, RawDeletePostRouteTag,
+    RawDetailRouteTag, RawEditGetRouteTag, RawEditPostRouteTag, RawEmployeeSelectRouteTag,
+    RawListRouteTag, RawSelectRouteTag, VideoHubRouteTag,
 };
 use super::scope::{EditedVideoRow, PublishedVideoRow, RawFootageRow};
 
@@ -389,6 +392,7 @@ pub struct RawListPage {
     pub filter_title: String,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl RawListPage {
@@ -418,15 +422,26 @@ impl RawListPage {
             .collect();
         let filter = form(FormOpts {
             attrs: form_hx_get_route::<RawFootageTableKey, RawListRouteTag>(RawListRouteTag),
-            inputs: RawFootageFilterForm::render_inputs(
-                &FormCtx::form::<RawFootageFilterForm>()
-                    .value(RawFootageFilterFormField::Title, &self.filter_title),
+            inputs: with_list_filter_common(
+                RawFootageFilterForm::render_inputs(
+                    &FormCtx::form::<RawFootageFilterForm>()
+                        .value(RawFootageFilterFormField::Title, &self.filter_title),
+                ),
+                self.page_size,
             ),
-            actions: button_submit(ButtonSubmit { label: "Filter", ..Default::default() }),
+            actions: html! {
+                (container_row("flex gap-2", html! {
+                    (button_submit(ButtonSubmit { label: "Filter", ..Default::default() }))
+                    (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                }))
+            },
             ..Default::default()
         });
         let actions = html! {
-            (filter)
+            (table_button_filter(TableButtonFilter {
+                panel: filter,
+                ..Default::default()
+            }))
             (button_modal_form(ButtonModalForm {
                 name: "p_uniquity_video.RawCreateForm",
                 href: &RawCreateGetRouteTag.url(),
@@ -680,6 +695,7 @@ pub struct RawSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
+    pub page_size: u32,
 }
 
 impl RawSelectPage {
@@ -701,12 +717,45 @@ impl RawSelectPage {
                 cells: vec![field_text(FieldText { value: &r.title, classes: "" })],
             })
             .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<RawFootageSelectTableKey, RawSelectRouteTag>(
+                        RawSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (with_list_filter_common(
+                            RawFootageFilterForm::render_inputs(
+                                &FormCtx::form::<RawFootageFilterForm>()
+                                    .value(RawFootageFilterFormField::Title, &self.filter_title),
+                            ),
+                            self.page_size,
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<RawFootageSelectTableKey>(
+            &self.path_and_query,
+            self.items.number,
+            self.items.num_pages,
+        );
         data_table_list_refresh::<RawFootageSelectTableKey>(
             "Select raw footage",
-            html! {},
+            actions,
             &headers,
             &rows,
-            html! {},
+            pagination,
             &self.path_and_query,
         )
     }
@@ -724,6 +773,8 @@ pub struct VideoEmployeeSelectPage {
     pub filter_name: String,
     pub filter_email: String,
     pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl VideoEmployeeSelectPage {
@@ -744,12 +795,47 @@ impl VideoEmployeeSelectPage {
                 ],
             })
             .collect();
-        data_table_list::<VideoEmployeeSelectTableKey>(
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<VideoEmployeeSelectTableKey, RawEmployeeSelectRouteTag>(
+                        RawEmployeeSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (with_list_filter_common(
+                            EmployeeFilterForm::render_inputs(
+                                &FormCtx::form::<EmployeeFilterForm>()
+                                    .value(EmployeeFilterFormField::Name, &self.filter_name)
+                                    .value(EmployeeFilterFormField::Email, &self.filter_email),
+                            ),
+                            self.page_size,
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<VideoEmployeeSelectTableKey>(
+            &self.path_and_query,
+            self.employees.number,
+            self.employees.num_pages,
+        );
+        data_table_list_refresh::<VideoEmployeeSelectTableKey>(
             "Select employee",
-            html! {},
+            actions,
             &headers,
             &rows,
-            html! {},
+            pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -764,6 +850,7 @@ impl RenderTemplate for VideoEmployeeSelectPage {
 pub struct EditedListPage {
     pub items: ObjectList<EditedVideoRow>,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl EditedListPage {
@@ -784,15 +871,23 @@ impl EditedListPage {
                 ],
             })
             .collect();
-        let actions = button_modal_form(ButtonModalForm {
-            name: "p_uniquity_video.EditedCreateForm",
-            href: &EditedCreateGetRouteTag.url(),
-            form_post_url: &EditedCreateGetRouteTag.path(),
-            modal_uid: EditedCreateModalKey::ID,
-            icon_name: Some("plus"),
-            classes: "btn-square btn-outline btn-sm",
-            ..Default::default()
-        });
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: page_size_only_filter_form::<EditedVideoTableKey, EditedListRouteTag>(
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_video.EditedCreateForm",
+                href: &EditedCreateGetRouteTag.url(),
+                form_post_url: &EditedCreateGetRouteTag.path(),
+                modal_uid: EditedCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            }))
+        };
         let pagination = render_pagination::<EditedVideoTableKey>(
             &self.path_and_query,
             self.items.number,
@@ -1044,6 +1139,8 @@ impl RenderTemplate for EditedCreateModalPage {
 pub struct EditedSelectPage {
     pub items: ObjectList<EditedVideoRow>,
     pub target_input: String,
+    pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl EditedSelectPage {
@@ -1062,12 +1159,40 @@ impl EditedSelectPage {
                 cells: vec![field_text(FieldText { value: &r.raw_title, classes: "" })],
             })
             .collect();
-        data_table_list::<EditedVideoSelectTableKey>(
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<EditedVideoSelectTableKey, EditedSelectRouteTag>(
+                        EditedSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (with_list_filter_common(html! {}, self.page_size))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<EditedVideoSelectTableKey>(
+            &self.path_and_query,
+            self.items.number,
+            self.items.num_pages,
+        );
+        data_table_list_refresh::<EditedVideoSelectTableKey>(
             "Select edited video",
-            html! {},
+            actions,
             &headers,
             &rows,
-            html! {},
+            pagination,
+            &self.path_and_query,
         )
     }
 }
@@ -1083,6 +1208,7 @@ pub struct PublishedListPage {
     pub items: ObjectList<PublishedVideoRow>,
     pub sort: String,
     pub path_and_query: String,
+    pub page_size: u32,
 }
 
 impl PublishedListPage {
@@ -1110,15 +1236,23 @@ impl PublishedListPage {
                 ],
             })
             .collect();
-        let actions = button_modal_form(ButtonModalForm {
-            name: "p_uniquity_video.PublishedCreateForm",
-            href: &PublishedCreateGetRouteTag.url(),
-            form_post_url: &PublishedCreateGetRouteTag.path(),
-            modal_uid: PublishedCreateModalKey::ID,
-            icon_name: Some("plus"),
-            classes: "btn-square btn-outline btn-sm",
-            ..Default::default()
-        });
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: page_size_only_filter_form::<PublishedVideoTableKey, PublishedListRouteTag>(
+                    self.page_size,
+                ),
+                ..Default::default()
+            }))
+            (button_modal_form(ButtonModalForm {
+                name: "p_uniquity_video.PublishedCreateForm",
+                href: &PublishedCreateGetRouteTag.url(),
+                form_post_url: &PublishedCreateGetRouteTag.path(),
+                modal_uid: PublishedCreateModalKey::ID,
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            }))
+        };
         let pagination = render_pagination::<PublishedVideoTableKey>(
             &self.path_and_query,
             self.items.number,
@@ -1424,6 +1558,7 @@ pub struct PublishedSelectPage {
     pub sort: String,
     pub path_and_query: String,
     pub target_input: String,
+    pub page_size: u32,
 }
 
 impl PublishedSelectPage {
@@ -1445,12 +1580,39 @@ impl PublishedSelectPage {
                 cells: vec![field_text(FieldText { value: &r.youtube_id, classes: "" })],
             })
             .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(FormOpts {
+                    attrs: form_hx_get_route::<PublishedVideoSelectTableKey, PublishedSelectRouteTag>(
+                        PublishedSelectRouteTag,
+                    )
+                    .set("hx-push-url", "false"),
+                    inputs: html! {
+                        (with_list_filter_common(html! {}, self.page_size))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<PublishedVideoSelectTableKey>(
+            &self.path_and_query,
+            self.items.number,
+            self.items.num_pages,
+        );
         data_table_list_refresh::<PublishedVideoSelectTableKey>(
             "Select published video",
-            html! {},
+            actions,
             &headers,
             &rows,
-            html! {},
+            pagination,
             &self.path_and_query,
         )
     }

@@ -43,7 +43,7 @@ impl RuneEnvRegistrar for Hook {
         );
         rune_env.register_contextual(
             "create_purchase_order",
-            "create_purchase_order(#{ site_id?: int|string, name?: string, site_name?: string, customer_id?: int, number: string, date: string, file_id?: int, billing_address?: string, shipping_address?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], lines: [#{ item_code?: string, description?: string, unit?: string, delivery_date: string, quantity: number|string, rate: number|string }] }) -> #{ id, number, site_id, customer_id, file_id?}",
+            "create_purchase_order(#{ site_id: int|string, name?: string, site_name?: string, customer_id?: int, number: string, date: string, file_id: int, billing_address?: string, shipping_address?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], lines: [#{ item_code?: string, description?: string, unit?: string, delivery_date: string, quantity: number|string, rate: number|string }] }) -> #{ id, number, site_id, customer_id, file_id?}",
             |_ctx| NativeBinding::Function(Arc::new(create_purchase_order)),
         );
     }
@@ -123,7 +123,10 @@ fn create_purchase_order(
     let site_text = parsed.lookup_text().map(str::to_string);
     if site_pk.is_none() && site_text.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_none()
     {
-        return Err("create_purchase_order requires site_id, name, or site_name".into());
+        return Err("create_purchase_order requires a non-empty site_id".into());
+    }
+    if parsed.file_id <= 0 {
+        return Err("create_purchase_order requires file_id".into());
     }
     let (mut form, timezone) = parsed.into_form()?;
     if form.number.trim().is_empty() {
@@ -305,8 +308,7 @@ struct PaymentTermArg {
 
 #[derive(Debug, Deserialize)]
 struct CreatePurchaseOrderArgs {
-    #[serde(default)]
-    site_id: Option<FlexibleSiteId>,
+    site_id: FlexibleSiteId,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -315,8 +317,7 @@ struct CreatePurchaseOrderArgs {
     customer_id: Option<i64>,
     number: String,
     date: String,
-    #[serde(default)]
-    file_id: Option<i64>,
+    file_id: i64,
     #[serde(default)]
     billing_address: Option<String>,
     #[serde(default)]
@@ -332,14 +333,14 @@ struct CreatePurchaseOrderArgs {
 impl CreatePurchaseOrderArgs {
     fn lookup_pk(&self) -> Option<i64> {
         match &self.site_id {
-            Some(FlexibleSiteId::Id(id)) => Some(*id),
-            _ => None,
+            FlexibleSiteId::Id(id) => Some(*id),
+            FlexibleSiteId::Code(_) => None,
         }
     }
 
     fn lookup_text(&self) -> Option<&str> {
         match &self.site_id {
-            Some(FlexibleSiteId::Code(code)) => {
+            FlexibleSiteId::Code(code) => {
                 let trimmed = code.trim();
                 if trimmed.is_empty() {
                     self.name.as_deref().or(self.site_name.as_deref())
@@ -347,7 +348,7 @@ impl CreatePurchaseOrderArgs {
                     Some(trimmed)
                 }
             }
-            _ => self.name.as_deref().or(self.site_name.as_deref()),
+            FlexibleSiteId::Id(_) => self.name.as_deref().or(self.site_name.as_deref()),
         }
     }
 
@@ -395,11 +396,7 @@ impl CreatePurchaseOrderArgs {
         let site_pk = self.lookup_pk().unwrap_or(0);
         let customer_id = self.customer_id.unwrap_or(0);
         let payment_term_lines_json = self.payment_term_lines_json()?;
-        let file_id = self
-            .file_id
-            .filter(|&id| id > 0)
-            .map(|id| id.to_string())
-            .unwrap_or_default();
+        let file_id = self.file_id.to_string();
         let billing_address = self.billing_address.unwrap_or_default();
         let shipping_address = self.shipping_address.unwrap_or_default();
         let lines: Vec<PoLinePending> = self
@@ -592,6 +589,7 @@ mod tests {
             .expect("create_purchase_order");
         let mut args = HashMap::<String, rune::Value>::new();
         args.insert("site_id".into(), rune::to_value(12i64).expect("site_id"));
+        args.insert("file_id".into(), rune::to_value(99i64).expect("file_id"));
         args.insert(
             "number".into(),
             rune::to_value("PO-1".to_string()).expect("number"),
@@ -626,6 +624,7 @@ mod tests {
     fn create_po_args_parse_structured_fields() {
         let raw = json!({
             "site_id": 12,
+            "file_id": 99,
             "number": "PO-100",
             "date": "15/03/2026",
             "customer_id": 7,
@@ -649,6 +648,7 @@ mod tests {
         let (form, tz) = parsed.into_form().expect("form");
         assert_eq!(form.number, "PO-100");
         assert_eq!(form.site_id, 12);
+        assert_eq!(form.file_id, "99");
         assert_eq!(form.customer_id, 7);
         assert_eq!(form.billing_address, "Bill me");
         assert_eq!(tz, "Asia/Kolkata");

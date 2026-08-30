@@ -9,7 +9,7 @@ use sea_orm::{
 };
 
 use lariv_rs::{
-    components::{DEFAULT_PAGE_SIZE, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -19,7 +19,7 @@ use lariv_rs::{
     },
     template::RenderAppPane,
     web::{
-        Htmx, QueryPage, html_built_page_or_app_layout, html_built_page_with_slots,
+        Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
         respond_create_modal_done_fk, respond_edit_modal_done,
     },
 };
@@ -54,7 +54,6 @@ use crate::{
     },
 };
 
-const PAGE_SIZE: u32 = DEFAULT_PAGE_SIZE;
 const LIST_URL: &str = "/gandola/purchase-orders/";
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -65,6 +64,8 @@ pub struct PurchaseOrderListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -222,13 +223,14 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PurchaseOrderListQuery>,
 ) -> maud::Markup {
-    let purchase_orders = query_purchase_orders(&state.db, &q, &ctx, PAGE_SIZE).await;
+    let purchase_orders = query_purchase_orders(&state.db, &q, &ctx, q.page_size.get()).await;
     let page = PurchaseOrderListPage {
         purchase_orders,
         filter_number: q.number.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         can_edit: is_superuser(&ctx),
+        page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets::<PurchaseOrderTableKey>() {
@@ -600,7 +602,8 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<PurchaseOrderSelectQuery>,
 ) -> maud::Markup {
-    let purchase_orders = query_purchase_orders(&state.db, &q.filter, &ctx, PAGE_SIZE).await;
+    let purchase_orders =
+        query_purchase_orders(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
     let page = PurchaseOrderSelectPage {
         purchase_orders,
         filter_number: q.filter.number.clone().unwrap_or_default(),
@@ -611,6 +614,7 @@ pub async fn select(
             .clone()
             .unwrap_or_else(|| "PurchaseOrders".into()),
         can_edit: is_superuser(&ctx),
+        page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey, _>(
         &htmx, &page,
