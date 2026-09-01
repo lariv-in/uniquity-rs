@@ -66,7 +66,8 @@ fn list_site_purchase_orders(
     let db = ctx.db.clone();
     let (site, purchase_orders) = block_on_async(async move {
         let site =
-            crate::invoice_site_pos::find_site(&db, parsed.lookup_pk(), parsed.lookup_text()).await?;
+            crate::invoice_site_pos::find_site(&db, parsed.lookup_pk(), parsed.lookup_text())
+                .await?;
         let (_, pos) = crate::invoice_site_pos::list_site_purchase_orders(&db, site.id).await?;
         Ok::<_, String>((site, pos))
     })?;
@@ -104,9 +105,7 @@ fn link_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune:
     let site_id = parsed.site_id;
     let invoice_id = parsed.invoice_id()?;
     let db = ctx.db.clone();
-    block_on_async(async move {
-        crate::scope::link_site_invoice(&db, site_id, invoice_id).await
-    })?;
+    block_on_async(async move { crate::scope::link_site_invoice(&db, site_id, invoice_id).await })?;
     lariv_rs::rune_env::json_to_rune(json!({
         "site_id": site_id,
         "invoice_id": invoice_id,
@@ -121,7 +120,12 @@ fn create_purchase_order(
     let parsed: CreatePurchaseOrderArgs = parse_object_args(args, "create_purchase_order")?;
     let site_pk = parsed.lookup_pk();
     let site_text = parsed.lookup_text().map(str::to_string);
-    if site_pk.is_none() && site_text.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_none()
+    if site_pk.is_none()
+        && site_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
     {
         return Err("create_purchase_order requires a non-empty site_id".into());
     }
@@ -143,8 +147,7 @@ fn create_purchase_order(
 
     let db = ctx.db.clone();
     let result = block_on_async(async move {
-        let site =
-            crate::invoice_site_pos::find_site(&db, site_pk, site_text.as_deref()).await?;
+        let site = crate::invoice_site_pos::find_site(&db, site_pk, site_text.as_deref()).await?;
         if form.customer_id <= 0 {
             form.customer_id = site.customer_id;
         }
@@ -497,7 +500,9 @@ mod tests {
             );
         }
         assert!(
-            !names.iter().any(|name| name == "create_purchase_order_from_pdf"),
+            !names
+                .iter()
+                .any(|name| name == "create_purchase_order_from_pdf"),
             "pdf create binding should be removed: {names:?}"
         );
     }
@@ -569,10 +574,7 @@ mod tests {
         args.insert("site_id".into(), rune::to_value(12i64).expect("site_id"));
         let arg = rune::to_value(args).expect("object");
         let err = f(&env_ctx, &[arg]).expect_err("missing invoice_id should fail");
-        assert!(
-            err.contains("invoice_id"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("invoice_id"), "unexpected error: {err}");
     }
 
     fn assert_create_po_rejects_missing_lines() {
@@ -604,10 +606,7 @@ mod tests {
         );
         let arg = rune::to_value(args).expect("object");
         let err = f(&env_ctx, &[arg]).expect_err("missing lines should fail");
-        assert!(
-            err.contains("line"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("line"), "unexpected error: {err}");
     }
 
     #[tokio::test]

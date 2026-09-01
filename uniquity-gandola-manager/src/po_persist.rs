@@ -8,8 +8,8 @@ use sea_orm::{
 use lariv_rs::plugins::finance_invoices::logic::parse_payment_term_lines_json;
 
 use crate::entities::{
-    purchase_order::{self, Entity as PurchaseOrderEntity},
     PurchaseOrderPaymentTermEntity, SiteEntity,
+    purchase_order::{self, Entity as PurchaseOrderEntity},
 };
 use crate::forms::PurchaseOrderForm;
 use crate::po_lines::{parse_po_lines_json, replace_po_lines};

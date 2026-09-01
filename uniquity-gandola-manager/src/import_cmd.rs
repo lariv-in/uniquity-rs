@@ -34,14 +34,9 @@ pub async fn run_import_sites(
         HashMap::new()
     };
 
-    let customer_ids = resolve_customer_ids(
-        db,
-        &customer_rows,
-        create_missing_customers,
-        dry_run,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("resolve customers: {e}"))?;
+    let customer_ids = resolve_customer_ids(db, &customer_rows, create_missing_customers, dry_run)
+        .await
+        .map_err(|e| anyhow::anyhow!("resolve customers: {e}"))?;
 
     let mut site_map = HashMap::new();
     for row in &site_rows {
@@ -95,9 +90,10 @@ pub async fn run_import_sites(
     }
 
     if gandola_sites_path.is_file() {
-        let linked = apply_gandola_site_links(db, gandola_sites_path, &gandola_map, &site_map, dry_run)
-            .await
-            .map_err(|e| anyhow::anyhow!("gandola-site links: {e}"))?;
+        let linked =
+            apply_gandola_site_links(db, gandola_sites_path, &gandola_map, &site_map, dry_run)
+                .await
+                .map_err(|e| anyhow::anyhow!("gandola-site links: {e}"))?;
         println!("applied {linked} gandola-site links");
     } else if !site_map.is_empty() {
         let gandola_id = resolve_import_gandola_id(db, fallback_gandola_id)

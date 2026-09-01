@@ -131,7 +131,7 @@ pub async fn query_employees(
 ) -> (Vec<EmployeeRow>, u32, u64) {
     let mut query = EmployeeEntity::find();
     query = scope_employees(query, auth);
-    query = query.order_by_desc(employee::Column::UpdatedAt);
+    query = query.order_by_desc(employee::Column::Id);
 
     let page = page.max(1);
     let paginator = query.paginate(db, page_size);
@@ -196,7 +196,7 @@ pub async fn query_points(
         s if s.eq_ignore_ascii_case("When ASC") || s.eq_ignore_ascii_case("When") => {
             query.order_by_asc(points_transaction::Column::CreatedAt)
         }
-        _ => query.order_by_desc(points_transaction::Column::CreatedAt),
+        _ => query.order_by_desc(points_transaction::Column::Id),
     };
 
     let page = page.max(1);

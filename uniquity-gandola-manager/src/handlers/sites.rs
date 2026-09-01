@@ -5,7 +5,9 @@ use axum::{
 };
 use chrono::{NaiveDate, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    EntityTrait, PaginatorTrait, QueryOrder,
     sea_query::{Expr, Order},
 };
 
@@ -34,10 +36,10 @@ use crate::{
     scope::{
         apply_name_filter_sites, apply_site_id_filter_sites, customer_name, find_site_scoped,
         gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
-        invoice_items_from_ids, is_superuser, load_gandolas_for_site, load_purchase_orders_for_site,
-        opt_string, purchase_order_items_for_site, purchase_order_items_from_ids,
-        related_invoices_for_site, scope_sites, sync_site_gandolas, sync_site_invoices,
-        sync_site_purchase_orders,
+        invoice_items_from_ids, is_superuser, load_gandolas_for_site,
+        load_purchase_orders_for_site, opt_string, purchase_order_items_for_site,
+        purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
+        sync_site_invoices, sync_site_purchase_orders,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
@@ -126,6 +128,14 @@ async fn query_sites(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(site::Column::Name)
         }
+        s if s.eq_ignore_ascii_case("SiteId DESC") => query.order_by_desc(site::Column::SiteId),
+        s if s.eq_ignore_ascii_case("SiteId ASC") || s.eq_ignore_ascii_case("SiteId") => {
+            query.order_by_asc(site::Column::SiteId)
+        }
+        s if s.eq_ignore_ascii_case("Address DESC") => query.order_by_desc(site::Column::Address),
+        s if s.eq_ignore_ascii_case("Address ASC") || s.eq_ignore_ascii_case("Address") => {
+            query.order_by_asc(site::Column::Address)
+        }
         s if s.eq_ignore_ascii_case("StartDate DESC") => {
             query.order_by_desc(site::Column::StartDate)
         }
@@ -146,9 +156,7 @@ async fn query_sites(
         s if s.eq_ignore_ascii_case("Gandolas ASC") || s.eq_ignore_ascii_case("Gandolas") => {
             query.order_by(Expr::cust(GANDOLA_NAME_SORT_EXPR), Order::Asc)
         }
-        _ => query
-            .order_by_desc(site::Column::CreatedAt)
-            .order_by_desc(site::Column::Id),
+        _ => query.order_by_desc(site::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

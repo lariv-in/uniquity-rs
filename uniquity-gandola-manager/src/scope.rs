@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
 use lariv_rs::components::ManyToManyItem;
@@ -364,12 +364,7 @@ fn invoice_group_key(d: &draft_invoice::Model, display_number: &str) -> String {
             return n.to_ascii_lowercase();
         }
     }
-    if let Some(n) = d
-        .number
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(n) = d.number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         return n.to_ascii_lowercase();
     }
     if let Some(r) = d
@@ -476,7 +471,7 @@ pub async fn related_invoices_for_site(
     tz: &str,
 ) -> Vec<(i64, String, String, String, String)> {
     let mut drafts = load_invoices_for_site(db, site_id).await;
-    drafts.sort_by(|a, b| b.datetime.cmp(&a.datetime).then(b.id.cmp(&a.id)));
+    drafts.sort_by(|a, b| b.id.cmp(&a.id));
 
     // One row per logical invoice: prefer the furthest lifecycle state (e.g. Posted over Draft).
     let mut best: HashMap<
@@ -493,7 +488,11 @@ pub async fn related_invoices_for_site(
     > = HashMap::new();
     for d in drafts {
         let (status, href, posted_number) = invoice_status_and_href(db, d.id).await;
-        let name = match posted_number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let name = match posted_number
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(n) => n.to_string(),
             None => invoice_label(d.id, &d.number),
         };
@@ -503,8 +502,7 @@ pub async fn related_invoices_for_site(
         let row = (d.id, name, href, date, status, rank, d.datetime);
         match best.get(&key) {
             Some((existing_id, _, _, _, _, existing_rank, _))
-                if *existing_rank > rank
-                    || (*existing_rank == rank && *existing_id >= d.id) => {}
+                if *existing_rank > rank || (*existing_rank == rank && *existing_id >= d.id) => {}
             _ => {
                 best.insert(key, row);
             }
@@ -512,7 +510,7 @@ pub async fn related_invoices_for_site(
     }
 
     let mut out: Vec<_> = best.into_values().collect();
-    out.sort_by(|a, b| b.6.cmp(&a.6).then(b.0.cmp(&a.0)));
+    out.sort_by(|a, b| b.0.cmp(&a.0));
     out.into_iter()
         .map(|(id, name, href, date, status, _, _)| (id, name, href, date, status))
         .collect()
@@ -524,7 +522,6 @@ pub async fn load_purchase_orders_for_site(
 ) -> Vec<purchase_order::Model> {
     PurchaseOrderEntity::find()
         .filter(purchase_order::Column::SiteId.eq(site_id))
-        .order_by_desc(purchase_order::Column::Date)
         .order_by_desc(purchase_order::Column::Id)
         .all(db)
         .await

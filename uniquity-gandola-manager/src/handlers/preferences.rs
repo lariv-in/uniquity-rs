@@ -1,13 +1,11 @@
-use axum::{
-    response::{IntoResponse, Redirect, Response},
-};
+use axum::response::{IntoResponse, Redirect, Response};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
 use lariv_rs::{
-    html_form::HtmlFormBody,
     components::{SharedChromeFolder, SlotCtx},
     genai::GenaiClient,
+    html_form::HtmlFormBody,
     http::Cap,
     plugins::finance_invoices::logic::default_payment_term_lines_json,
     plugins::users::middleware::RequireAuth,

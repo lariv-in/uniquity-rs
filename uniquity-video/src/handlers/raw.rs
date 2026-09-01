@@ -343,7 +343,7 @@ pub async fn select(
         s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
             query.order_by_asc(RawFootageColumn::Title)
         }
-        _ => query.order_by_desc(RawFootageColumn::UpdatedAt),
+        _ => query.order_by_desc(RawFootageColumn::Id),
     };
     let page_size = q.filter.page_size.get();
     let page_num = q.filter.page.unwrap_or(1).max(1);

@@ -168,7 +168,7 @@ pub async fn query_raw_footages(
         s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
             query.order_by_asc(raw_footage::Column::Title)
         }
-        _ => query.order_by_desc(raw_footage::Column::UpdatedAt),
+        _ => query.order_by_desc(raw_footage::Column::Id),
     };
     let page = page.max(1);
     let paginator = query.paginate(db, page_size);
@@ -213,7 +213,7 @@ pub async fn query_edited_videos(
     page: u32,
     page_size: u64,
 ) -> (Vec<EditedVideoRow>, u32, u64) {
-    let query = EditedVideoEntity::find().order_by_desc(edited_video::Column::UpdatedAt);
+    let query = EditedVideoEntity::find().order_by_desc(edited_video::Column::Id);
     let page = page.max(1);
     let paginator = query.paginate(db, page_size);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -281,7 +281,7 @@ pub async fn query_published_videos(
         s if s.eq_ignore_ascii_case("YouTubeID ASC") || s.eq_ignore_ascii_case("YouTubeID") => {
             query.order_by_asc(published_video::Column::YouTubeVideoId)
         }
-        _ => query.order_by_desc(published_video::Column::UpdatedAt),
+        _ => query.order_by_desc(published_video::Column::Id),
     };
     let page = page.max(1);
     let paginator = query.paginate(db, page_size);

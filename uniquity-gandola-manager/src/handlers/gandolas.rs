@@ -4,7 +4,12 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::{NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::Set,
+    EntityTrait, PaginatorTrait, QueryOrder,
+    sea_query::{Expr, Order},
+};
 
 use lariv_rs::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
@@ -41,6 +46,21 @@ use crate::{
 };
 
 const LIST_URL: &str = "/gandola/";
+
+/// Sort gandolas by the first linked site name (gandolas without sites sort as empty).
+const SITE_NAME_SORT_EXPR: &str = "COALESCE((SELECT MIN(s.name) FROM gandola_sites gs INNER JOIN sites s ON s.id = gs.site_id WHERE gs.gandola_id = gandolas.id), '')";
+
+/// Sort gandolas by current-site name for a given UTC date (unassigned sort as empty).
+fn current_site_name_sort_expr(today: NaiveDate) -> String {
+    format!(
+        "COALESCE((SELECT MIN(s.name) FROM gandola_sites gs INNER JOIN sites s ON s.id = gs.site_id \
+         WHERE gs.gandola_id = gandolas.id AND ( \
+           (s.start_date IS NOT NULL AND s.end_date IS NOT NULL AND s.start_date <= DATE '{today}' AND DATE '{today}' <= s.end_date) \
+           OR (s.start_date IS NOT NULL AND s.end_date IS NULL AND s.start_date <= DATE '{today}') \
+           OR (s.start_date IS NULL AND s.end_date IS NOT NULL AND DATE '{today}' <= s.end_date) \
+         )), '')"
+    )
+}
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct GandolaListQuery {
@@ -99,9 +119,23 @@ async fn query_gandolas(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(gandola::Column::Name)
         }
-        _ => query
-            .order_by_desc(gandola::Column::CreatedAt)
-            .order_by_desc(gandola::Column::Id),
+        s if s.eq_ignore_ascii_case("CurrentSite DESC") => query.order_by(
+            Expr::cust(current_site_name_sort_expr(today_utc())),
+            Order::Desc,
+        ),
+        s if s.eq_ignore_ascii_case("CurrentSite ASC") || s.eq_ignore_ascii_case("CurrentSite") => {
+            query.order_by(
+                Expr::cust(current_site_name_sort_expr(today_utc())),
+                Order::Asc,
+            )
+        }
+        s if s.eq_ignore_ascii_case("Sites DESC") => {
+            query.order_by(Expr::cust(SITE_NAME_SORT_EXPR), Order::Desc)
+        }
+        s if s.eq_ignore_ascii_case("Sites ASC") || s.eq_ignore_ascii_case("Sites") => {
+            query.order_by(Expr::cust(SITE_NAME_SORT_EXPR), Order::Asc)
+        }
+        _ => query.order_by_desc(gandola::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

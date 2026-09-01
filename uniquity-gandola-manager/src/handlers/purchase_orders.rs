@@ -5,7 +5,10 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryOrder,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    EntityTrait, PaginatorTrait, QueryOrder,
+    sea_query::{Expr, Order},
 };
 
 use lariv_rs::{
@@ -50,11 +53,17 @@ use crate::{
     state::GandolaManagerState,
     templates::{
         ConfirmDeletePage, PoLineRow, PurchaseOrderCreateModalPage, PurchaseOrderDetailPage,
-        PurchaseOrderEditModalPage, PurchaseOrderListPage, PurchaseOrderRow, PurchaseOrderSelectPage,
+        PurchaseOrderEditModalPage, PurchaseOrderListPage, PurchaseOrderRow,
+        PurchaseOrderSelectPage,
     },
 };
 
 const LIST_URL: &str = "/gandola/purchase-orders/";
+
+const CUSTOMER_NAME_SORT_EXPR: &str =
+    "COALESCE((SELECT name FROM customers WHERE customers.id = purchase_orders.customer_id), '')";
+const SITE_NAME_SORT_EXPR: &str =
+    "COALESCE((SELECT name FROM sites WHERE sites.id = purchase_orders.site_id), '')";
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct PurchaseOrderListQuery {
@@ -122,9 +131,19 @@ async fn query_purchase_orders(
         s if s.eq_ignore_ascii_case("Date ASC") || s.eq_ignore_ascii_case("Date") => {
             query.order_by_asc(purchase_order::Column::Date)
         }
-        _ => query
-            .order_by_desc(purchase_order::Column::Date)
-            .order_by_desc(purchase_order::Column::Id),
+        s if s.eq_ignore_ascii_case("Customer DESC") => {
+            query.order_by(Expr::cust(CUSTOMER_NAME_SORT_EXPR), Order::Desc)
+        }
+        s if s.eq_ignore_ascii_case("Customer ASC") || s.eq_ignore_ascii_case("Customer") => {
+            query.order_by(Expr::cust(CUSTOMER_NAME_SORT_EXPR), Order::Asc)
+        }
+        s if s.eq_ignore_ascii_case("Site DESC") => {
+            query.order_by(Expr::cust(SITE_NAME_SORT_EXPR), Order::Desc)
+        }
+        s if s.eq_ignore_ascii_case("Site ASC") || s.eq_ignore_ascii_case("Site") => {
+            query.order_by(Expr::cust(SITE_NAME_SORT_EXPR), Order::Asc)
+        }
+        _ => query.order_by_desc(purchase_order::Column::Id),
     };
     let page = q.page.get();
     let paginator = query.paginate(db, page_size as u64);

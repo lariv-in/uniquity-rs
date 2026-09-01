@@ -4,14 +4,14 @@ use maud::{Markup, html};
 use lariv_rs::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-        FieldText, FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, ManyToManyItem,
-        ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
-        SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-        TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form, button_submit,
-        column_sort_url, container_column, container_row, data_table_list_refresh, detail,
-        detail_header, delete_confirmation, field_text, field_textarea, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
-        layout_main, layout_sidebar, MainContentKey, modal, modal_keyed, pagination_pages,
+        FieldText, FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, MainContentKey,
+        ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
+        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
+        button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+        delete_confirmation, detail, detail_header, field_text, field_textarea, field_title, form,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+        label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
@@ -281,6 +281,13 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
+fn col_sort(path_and_query: &str, key: &str, label: &str, sort: &str) -> (String, String) {
+    (
+        column_sort_url(path_and_query, key, sort),
+        format!("{label}{}", sort_indicator(sort, key)),
+    )
+}
+
 lariv_rs::define_register_items! {
     plugin: GandolaManagerTag;
     capability: TemplateCapability;
@@ -364,8 +371,15 @@ pub struct GandolaListPage {
 
 impl GandolaListPage {
     pub fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
+        let (current_site_sort, current_site_label) = col_sort(
+            &self.path_and_query,
+            "CurrentSite",
+            "Current Site",
+            &self.sort,
+        );
+        let (sites_sort, sites_label) =
+            col_sort(&self.path_and_query, "Sites", "Sites", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -375,14 +389,14 @@ impl GandolaListPage {
             },
             TableColumnHeader {
                 key: "CurrentSite",
-                label: "Current Site",
-                sort_url: None,
+                label: &current_site_label,
+                sort_url: Some(&current_site_sort),
                 push_url: true,
             },
             TableColumnHeader {
                 key: "Sites",
-                label: "Sites",
-                sort_url: None,
+                label: &sites_label,
+                sort_url: Some(&sites_sort),
                 push_url: true,
             },
         ];
@@ -684,8 +698,7 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
         } else {
             self.target_input.as_str()
         };
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
         let headers = [TableColumnHeader {
             key: "Name",
             label: &name_label,
@@ -791,16 +804,19 @@ pub struct SiteListPage {
 
 impl SiteListPage {
     pub fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let start_date_sort = column_sort_url(&self.path_and_query, "StartDate", &self.sort);
-        let end_date_sort = column_sort_url(&self.path_and_query, "EndDate", &self.sort);
-        let status_sort = column_sort_url(&self.path_and_query, "Status", &self.sort);
-        let gandolas_sort = column_sort_url(&self.path_and_query, "Gandolas", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let start_date_label = format!("Start Date{}", sort_indicator(&self.sort, "StartDate"));
-        let end_date_label = format!("End Date{}", sort_indicator(&self.sort, "EndDate"));
-        let status_label = format!("Status{}", sort_indicator(&self.sort, "Status"));
-        let gandolas_label = format!("Gandolas{}", sort_indicator(&self.sort, "Gandolas"));
+        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
+        let (site_id_sort, site_id_label) =
+            col_sort(&self.path_and_query, "SiteId", "Site ID", &self.sort);
+        let (address_sort, address_label) =
+            col_sort(&self.path_and_query, "Address", "Address", &self.sort);
+        let (start_date_sort, start_date_label) =
+            col_sort(&self.path_and_query, "StartDate", "Start Date", &self.sort);
+        let (end_date_sort, end_date_label) =
+            col_sort(&self.path_and_query, "EndDate", "End Date", &self.sort);
+        let (status_sort, status_label) =
+            col_sort(&self.path_and_query, "Status", "Status", &self.sort);
+        let (gandolas_sort, gandolas_label) =
+            col_sort(&self.path_and_query, "Gandolas", "Gandolas", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -810,14 +826,14 @@ impl SiteListPage {
             },
             TableColumnHeader {
                 key: "SiteId",
-                label: "Site ID",
-                sort_url: None,
+                label: &site_id_label,
+                sort_url: Some(&site_id_sort),
                 push_url: true,
             },
             TableColumnHeader {
                 key: "Address",
-                label: "Address",
-                sort_url: None,
+                label: &address_label,
+                sort_url: Some(&address_sort),
                 push_url: true,
             },
             TableColumnHeader {
@@ -1275,8 +1291,9 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
         } else {
             self.target_input.as_str()
         };
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
+        let (status_sort, status_label) =
+            col_sort(&self.path_and_query, "Status", "Status", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -1286,8 +1303,8 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
             },
             TableColumnHeader {
                 key: "Status",
-                label: "Status",
-                sort_url: None,
+                label: &status_label,
+                sort_url: Some(&status_sort),
                 push_url: false,
             },
         ];
@@ -1382,8 +1399,9 @@ pub struct SiteFkSelectPage {
 
 impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSelectPage {
     fn render_table(&self) -> Markup {
-        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
+        let (status_sort, status_label) =
+            col_sort(&self.path_and_query, "Status", "Status", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -1393,8 +1411,8 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
             },
             TableColumnHeader {
                 key: "Status",
-                label: "Status",
-                sort_url: None,
+                label: &status_label,
+                sort_url: Some(&status_sort),
                 push_url: false,
             },
         ];
@@ -1600,10 +1618,12 @@ pub struct PurchaseOrderListPage {
 
 impl PurchaseOrderListPage {
     pub fn render_table(&self) -> Markup {
-        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
-        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
-        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
-        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let (number_sort, number_label) =
+            col_sort(&self.path_and_query, "Number", "Number", &self.sort);
+        let (date_sort, date_label) = col_sort(&self.path_and_query, "Date", "Date", &self.sort);
+        let (customer_sort, customer_label) =
+            col_sort(&self.path_and_query, "Customer", "Customer", &self.sort);
+        let (site_sort, site_label) = col_sort(&self.path_and_query, "Site", "Site", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Number",
@@ -1619,14 +1639,14 @@ impl PurchaseOrderListPage {
             },
             TableColumnHeader {
                 key: "Customer",
-                label: "Customer",
-                sort_url: None,
+                label: &customer_label,
+                sort_url: Some(&customer_sort),
                 push_url: true,
             },
             TableColumnHeader {
                 key: "Site",
-                label: "Site",
-                sort_url: None,
+                label: &site_label,
+                sort_url: Some(&site_sort),
                 push_url: true,
             },
         ];
@@ -2035,8 +2055,9 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
         } else {
             self.target_input.as_str()
         };
-        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
-        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let (number_sort, number_label) =
+            col_sort(&self.path_and_query, "Number", "Number", &self.sort);
+        let (date_sort, date_label) = col_sort(&self.path_and_query, "Date", "Date", &self.sort);
         let headers = [
             TableColumnHeader {
                 key: "Number",
@@ -2046,8 +2067,8 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
             },
             TableColumnHeader {
                 key: "Date",
-                label: "Date",
-                sort_url: None,
+                label: &date_label,
+                sort_url: Some(&date_sort),
                 push_url: false,
             },
         ];
