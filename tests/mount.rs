@@ -10,7 +10,7 @@ use lariv_rs::traits::get::GetByTag;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, otp, pwa, users,
+    llm_assistant, otp, pwa, users, website,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:"
@@ -76,6 +76,7 @@ async fn uniquity_stack_mounts() {
                     let app = otp::install(app);
                     let app = pwa::install(app);
                     let app = dashboard::install(app);
+                    let app = website::install(app);
 
                     let path = temp_config(MINIMAL_DB_TOML);
                     let app = app.load_config(&path).await.expect("load_config");

@@ -10,6 +10,10 @@ jwtIssuer = "hC1MsGXL5epJUi8gtDbHxCd+pyjEZt/CsJPWzQCM3NCU9m7hm+lpJTNe7MjrueqXHEF
 [filesystem]
 localDir = "./tmp/filesystem"
 
+[website]
+newPageRootDir = "website/pages"
+assetsDir = "website/assets"
+
 [pwa]
 PWA_APP_NAME = "Uniquity Ventures"
 PWA_APP_DESCRIPTION = "Uniquity Ventures"

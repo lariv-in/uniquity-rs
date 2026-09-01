@@ -22,6 +22,7 @@ lariv-rs = {
 		"plugin-llm-assistant",
 		"plugin-finance",
 		"plugin-crm",
+		"plugin-website",
 ] }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 frunk_core = "0.5.0"
@@ -84,6 +85,8 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+sea-orm = { workspace = true }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["v4"] }

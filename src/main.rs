@@ -4,9 +4,11 @@ use lariv_rs::app::App;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
     finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
-    users,
+    users, website,
 };
 use tracing_subscriber::EnvFilter;
+
+mod website_seed;
 
 #[lariv_rs::main(
     stack_size = 64 * 1024 * 1024,
@@ -39,9 +41,17 @@ async fn main() -> anyhow::Result<()> {
     let app = otp::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);
+    // After dashboard so website can own `/` (CMS home) over the auth redirect.
+    let app = website::install(app);
 
     let app = app.load_config("config.toml").await?;
     let app = app.mount();
+    app.run_migrations().await?;
+    app.run_seeds().await?;
+    let website = app.get_capability_output::<website::WebsiteTag, _>();
+    tracing::info!("uniquity website: seeding homepage and media");
+    website_seed::ensure_homepage(website).await?;
+    tracing::info!("uniquity website: seed complete");
     app.run().await?;
     Ok(())
 }
