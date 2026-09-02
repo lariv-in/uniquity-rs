@@ -2667,7 +2667,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=a9ba94858fc65ceb507159fc05a06bde7a396d6e#a9ba94858fc65ceb507159fc05a06bde7a396d6e"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=10866fa9b704cb510d31fa78812ebca6b9ebaeee#10866fa9b704cb510d31fa78812ebca6b9ebaeee"
 dependencies = [
  "anyhow",
  "async-imap",
@@ -2735,7 +2735,7 @@ dependencies = [
 [[package]]
 name = "lariv-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=a9ba94858fc65ceb507159fc05a06bde7a396d6e#a9ba94858fc65ceb507159fc05a06bde7a396d6e"
+source = "git+https://github.com/lariv-in/lariv-rs?rev=10866fa9b704cb510d31fa78812ebca6b9ebaeee#10866fa9b704cb510d31fa78812ebca6b9ebaeee"
 dependencies = [
  "proc-macro2",
  "quote",
