@@ -12,8 +12,10 @@ use crate::entities::{
     purchase_order::{self, Entity as PurchaseOrderEntity},
 };
 use crate::forms::PurchaseOrderForm;
-use crate::po_lines::{parse_po_lines_json, replace_po_lines};
-use crate::po_payment_term::upsert_purchase_order_payment_term_lines;
+use crate::po_lines::{parse_po_lines_json, po_lines_form_json, replace_po_lines};
+use crate::po_payment_term::{
+    payment_term_lines_form_json_for_po_term, upsert_purchase_order_payment_term_lines,
+};
 use crate::scope::{opt_string, parse_optional_i64};
 
 fn parse_date(s: &str) -> Result<chrono::NaiveDate, &'static str> {
@@ -141,4 +143,97 @@ pub async fn persist_new_purchase_order(
             Err(e.to_string())
         }
     }
+}
+
+pub async fn purchase_order_form_from_model(
+    db: &DatabaseConnection,
+    po: &purchase_order::Model,
+    tz: &str,
+) -> PurchaseOrderForm {
+    PurchaseOrderForm {
+        number: po.number.clone(),
+        date: lariv_rs::datetime::format_date(po.date),
+        customer_id: po.customer_id,
+        site_id: po.site_id,
+        file_id: po
+            .file_id
+            .filter(|&id| id > 0)
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
+        payment_term_lines_json: payment_term_lines_form_json_for_po_term(
+            db,
+            po.payment_term_id,
+            tz,
+        )
+        .await,
+        po_lines_json: po_lines_form_json(db, po.id).await,
+        billing_address: po.billing_address.clone().unwrap_or_default(),
+        shipping_address: po.shipping_address.clone().unwrap_or_default(),
+    }
+}
+
+pub async fn persist_updated_purchase_order(
+    db: &DatabaseConnection,
+    existing: &purchase_order::Model,
+    form: &PurchaseOrderForm,
+    tz: &str,
+) -> Result<purchase_order::Model, String> {
+    let (date, number) = validate_purchase_order_form(form)?;
+    let (site_id, customer_id) =
+        resolve_site_and_customer(db, form.site_id, form.customer_id).await?;
+    if purchase_order_number_taken(db, &number, Some(existing.id)).await {
+        return Err("number must be unique".into());
+    }
+    let lines = parse_po_lines_json(&form.po_lines_json)?;
+    let term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
+    let term =
+        upsert_purchase_order_payment_term_lines(db, existing.payment_term_id, &term_lines, tz)
+            .await?;
+    let now = Utc::now();
+    let model = purchase_order::ActiveModel {
+        id: Set(existing.id),
+        number: Set(number),
+        date: Set(date),
+        customer_id: Set(customer_id),
+        site_id: Set(site_id),
+        file_id: Set(parse_optional_i64(&form.file_id)),
+        payment_term_id: Set(Some(term.id)),
+        billing_address: Set(opt_string(form.billing_address.clone())),
+        shipping_address: Set(opt_string(form.shipping_address.clone())),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    };
+    let saved = model.update(db).await.map_err(|e| e.to_string())?;
+    replace_po_lines(db, saved.id, &lines).await?;
+    Ok(saved)
+}
+
+pub async fn delete_purchase_order(db: &DatabaseConnection, id: i64) -> Result<(), String> {
+    if id <= 0 {
+        return Err("delete_purchase_order requires a positive purchase order id".into());
+    }
+    let existing = PurchaseOrderEntity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("purchase order {id} not found"))?;
+    let term_id = existing.payment_term_id;
+    PurchaseOrderEntity::delete_by_id(id)
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(term_id) = term_id {
+        if let Err(e) = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
+            .exec(db)
+            .await
+        {
+            tracing::error!(
+                error = %e,
+                term_id,
+                po_id = id,
+                "failed to delete purchase order payment term after PO delete"
+            );
+        }
+    }
+    Ok(())
 }

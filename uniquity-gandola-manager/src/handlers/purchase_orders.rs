@@ -5,8 +5,6 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
     EntityTrait, PaginatorTrait, QueryOrder,
     sea_query::{Expr, Order},
 };
@@ -17,7 +15,7 @@ use lariv_rs::{
     http::Cap,
     picker::respond_picker_select,
     plugins::{
-        finance_invoices::logic::{default_payment_term_lines_json, parse_payment_term_lines_json},
+        finance_invoices::logic::default_payment_term_lines_json,
         users::{middleware::RequireAuth, state::AuthContext},
     },
     template::RenderAppPane,
@@ -28,27 +26,18 @@ use lariv_rs::{
 };
 
 use crate::{
-    entities::{
-        PurchaseOrderPaymentTermEntity,
-        purchase_order::{self, Entity as PurchaseOrderEntity},
-    },
+    entities::purchase_order::{self, Entity as PurchaseOrderEntity},
     forms::PurchaseOrderForm,
     handlers::ModalNameQuery,
     keys::{
         PurchaseOrderCreateModalKey, PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey,
         PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
     },
-    po_lines::{
-        default_po_lines_json, load_po_line_displays, parse_po_lines_json, po_lines_form_json,
-        replace_po_lines,
-    },
-    po_payment_term::{
-        payment_term_lines_form_json_for_po_term, upsert_purchase_order_payment_term_lines,
-    },
+    po_lines::{default_po_lines_json, load_po_line_displays},
     routes::PurchaseOrderDetailRouteTag,
     scope::{
         apply_number_filter_purchase_orders, customer_name, find_purchase_order_scoped,
-        is_superuser, opt_string, parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
+        is_superuser, parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
     },
     state::GandolaManagerState,
     templates::{
@@ -159,14 +148,6 @@ async fn query_purchase_orders(
     ObjectList::from_page(rows, page, page_size, total)
 }
 
-async fn number_taken(
-    db: &sea_orm::DatabaseConnection,
-    number: &str,
-    except_id: Option<i64>,
-) -> bool {
-    crate::po_persist::purchase_order_number_taken(db, number, except_id).await
-}
-
 struct PoFormContext {
     customer_display: String,
     site_display: String,
@@ -220,18 +201,6 @@ fn empty_form() -> PurchaseOrderForm {
         billing_address: String::new(),
         shipping_address: String::new(),
     }
-}
-
-fn validate_form(form: &PurchaseOrderForm) -> Result<(chrono::NaiveDate, String), String> {
-    crate::po_persist::validate_purchase_order_form(form)
-}
-
-async fn resolve_site_and_customer(
-    db: &sea_orm::DatabaseConnection,
-    site_id: i64,
-    customer_id: i64,
-) -> Result<(i64, i64), String> {
-    crate::po_persist::resolve_site_and_customer(db, site_id, customer_id).await
 }
 
 pub async fn list(
@@ -382,26 +351,7 @@ async fn form_from_model(
     po: &purchase_order::Model,
     tz: &str,
 ) -> PurchaseOrderForm {
-    PurchaseOrderForm {
-        number: po.number.clone(),
-        date: format_date(po.date),
-        customer_id: po.customer_id,
-        site_id: po.site_id,
-        file_id: po
-            .file_id
-            .filter(|&id| id > 0)
-            .map(|id| id.to_string())
-            .unwrap_or_default(),
-        payment_term_lines_json: payment_term_lines_form_json_for_po_term(
-            db,
-            po.payment_term_id,
-            tz,
-        )
-        .await,
-        po_lines_json: po_lines_form_json(db, po.id).await,
-        billing_address: po.billing_address.clone().unwrap_or_default(),
-        shipping_address: po.shipping_address.clone().unwrap_or_default(),
-    }
+    crate::po_persist::purchase_order_form_from_model(db, po, tz).await
 }
 
 async fn edit_modal_from_form(
@@ -457,94 +407,20 @@ pub async fn edit_post(
         return Redirect::to(LIST_URL).into_response();
     };
     let form_name = q.form_name();
-    let (date, number) = match validate_form(&form) {
-        Ok(v) => v,
-        Err(e) => {
-            let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
-    };
-    let (site_id, customer_id) =
-        match resolve_site_and_customer(&state.db, form.site_id, form.customer_id).await {
-            Ok(v) => v,
-            Err(e) => {
-                let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                    .into_response();
-            }
-        };
-    if number_taken(&state.db, &number, Some(id)).await {
-        let page = edit_modal_from_form(
-            &state.db,
-            id,
-            &form,
-            form_name,
-            "number must be unique".into(),
-        )
-        .await;
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-    let lines = match parse_po_lines_json(&form.po_lines_json) {
-        Ok(l) => l,
-        Err(e) => {
-            let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
-    };
-    let term_lines = match parse_payment_term_lines_json(&form.payment_term_lines_json) {
-        Ok(l) => l,
-        Err(e) => {
-            let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
-    };
-    let term = match upsert_purchase_order_payment_term_lines(
+    match crate::po_persist::persist_updated_purchase_order(
         &state.db,
-        existing.payment_term_id,
-        &term_lines,
+        &existing,
+        &form,
         &ctx.timezone,
     )
     .await
     {
-        Ok(t) => t,
+        Ok(_) => respond_edit_modal_done::<PurchaseOrderEditModalKey>(
+            &htmx,
+            &PurchaseOrderDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
             let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
-        }
-    };
-    let now = Utc::now();
-    let model = purchase_order::ActiveModel {
-        id: Set(existing.id),
-        number: Set(number),
-        date: Set(date),
-        customer_id: Set(customer_id),
-        site_id: Set(site_id),
-        file_id: Set(parse_optional_i64(&form.file_id)),
-        payment_term_id: Set(Some(term.id)),
-        billing_address: Set(opt_string(form.billing_address.clone())),
-        shipping_address: Set(opt_string(form.shipping_address.clone())),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    };
-    match model.update(&state.db).await {
-        Ok(_) => {
-            if let Err(e) = replace_po_lines(&state.db, id, &lines).await {
-                let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
-                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                    .into_response();
-            }
-            respond_edit_modal_done::<PurchaseOrderEditModalKey>(
-                &htmx,
-                &PurchaseOrderDetailRouteTag::new(id).url(),
-            )
-        }
-        Err(e) => {
-            let page = edit_modal_from_form(&state.db, id, &form, form_name, e.to_string()).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -579,27 +455,14 @@ pub async fn delete_post(
     if !is_superuser(&ctx) {
         return Redirect::to(LIST_URL).into_response();
     }
-    let Some(po) = find_purchase_order_scoped(&state.db, id, &ctx).await else {
+    if find_purchase_order_scoped(&state.db, id, &ctx)
+        .await
+        .is_none()
+    {
         return Redirect::to(LIST_URL).into_response();
-    };
-    let term_id = po.payment_term_id;
-    match PurchaseOrderEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => {
-            if let Some(term_id) = term_id {
-                if let Err(e) = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
-                    .exec(&state.db)
-                    .await
-                {
-                    tracing::error!(
-                        error = %e,
-                        term_id,
-                        po_id = id,
-                        "failed to delete purchase order payment term after PO delete"
-                    );
-                }
-            }
-            htmx.redirect(LIST_URL)
-        }
+    }
+    match crate::po_persist::delete_purchase_order(&state.db, id).await {
+        Ok(()) => htmx.redirect(LIST_URL),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete purchase order");
             let page = ConfirmDeletePage {
@@ -607,7 +470,7 @@ pub async fn delete_post(
                 message: "Are you sure you want to delete this purchase order?".into(),
                 form_name: "gandola_manager.PurchaseOrderDeleteForm".into(),
                 id,
-                error: e.to_string(),
+                error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }

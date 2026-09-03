@@ -8,6 +8,7 @@ pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod hitl;
 pub mod import;
 pub mod import_cmd;
 pub mod invoice_site_pos;
@@ -22,6 +23,7 @@ pub mod po_persist;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
+pub mod site_persist;
 pub mod site_status;
 pub mod skill_seed;
 pub mod state;
@@ -54,6 +56,7 @@ lariv_rs::define_passthrough_cap!(
 lariv_rs::define_plugin_install! {
     plugin: GandolaManagerTag;
     steps: [
+        cap_hook(lariv_rs::plugins::llm_assistant::hitl::HitlTag, lariv_rs::plugins::llm_assistant::hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
         rune_env(rune_env::Hook),
         tools(tools::Hook),

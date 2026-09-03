@@ -680,6 +680,29 @@ pub async fn link_site_invoice<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Remove a draft invoice link from a site without touching the site's other invoice links.
+pub async fn unlink_site_invoice<C: ConnectionTrait>(
+    db: &C,
+    site_id: i64,
+    draft_invoice_id: i64,
+) -> Result<(), String> {
+    if site_id <= 0 || draft_invoice_id <= 0 {
+        return Err("site_id and draft_invoice_id are required".into());
+    }
+    let res = SiteInvoiceLinkEntity::delete_many()
+        .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::DraftInvoiceId.eq(draft_invoice_id))
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if res.rows_affected == 0 {
+        return Err(format!(
+            "site {site_id} is not linked to invoice {draft_invoice_id}"
+        ));
+    }
+    Ok(())
+}
+
 pub async fn sync_invoice_sites<C: ConnectionTrait>(
     db: &C,
     draft_invoice_id: i64,

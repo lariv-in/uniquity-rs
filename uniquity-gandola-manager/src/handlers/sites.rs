@@ -687,8 +687,8 @@ pub async fn delete_post(
     if find_site_scoped(&state.db, id, &ctx).await.is_none() {
         return Redirect::to(LIST_URL).into_response();
     }
-    match SiteEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect(LIST_URL),
+    match crate::site_persist::delete_site(&state.db, id).await {
+        Ok(()) => htmx.redirect(LIST_URL),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete site");
             let page = ConfirmDeletePage {
@@ -696,7 +696,7 @@ pub async fn delete_post(
                 message: "Are you sure you want to delete this site?".into(),
                 form_name: "gandola_manager.SiteDeleteForm".into(),
                 id,
-                error: e.to_string(),
+                error: e,
             };
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
