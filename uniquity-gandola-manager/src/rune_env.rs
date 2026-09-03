@@ -23,7 +23,7 @@ impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
         rune_env.register_contextual(
             "find_site",
-            "find_site(#{ site_id?: int|string, name?: string, site_name?: string }) -> #{ id, site_id?, name, customer_id, address?, status } — int site_id is the primary key; string site_id / name / site_name match name or string site_id",
+            "find_site(#{ site_id?: int|string, name?: string, site_name?: string }) -> #{ id, site_id?, name, customer_id, address?, remarks?, status } — int site_id is the primary key; string site_id / name / site_name match name or string site_id",
             |_ctx| NativeBinding::Function(Arc::new(find_site)),
         );
         rune_env.register_contextual(
@@ -58,12 +58,12 @@ impl RuneEnvRegistrar for Hook {
         );
         rune_env.register_contextual(
             "create_site",
-            "create_site(#{ name: string, customer_id: int, site_id?: string, status?: string, start_date?: string, end_date?: string, address?: string, gandolas?: [int], invoices?: [int], purchase_orders?: [int] }) -> #{ id, site_id?, name, customer_id, address?, status }",
+            "create_site(#{ name: string, customer_id: int, site_id?: string, status?: string, start_date?: string, end_date?: string, address?: string, remarks?: string, gandolas?: [int], invoices?: [int], purchase_orders?: [int] }) -> #{ id, site_id?, name, customer_id, address?, remarks?, status }",
             |_ctx| NativeBinding::Function(Arc::new(create_site)),
         );
         rune_env.register_contextual(
             "update_site",
-            "update_site(#{ id: int, name?: string, customer_id?: int, site_id?: string, status?: string, start_date?: string, end_date?: string, address?: string, gandolas?: [int], invoices?: [int], purchase_orders?: [int] }) -> #{ id, site_id?, name, customer_id, address?, status }  // omitted fields keep their current values",
+            "update_site(#{ id: int, name?: string, customer_id?: int, site_id?: string, status?: string, start_date?: string, end_date?: string, address?: string, remarks?: string, gandolas?: [int], invoices?: [int], purchase_orders?: [int] }) -> #{ id, site_id?, name, customer_id, address?, remarks?, status }  // omitted fields keep their current values",
             |_ctx| NativeBinding::Function(Arc::new(update_site)),
         );
     }
@@ -317,6 +317,10 @@ fn update_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value
             Some(raw) => opt_string(raw.clone()),
             None => existing.address.clone(),
         };
+        let remarks = match parsed.remarks.as_ref() {
+            Some(raw) => opt_string(raw.clone()),
+            None => existing.remarks.clone(),
+        };
         let fields = crate::site_persist::validate_site_fields(
             name,
             customer_id,
@@ -325,6 +329,7 @@ fn update_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value
             end_date,
             site_id,
             address,
+            remarks,
         )?;
         crate::site_persist::persist_updated_site(
             &db,
@@ -718,6 +723,8 @@ struct CreateSiteArgs {
     #[serde(default)]
     address: Option<String>,
     #[serde(default)]
+    remarks: Option<String>,
+    #[serde(default)]
     gandolas: Option<Vec<i64>>,
     #[serde(default)]
     invoices: Option<Vec<i64>>,
@@ -741,6 +748,7 @@ impl CreateSiteArgs {
             end_date,
             self.site_id,
             self.address,
+            self.remarks,
         )
     }
 }
@@ -762,6 +770,8 @@ struct UpdateSiteArgs {
     end_date: Option<String>,
     #[serde(default)]
     address: Option<String>,
+    #[serde(default)]
+    remarks: Option<String>,
     #[serde(default)]
     gandolas: Option<Vec<i64>>,
     #[serde(default)]
@@ -1170,7 +1180,8 @@ mod tests {
             "customer_id": 7,
             "site_id": "SITE-001",
             "status": "docs_done",
-            "address": "1 Road"
+            "address": "1 Road",
+            "remarks": "Gate code 12"
         });
         let parsed: CreateSiteArgs = serde_json::from_value(raw).expect("parse");
         let fields = parsed.into_fields().expect("fields");
@@ -1179,5 +1190,6 @@ mod tests {
         assert_eq!(fields.site_id.as_deref(), Some("SITE-001"));
         assert_eq!(fields.status.as_str(), "docs_done");
         assert_eq!(fields.address.as_deref(), Some("1 Road"));
+        assert_eq!(fields.remarks.as_deref(), Some("Gate code 12"));
     }
 }

@@ -21,6 +21,7 @@ pub struct SiteFields {
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
     pub address: Option<String>,
+    pub remarks: Option<String>,
 }
 
 pub fn parse_optional_date(s: &str) -> Result<Option<NaiveDate>, String> {
@@ -51,6 +52,7 @@ pub fn validate_site_fields(
     end_date: Option<NaiveDate>,
     site_id: Option<String>,
     address: Option<String>,
+    remarks: Option<String>,
 ) -> Result<SiteFields, String> {
     let name = name.trim();
     if name.is_empty() {
@@ -67,6 +69,7 @@ pub fn validate_site_fields(
         start_date,
         end_date,
         address: address.and_then(opt_string),
+        remarks: remarks.and_then(opt_string),
     })
 }
 
@@ -106,6 +109,7 @@ pub async fn persist_new_site(
         start_date: Set(fields.start_date),
         end_date: Set(fields.end_date),
         address: Set(fields.address.clone()),
+        remarks: Set(fields.remarks.clone()),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -141,6 +145,7 @@ pub async fn persist_updated_site(
         start_date: Set(fields.start_date),
         end_date: Set(fields.end_date),
         address: Set(fields.address.clone()),
+        remarks: Set(fields.remarks.clone()),
         updated_at: Set(Some(now)),
         ..Default::default()
     };

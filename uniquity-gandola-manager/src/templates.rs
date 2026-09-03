@@ -784,6 +784,7 @@ pub struct SiteRow {
     pub name: String,
     pub site_id: String,
     pub address: String,
+    pub remarks: String,
     pub start_date: String,
     pub end_date: String,
     pub status: String,
@@ -809,6 +810,8 @@ impl SiteListPage {
             col_sort(&self.path_and_query, "SiteId", "Site ID", &self.sort);
         let (address_sort, address_label) =
             col_sort(&self.path_and_query, "Address", "Address", &self.sort);
+        let (remarks_sort, remarks_label) =
+            col_sort(&self.path_and_query, "Remarks", "Remarks", &self.sort);
         let (start_date_sort, start_date_label) =
             col_sort(&self.path_and_query, "StartDate", "Start Date", &self.sort);
         let (end_date_sort, end_date_label) =
@@ -834,6 +837,12 @@ impl SiteListPage {
                 key: "Address",
                 label: &address_label,
                 sort_url: Some(&address_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Remarks",
+                label: &remarks_label,
+                sort_url: Some(&remarks_sort),
                 push_url: true,
             },
             TableColumnHeader {
@@ -880,6 +889,10 @@ impl SiteListPage {
                         }),
                         field_text(FieldText {
                             value: &s.address,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &s.remarks,
                             classes: "",
                         }),
                         field_text(FieldText {
@@ -984,6 +997,7 @@ pub struct SiteDetailPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
+    pub remarks: String,
     pub gandolas: Vec<RelatedName>,
     pub purchase_orders: Vec<SitePurchaseOrderRow>,
     pub invoices: Vec<RelatedInvoice>,
@@ -1023,6 +1037,10 @@ impl SiteDetailPage {
                     (label("Start Date", field_text(FieldText { value: &self.start_date, classes: "" })))
                     (label("End Date", field_text(FieldText { value: &self.end_date, classes: "" })))
                     (label("Address", field_text(FieldText { value: &self.address, classes: "" })))
+                    (label("Remarks", field_textarea(FieldTextarea {
+                        value: &self.remarks,
+                        classes: "break-words min-w-0 max-w-full overflow-x-hidden",
+                    })))
                     (label("Gandolas", related_detail_table(
                         "No gandolas",
                         1,
@@ -1118,6 +1136,7 @@ fn site_form_inputs(
     start_date: &str,
     end_date: &str,
     address: &str,
+    remarks: &str,
     gandolas: &[ManyToManyItem],
     invoices: &[ManyToManyItem],
     purchase_orders: &[ManyToManyItem],
@@ -1135,6 +1154,7 @@ fn site_form_inputs(
             .value(SiteFormField::StartDate, start_date)
             .value(SiteFormField::EndDate, end_date)
             .value(SiteFormField::Address, address)
+            .value(SiteFormField::Remarks, remarks)
             .m2m(SiteFormField::Gandolas, gandolas)
             .m2m(SiteFormField::Invoices, invoices)
             .m2m(SiteFormField::PurchaseOrders, purchase_orders),
@@ -1153,6 +1173,7 @@ pub struct SiteEditModalPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
+    pub remarks: String,
     pub gandolas: Vec<ManyToManyItem>,
     pub invoices: Vec<ManyToManyItem>,
     pub purchase_orders: Vec<ManyToManyItem>,
@@ -1181,6 +1202,7 @@ impl RenderTemplate for SiteEditModalPage {
                         &self.start_date,
                         &self.end_date,
                         &self.address,
+                        &self.remarks,
                         &self.gandolas,
                         &self.invoices,
                         &self.purchase_orders,
@@ -1218,6 +1240,7 @@ pub struct SiteCreateModalPage {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
+    pub remarks: String,
     pub gandolas: Vec<ManyToManyItem>,
     pub invoices: Vec<ManyToManyItem>,
     pub purchase_orders: Vec<ManyToManyItem>,
@@ -1253,6 +1276,7 @@ impl RenderTemplate for SiteCreateModalPage {
                     &self.start_date,
                     &self.end_date,
                     &self.address,
+                    &self.remarks,
                     &self.gandolas,
                     &self.invoices,
                     &self.purchase_orders,

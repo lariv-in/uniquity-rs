@@ -48,6 +48,8 @@ pub struct SiteCsvRow {
     pub start_date: String,
     pub end_date: String,
     pub address: String,
+    #[serde(default)]
+    pub remarks: String,
     pub create_date: String,
     pub write_date: String,
 }
@@ -496,6 +498,7 @@ pub async fn import_site_row(
         start_date: Set(parse_optional_date(&row.start_date)),
         end_date: Set(parse_optional_date(&row.end_date)),
         address: Set(opt_string(row.address.clone())),
+        remarks: Set(opt_string(row.remarks.clone())),
         created_at: Set(created_at.or_else(|| Some(Utc::now()))),
         updated_at: Set(updated_at.or_else(|| Some(Utc::now()))),
         ..Default::default()

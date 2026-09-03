@@ -17,6 +17,7 @@ pub struct Model {
     /// External / business site identifier (distinct from primary key `id`).
     pub site_id: Option<String>,
     pub address: Option<String>,
+    pub remarks: Option<String>,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
     pub customer_id: i64,

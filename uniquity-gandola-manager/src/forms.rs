@@ -68,6 +68,9 @@ pub struct SiteForm {
     #[form(label = "Address", widget = Textarea)]
     pub address: String,
 
+    #[form(label = "Remarks", widget = Textarea)]
+    pub remarks: String,
+
     #[form(
         label = "Gandolas",
         widget = ManyToMany,

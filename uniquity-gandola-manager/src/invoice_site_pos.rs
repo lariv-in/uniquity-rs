@@ -33,6 +33,7 @@ pub struct SiteSummary {
     pub name: String,
     pub customer_id: i64,
     pub address: Option<String>,
+    pub remarks: Option<String>,
     pub status: String,
 }
 
@@ -139,6 +140,7 @@ pub fn site_summary(site: &site::Model) -> SiteSummary {
         name: site.name.clone(),
         customer_id: site.customer_id,
         address: site.address.clone(),
+        remarks: site.remarks.clone(),
         status: site.status.as_str().to_string(),
     }
 }

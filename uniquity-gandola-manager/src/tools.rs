@@ -88,6 +88,7 @@ impl LlmTool for SearchSitesTool {
                     "site_id": s.site_id,
                     "name": s.name,
                     "address": s.address,
+                    "remarks": s.remarks,
                     "customer_id": s.customer_id,
                     "status": s.status.as_str(),
                 })

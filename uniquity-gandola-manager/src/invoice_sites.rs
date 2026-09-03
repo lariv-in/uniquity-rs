@@ -145,6 +145,7 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
                         "SiteId": s.site_id.unwrap_or_default(),
                         "Name": s.name,
                         "Address": s.address.unwrap_or_default(),
+                        "Remarks": s.remarks.unwrap_or_default(),
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -158,6 +159,7 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
                 "SiteId": "SITE-001",
                 "Name": "Sample Site",
                 "Address": "Plot 12, Industrial Area",
+                "Remarks": "Access from north gate",
             }]
         })
     }

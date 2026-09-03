@@ -104,6 +104,7 @@ async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRo
         name: s.name,
         site_id: s.site_id.unwrap_or_default(),
         address: s.address.unwrap_or_default(),
+        remarks: s.remarks.unwrap_or_default(),
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
         status: s.status.as_str().to_string(),
@@ -135,6 +136,10 @@ async fn query_sites(
         s if s.eq_ignore_ascii_case("Address DESC") => query.order_by_desc(site::Column::Address),
         s if s.eq_ignore_ascii_case("Address ASC") || s.eq_ignore_ascii_case("Address") => {
             query.order_by_asc(site::Column::Address)
+        }
+        s if s.eq_ignore_ascii_case("Remarks DESC") => query.order_by_desc(site::Column::Remarks),
+        s if s.eq_ignore_ascii_case("Remarks ASC") || s.eq_ignore_ascii_case("Remarks") => {
+            query.order_by_asc(site::Column::Remarks)
         }
         s if s.eq_ignore_ascii_case("StartDate DESC") => {
             query.order_by_desc(site::Column::StartDate)
@@ -228,6 +233,7 @@ pub async fn detail(
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
         address: s.address.unwrap_or_default(),
+        remarks: s.remarks.unwrap_or_default(),
         gandolas: gandolas
             .into_iter()
             .map(|g| RelatedName {
@@ -266,6 +272,7 @@ struct ParsedSite {
     start_date: Option<NaiveDate>,
     end_date: Option<NaiveDate>,
     address: Option<String>,
+    remarks: Option<String>,
 }
 
 fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
@@ -286,6 +293,7 @@ fn parse_site_form(form: &SiteForm) -> Result<ParsedSite, String> {
         start_date,
         end_date,
         address: opt_string(form.address.clone()),
+        remarks: opt_string(form.remarks.clone()),
     })
 }
 
@@ -312,6 +320,7 @@ async fn create_page_from_form(
         start_date: form.start_date.clone(),
         end_date: form.end_date.clone(),
         address: form.address.clone(),
+        remarks: form.remarks.clone(),
         gandolas,
         invoices,
         purchase_orders,
@@ -339,6 +348,7 @@ pub async fn create_get(
         start_date: String::new(),
         end_date: String::new(),
         address: String::new(),
+        remarks: String::new(),
         gandolas: Vec::new(),
         invoices: Vec::new(),
         purchase_orders: Vec::new(),
@@ -389,6 +399,7 @@ pub async fn create_post(
         start_date: Set(parsed.start_date),
         end_date: Set(parsed.end_date),
         address: Set(parsed.address),
+        remarks: Set(parsed.remarks),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -501,6 +512,7 @@ pub async fn edit_get(
         start_date: format_date(s.start_date),
         end_date: format_date(s.end_date),
         address: s.address.unwrap_or_default(),
+        remarks: s.remarks.unwrap_or_default(),
         gandolas: gandola_items_for_site(&state.db, s.id).await,
         invoices: invoice_items_for_site(&state.db, s.id).await,
         purchase_orders: purchase_order_items_for_site(&state.db, s.id).await,
@@ -530,6 +542,7 @@ async fn edit_page_from_form(
         start_date: form.start_date.clone(),
         end_date: form.end_date.clone(),
         address: form.address.clone(),
+        remarks: form.remarks.clone(),
         gandolas,
         invoices,
         purchase_orders,
@@ -583,6 +596,7 @@ pub async fn edit_post(
         start_date: Set(parsed.start_date),
         end_date: Set(parsed.end_date),
         address: Set(parsed.address),
+        remarks: Set(parsed.remarks),
         updated_at: Set(Some(now)),
         ..Default::default()
     };

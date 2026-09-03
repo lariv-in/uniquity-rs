@@ -37,6 +37,7 @@ mod tests {
             name: format!("Site {id}"),
             site_id: None,
             address: None,
+            remarks: None,
             start_date: start.map(|(y, m, day)| d(y, m, day)),
             end_date: end.map(|(y, m, day)| d(y, m, day)),
             customer_id: 1,
