@@ -25,7 +25,6 @@ pub mod rune_env;
 pub mod scope;
 pub mod site_persist;
 pub mod site_status;
-pub mod skill_seed;
 pub mod state;
 pub mod templates;
 pub mod tools;
@@ -33,13 +32,13 @@ pub mod tools;
 use frunk::{HCons, hlist::HList};
 
 use lariv_rs::{
-    app::{App, MountedApp},
+    app::App,
     capability::CapStore,
     db::{DbCap, DbTag},
-    hooks::{AttachState, RunSeed},
+    hooks::AttachState,
     traits::{
         add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
+        get::GetByCapTag,
     },
 };
 
@@ -65,7 +64,6 @@ lariv_rs::define_plugin_install! {
         slots(templates::SlotsHook),
         http(routes::Hook),
         state(StateHook),
-        seeds(SeedsHook),
         commands(cli::Hook),
     ]
 }
@@ -84,22 +82,5 @@ where
         crate::invoice_sites::register();
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
         app.add_capability(CapStore::with_items(GandolaManagerState::new(conn)))
-    }
-}
-
-/// Seeds the site purchase-order invoicing skill if it is not already present.
-#[derive(Clone, Copy, Default)]
-pub struct SeedsHook;
-
-#[async_trait::async_trait]
-impl<M, Idx> RunSeed<M, Idx> for SeedsHook
-where
-    M: GetByTag<GandolaManagerTag, Idx, Value = GandolaManagerState> + Sync,
-{
-    async fn run_seed(app: &MountedApp<M>) -> anyhow::Result<()> {
-        crate::skill_seed::ensure_invoice_site_pos_skill(
-            &app.get_capability_output::<GandolaManagerTag, Idx>().db,
-        )
-        .await
     }
 }
