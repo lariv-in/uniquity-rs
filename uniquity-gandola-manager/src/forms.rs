@@ -208,7 +208,7 @@ pub struct PurchaseOrderForm {
     )]
     pub file_id: String,
 
-    #[form(label = "Payment term", required, widget = PurchaseOrderPaymentTermLinesDraft)]
+    #[form(label = "Payment terms", required, widget = PurchaseOrderPaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
 
     #[form(label = "Lines", required, widget = PurchaseOrderLinesDraft)]

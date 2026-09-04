@@ -32,8 +32,51 @@
     });
   }
 
+  function initHeroVideos() {
+    document.querySelectorAll('[data-gjs-type="p_website.video"]').forEach(function (el) {
+      if (!el || el.tagName !== "VIDEO" || el.dataset.larivVideoBound) return;
+      el.dataset.larivVideoBound = "true";
+      function landscapeSrc() {
+        return (el.getAttribute("data-src-landscape") || el.getAttribute("src") || "").trim();
+      }
+      function portraitSrc() {
+        return (el.getAttribute("data-src-portrait") || "").trim();
+      }
+      function pickSrc() {
+        var portrait = portraitSrc();
+        if (portrait && window.matchMedia("(orientation: portrait)").matches) return portrait;
+        return landscapeSrc();
+      }
+      function apply() {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          el.pause();
+          el.removeAttribute("autoplay");
+          return;
+        }
+        var next = pickSrc();
+        if (!next) return;
+        if ((el.getAttribute("src") || "") === next) {
+          var same = el.play();
+          if (same && same.catch) same.catch(function () {});
+          return;
+        }
+        el.setAttribute("src", next);
+        el.load();
+        var play = el.play();
+        if (play && play.catch) play.catch(function () {});
+      }
+      apply();
+      if (window.matchMedia) {
+        var mq = window.matchMedia("(orientation: portrait)");
+        if (mq.addEventListener) mq.addEventListener("change", apply);
+        else if (mq.addListener) mq.addListener(apply);
+      }
+    });
+  }
+
   function boot() {
     initMobileNav();
+    initHeroVideos();
   }
 
   if (document.readyState === "loading") {

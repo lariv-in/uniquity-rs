@@ -65,10 +65,7 @@ async fn ensure_homepage_state(
 }
 
 /// Seeds theme CSS/JS under `website/themes/` and points Custom theme preferences at them.
-async fn ensure_custom_theme(
-    db: &DatabaseConnection,
-    store: &DynFilestore,
-) -> anyhow::Result<()> {
+async fn ensure_custom_theme(db: &DatabaseConnection, store: &DynFilestore) -> anyhow::Result<()> {
     let segments = ["website".into(), "themes".into()];
     let parent_id = node::ensure_directory_path(db, store, None, &segments)
         .await
@@ -84,12 +81,26 @@ async fn ensure_custom_theme(
         None => None,
     };
 
-    let css = ensure_file_vnode(db, store, parent_id, parent.as_ref(), THEME_CSS_NAME, THEME_CSS)
-        .await?
-        .0;
-    let js = ensure_file_vnode(db, store, parent_id, parent.as_ref(), THEME_JS_NAME, THEME_JS)
-        .await?
-        .0;
+    let css = ensure_file_vnode(
+        db,
+        store,
+        parent_id,
+        parent.as_ref(),
+        THEME_CSS_NAME,
+        THEME_CSS,
+    )
+    .await?
+    .0;
+    let js = ensure_file_vnode(
+        db,
+        store,
+        parent_id,
+        parent.as_ref(),
+        THEME_JS_NAME,
+        THEME_JS,
+    )
+    .await?
+    .0;
 
     preferences::save_preferences(
         db,

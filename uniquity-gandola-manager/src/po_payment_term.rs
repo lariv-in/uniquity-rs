@@ -5,6 +5,7 @@ use sea_orm::{
     QueryOrder,
 };
 
+use lariv_rs::components::label;
 use lariv_rs::html_form::{FieldRender, FormCtx, FormWidget};
 use lariv_rs::plugins::finance_common::decimal::{self, parse_decimal};
 use lariv_rs::plugins::finance_invoices::components::{
@@ -44,13 +45,16 @@ pub struct PurchaseOrderPaymentTermLinesDraft;
 
 impl FormWidget for PurchaseOrderPaymentTermLinesDraft {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_payment_term_lines_draft(InputPaymentTermLinesDraft {
-            name: field.name,
-            defaults: field.value,
-            date_kinds: PO_PAYMENT_TERM_DATE_KINDS,
-            default_date_kind: PaymentTermDateKind::Relative.as_str(),
-            ..Default::default()
-        })
+        label(
+            field.label,
+            input_payment_term_lines_draft(InputPaymentTermLinesDraft {
+                name: field.name,
+                defaults: field.value,
+                date_kinds: PO_PAYMENT_TERM_DATE_KINDS,
+                default_date_kind: PaymentTermDateKind::Relative.as_str(),
+                ..Default::default()
+            }),
+        )
     }
 }
 

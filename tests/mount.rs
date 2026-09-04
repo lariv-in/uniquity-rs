@@ -6,12 +6,12 @@ use std::path::PathBuf;
 
 use lariv_rs::app::{App, MountedApp};
 use lariv_rs::command::{BuildCli, CommandCapability, CommandTag};
-use lariv_rs::traits::get::GetByTag;
 use lariv_rs::plugins::{
     crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, otp, pwa, users, website,
+    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
+    users, website,
 };
+use lariv_rs::traits::get::GetByTag;
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:"
 [users]

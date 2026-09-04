@@ -1,4 +1,4 @@
-use lariv_rs::components::{attrs::escape_attr, text::icon};
+use lariv_rs::components::{attrs::escape_attr, label, text::icon};
 use lariv_rs::html_form::{FieldRender, FormCtx, FormWidget};
 use maud::{Markup, html};
 
@@ -40,7 +40,10 @@ pub struct PurchaseOrderLinesDraft;
 
 impl FormWidget for PurchaseOrderLinesDraft {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_purchase_order_lines(field.name, field.value)
+        label(
+            field.label,
+            input_purchase_order_lines(field.name, field.value),
+        )
     }
 }
 
@@ -83,40 +86,40 @@ $el.closest('form').addEventListener('submit', (ev) => {{
     );
 
     html! {
-        div class="w-full" x-data=(alpine_data) x-init=(init_js) {
+        div class="w-full min-w-0" x-data=(alpine_data) x-init=(init_js) {
             input type="hidden" name=(name_escaped) value="" {}
-            div class="overflow-x-auto" {
-                table class="table table-sm w-full" {
+            div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
+                table class="table table-sm min-w-max w-full" {
                     thead {
                         tr {
-                            th { "Item code" }
-                            th { "Description" }
-                            th { "Unit" }
-                            th { "Delivery date" }
-                            th { "Quantity" }
-                            th { "Rate" }
-                            th class="w-12" {}
+                            th class="whitespace-nowrap min-w-24" { "Item code" }
+                            th class="whitespace-nowrap min-w-40" { "Description" }
+                            th class="whitespace-nowrap min-w-20" { "Unit" }
+                            th class="whitespace-nowrap min-w-36" { "Delivery date" }
+                            th class="whitespace-nowrap min-w-20" { "Quantity" }
+                            th class="whitespace-nowrap min-w-20" { "Rate" }
+                            th class="whitespace-nowrap w-12" {}
                         }
                     }
                     tbody {
                         template x-for="(line, idx) in lines" x-bind:key="idx" {
                             tr {
-                                td {
+                                td class="align-middle min-w-24" {
                                     input class="input input-bordered input-sm w-full min-w-24"
                                         type="text"
                                         x-model="line.item_code" {}
                                 }
-                                td {
+                                td class="align-middle min-w-40" {
                                     input class="input input-bordered input-sm w-full min-w-40"
                                         type="text"
                                         x-model="line.description" {}
                                 }
-                                td {
+                                td class="align-middle min-w-20" {
                                     input class="input input-bordered input-sm w-full min-w-20"
                                         type="text"
                                         x-model="line.unit" {}
                                 }
-                                td {
+                                td class="align-middle min-w-36" {
                                     div class="join relative w-full min-w-36" data-lariv-date-wrap="" {
                                         input class="input input-bordered input-sm join-item min-w-0 flex-1"
                                             type="text"
@@ -137,17 +140,17 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                             x-on:change="setDeliveryDateFromIso(line, $event.target.value)" {}
                                     }
                                 }
-                                td {
+                                td class="align-middle min-w-20" {
                                     input class="input input-bordered input-sm w-full min-w-20"
                                         type="text"
                                         x-model="line.quantity" {}
                                 }
-                                td {
+                                td class="align-middle min-w-20" {
                                     input class="input input-bordered input-sm w-full min-w-20"
                                         type="text"
                                         x-model="line.rate" {}
                                 }
-                                td {
+                                td class="align-middle w-12" {
                                     button type="button" class="btn btn-ghost btn-sm"
                                         x-on:click="removeLine(idx)"
                                         x-show="lines.length > 1"
@@ -160,8 +163,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                     }
                 }
             }
-            button type="button" class="btn btn-sm btn-outline mt-2" x-on:click="addLine()" {
-                "+ Add line"
+            button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" x-on:click="addLine()" {
+                "Add line"
             }
         }
     }
