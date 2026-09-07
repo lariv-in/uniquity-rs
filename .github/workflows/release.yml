@@ -8,6 +8,14 @@ on:
 
 permissions:
   contents: write
+  actions: write
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTFLAGS: "-C target_cpu=x86-64-v3 -C link-arg=-fuse-ld=mold -Zthreads=4"
 
 jobs:
   build-and-release:
@@ -20,11 +28,20 @@ jobs:
         with:
           toolchain: nightly-2026-08-27
 
-      - name: rust cache
-        uses: swatinem/rust-cache@v2
+      - name: install mold
+        run: sudo apt-get update && sudo apt-get install -y mold
+
+      - uses: actions/cache@v4
         with:
-          shared-key: "Release-Cache"
-          add-rust-environment-hash-key: false
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: build release binary
         run: cargo build --release
