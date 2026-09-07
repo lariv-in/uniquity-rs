@@ -21,9 +21,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
       - run: cargo check --workspace
 
-  # GitHub only restores caches from the current ref or the default branch.
-  # Tag releases cannot see caches saved on previous tags, so warm Release-Cache
-  # on master and let the tag job restore it.
+  # Warm Release-Cache on master (tags can restore it) and upload the LTO'd
+  # binary so tag releases can skip cargo/LTO entirely for the same commit.
   release-cache:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
@@ -39,3 +38,10 @@ jobs:
           cache-workspace-crates: true
           cache-on-failure: true
       - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uniquity-ventures-rs-${{ github.sha }}
+          path: target/release/uniquity-ventures-rs
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
