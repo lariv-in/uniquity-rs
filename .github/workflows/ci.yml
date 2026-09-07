@@ -6,39 +6,36 @@ on:
       - master
   pull_request:
 
-permissions:
-  contents: read
-  actions: write
-
-env:
-  CARGO_INCREMENTAL: "0"
-  CARGO_TERM_COLOR: always
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
-  # Overrides .cargo/config.toml rustflags so CI is not keyed on target_cpu.
-  RUSTFLAGS: "-Zthreads=4"
-
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-08-27
           components: rustc-codegen-cranelift-preview
-
-      - uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      - uses: mozilla-actions/sccache-action@v0.0.11
-
+          shared-key: check
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - run: cargo check --workspace
+
+  # GitHub only restores caches from the current ref or the default branch.
+  # Tag releases cannot see caches saved on previous tags, so warm Release-Cache
+  # on master and let the tag job restore it.
+  release-cache:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-08-27
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: Release-Cache
+          add-rust-environment-hash-key: false
+          cache-workspace-crates: true
+          cache-on-failure: true
+      - run: cargo build --release
