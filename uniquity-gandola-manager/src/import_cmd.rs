@@ -1,7 +1,7 @@
 //! Shared import command handlers for CLI and tests.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 
 use sea_orm::DatabaseConnection;
 
@@ -14,10 +14,10 @@ use crate::scope::customer_name;
 
 pub async fn run_import_sites(
     db: &DatabaseConnection,
-    sites_path: &PathBuf,
-    customers_path: &PathBuf,
-    gandolas_path: &PathBuf,
-    gandola_sites_path: &PathBuf,
+    sites_path: &Path,
+    customers_path: &Path,
+    gandolas_path: &Path,
+    gandola_sites_path: &Path,
     fallback_gandola_id: Option<i64>,
     dry_run: bool,
     create_missing_customers: bool,

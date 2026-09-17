@@ -359,10 +359,10 @@ fn invoice_label(id: i64, number: &Option<String>) -> String {
 
 /// Group key for collapsing draft/posted (and replacement drafts) of one logical invoice.
 fn invoice_group_key(d: &draft_invoice::Model, display_number: &str) -> String {
-    if let Some(n) = Some(display_number.trim()).filter(|s| !s.is_empty()) {
-        if !n.starts_with('#') {
-            return n.to_ascii_lowercase();
-        }
+    if let Some(n) = Some(display_number.trim()).filter(|s| !s.is_empty())
+        && !n.starts_with('#')
+    {
+        return n.to_ascii_lowercase();
     }
     if let Some(n) = d.number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         return n.to_ascii_lowercase();
@@ -471,7 +471,7 @@ pub async fn related_invoices_for_site(
     tz: &str,
 ) -> Vec<(i64, String, String, String, String)> {
     let mut drafts = load_invoices_for_site(db, site_id).await;
-    drafts.sort_by(|a, b| b.id.cmp(&a.id));
+    drafts.sort_by_key(|a| std::cmp::Reverse(a.id));
 
     // One row per logical invoice: prefer the furthest lifecycle state (e.g. Posted over Draft).
     let mut best: HashMap<
@@ -510,7 +510,7 @@ pub async fn related_invoices_for_site(
     }
 
     let mut out: Vec<_> = best.into_values().collect();
-    out.sort_by(|a, b| b.0.cmp(&a.0));
+    out.sort_by_key(|a| std::cmp::Reverse(a.0));
     out.into_iter()
         .map(|(id, name, href, date, status, _, _)| (id, name, href, date, status))
         .collect()

@@ -176,21 +176,12 @@ async fn load_form_context(
 }
 
 fn clone_form(form: &PurchaseOrderForm) -> PurchaseOrderForm {
-    PurchaseOrderForm {
-        number: form.number.clone(),
-        date: form.date.clone(),
-        customer_id: form.customer_id,
-        site_id: form.site_id,
-        file_id: form.file_id.clone(),
-        payment_term_lines_json: form.payment_term_lines_json.clone(),
-        po_lines_json: form.po_lines_json.clone(),
-        billing_address: form.billing_address.clone(),
-        shipping_address: form.shipping_address.clone(),
-    }
+    form.clone()
 }
 
 fn empty_form() -> PurchaseOrderForm {
     PurchaseOrderForm {
+        csrf: lariv_rs::html_form::CsrfToken::current(),
         number: String::new(),
         date: lariv_rs::datetime::format_date(Utc::now().date_naive()),
         customer_id: 0,

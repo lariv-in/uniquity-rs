@@ -221,6 +221,23 @@ pub struct PurchaseOrderForm {
     pub shipping_address: String,
 }
 
+impl Clone for PurchaseOrderForm {
+    fn clone(&self) -> Self {
+        Self {
+            csrf: self.csrf.clone(),
+            number: self.number.clone(),
+            date: self.date.clone(),
+            customer_id: self.customer_id,
+            site_id: self.site_id,
+            file_id: self.file_id.clone(),
+            payment_term_lines_json: self.payment_term_lines_json.clone(),
+            po_lines_json: self.po_lines_json.clone(),
+            billing_address: self.billing_address.clone(),
+            shipping_address: self.shipping_address.clone(),
+        }
+    }
+}
+
 #[html_form]
 pub struct PurchaseOrderFilterForm {
     #[form(label = "Number", widget = Text)]

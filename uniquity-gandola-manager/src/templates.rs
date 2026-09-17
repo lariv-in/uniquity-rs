@@ -16,7 +16,7 @@ use lariv_rs::{
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
     },
-    html_form::{FormCtx, HtmlForm},
+    html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
     plugins::customer::routes::CustomerDetailRouteTag,
@@ -424,13 +424,13 @@ impl GandolaListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<GandolaTableKey, GandolaDefaultRouteTag>(
                         GandolaDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
                         GandolaFilterForm::render_inputs(
-                            &FormCtx::form::<GandolaFilterForm>()
+                            &FormCtx::form::<GandolaFilterForm>(CsrfToken::current())
                                 .value(GandolaFilterFormField::Name, &self.filter_name),
                         ),
                         self.page_size,
@@ -585,7 +585,7 @@ impl RenderTemplate for GandolaDetailPage {
 
 fn gandola_form_inputs(name: &str, sites: &[ManyToManyItem]) -> Markup {
     GandolaForm::render_inputs(
-        &FormCtx::form::<GandolaForm>()
+        &FormCtx::form::<GandolaForm>(CsrfToken::current())
             .value(GandolaFormField::Name, name)
             .m2m(GandolaFormField::Sites, sites),
     )
@@ -607,7 +607,7 @@ impl RenderTemplate for GandolaEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit gandola" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<GandolaEditModalKey>(&modal_edit_post_url(
                         GandolaEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -653,7 +653,7 @@ impl RenderTemplate for GandolaCreateModalPage {
         };
         modal_keyed::<GandolaCreateModalKey>(
             "",
-            form(FormOpts {
+            form(&CsrfToken::current(), FormOpts {
                 title: "Create Gandola",
                 subtitle: "Create a new gandola",
                 classes: "@container",
@@ -719,7 +719,7 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         GandolaSelectTableKey,
                         GandolaSelectModalKey,
@@ -728,7 +728,7 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
                     inputs: html! {
                         (with_list_filter_common(
                             GandolaFilterForm::render_inputs(
-                                &FormCtx::form::<GandolaFilterForm>()
+                                &FormCtx::form::<GandolaFilterForm>(CsrfToken::current())
                                     .value(GandolaFilterFormField::Name, &self.filter_name),
                             ),
                             self.page_size,
@@ -914,11 +914,11 @@ impl SiteListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<SiteTableKey, SiteDefaultRouteTag>(SiteDefaultRouteTag),
                     inputs: with_list_filter_common(
                         SiteFilterForm::render_inputs(
-                            &FormCtx::form::<SiteFilterForm>()
+                            &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
                                 .value(SiteFilterFormField::Name, &self.filter_name)
                                 .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                         ),
@@ -1144,7 +1144,7 @@ fn site_form_inputs(
     let customer_id_s = fk_value(customer_id);
     let choices = choice_pairs(SiteForm::status_choices());
     SiteForm::render_inputs(
-        &FormCtx::form::<SiteForm>()
+        &FormCtx::form::<SiteForm>(CsrfToken::current())
             .value(SiteFormField::Name, name)
             .value(SiteFormField::SiteId, site_id)
             .value(SiteFormField::CustomerId, customer_id_s.as_str())
@@ -1187,7 +1187,7 @@ impl RenderTemplate for SiteEditModalPage {
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit site" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url::<SiteEditModalKey>(&modal_edit_post_url(
                         SiteEditPostRouteTag::new(self.id),
                         &self.form_name,
@@ -1256,7 +1256,7 @@ impl RenderTemplate for SiteCreateModalPage {
         };
         modal_keyed::<SiteCreateModalKey>(
             "",
-            form(FormOpts {
+            form(&CsrfToken::current(), FormOpts {
                 title: "Create Site",
                 subtitle: "Create a new site",
                 classes: "@container",
@@ -1349,7 +1349,7 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         SiteSelectTableKey,
                         SiteSelectModalKey,
@@ -1358,7 +1358,7 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
                     inputs: html! {
                         (with_list_filter_common(
                             SiteFilterForm::render_inputs(
-                                &FormCtx::form::<SiteFilterForm>()
+                                &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
                                     .value(SiteFilterFormField::Name, &self.filter_name)
                                     .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                             ),
@@ -1457,7 +1457,7 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         SiteFkSelectTableKey,
                         SiteFkSelectModalKey,
@@ -1466,7 +1466,7 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
                     inputs: html! {
                         (with_list_filter_common(
                             SiteFilterForm::render_inputs(
-                                &FormCtx::form::<SiteFilterForm>()
+                                &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
                                     .value(SiteFilterFormField::Name, &self.filter_name)
                                     .value(SiteFilterFormField::SiteId, &self.filter_site_id),
                             ),
@@ -1540,7 +1540,7 @@ impl GandolaPreferencesPage {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: "Gandola Configuration", classes: "" }))
                     @if self.can_edit {
-                        (form(FormOpts {
+                        (form(&CsrfToken::current(), FormOpts {
                             // outerHTML (not outerMorph): re-init Alpine FK/payment-term state
                             // from the server-rendered values after save.
                             attrs: form_hx_post_url::<MainContentKey>(
@@ -1549,7 +1549,7 @@ impl GandolaPreferencesPage {
                             .set("hx-swap", "outerHTML"),
                             form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                             inputs: GandolaPreferencesForm::render_inputs(
-                                &FormCtx::form::<GandolaPreferencesForm>()
+                                &FormCtx::form::<GandolaPreferencesForm>(CsrfToken::current())
                                     .value(GandolaPreferencesFormField::GandolaProductId, &self.gandola_product_id)
                                     .display(GandolaPreferencesFormField::GandolaProductId, &self.gandola_product_display)
                                     .value(GandolaPreferencesFormField::TpiProductId, &self.tpi_product_id)
@@ -1702,13 +1702,13 @@ impl PurchaseOrderListPage {
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_route::<PurchaseOrderTableKey, PurchaseOrderDefaultRouteTag>(
                         PurchaseOrderDefaultRouteTag,
                     ),
                     inputs: with_list_filter_common(
                         PurchaseOrderFilterForm::render_inputs(
-                            &FormCtx::form::<PurchaseOrderFilterForm>()
+                            &FormCtx::form::<PurchaseOrderFilterForm>(CsrfToken::current())
                                 .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
                         ),
                         self.page_size,
@@ -1927,15 +1927,15 @@ fn purchase_order_form_inputs(
     file_display: &str,
 ) -> Markup {
     PurchaseOrderForm::render_inputs(
-        &FormCtx::form::<PurchaseOrderForm>()
+        &FormCtx::form::<PurchaseOrderForm>(CsrfToken::current())
             .value(PurchaseOrderFormField::Number, &form.number)
             .value(PurchaseOrderFormField::Date, &form.date)
             .value(
                 PurchaseOrderFormField::CustomerId,
-                &fk_value(form.customer_id),
+                fk_value(form.customer_id),
             )
             .display(PurchaseOrderFormField::CustomerId, customer_display)
-            .value(PurchaseOrderFormField::SiteId, &fk_value(form.site_id))
+            .value(PurchaseOrderFormField::SiteId, fk_value(form.site_id))
             .display(PurchaseOrderFormField::SiteId, site_display)
             .value(PurchaseOrderFormField::FileId, &form.file_id)
             .display(PurchaseOrderFormField::FileId, file_display)
@@ -1973,7 +1973,7 @@ impl RenderTemplate for PurchaseOrderEditModalPage {
             "!max-w-6xl w-full",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit purchase order" }
-                (form(FormOpts {
+                (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
                     attrs: form_hx_post_url::<PurchaseOrderEditModalKey>(&modal_edit_post_url(
                         PurchaseOrderEditPostRouteTag::new(self.id),
@@ -2027,7 +2027,7 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
         };
         modal_keyed::<PurchaseOrderCreateModalKey>(
             "!max-w-6xl w-full",
-            form(FormOpts {
+            form(&CsrfToken::current(), FormOpts {
                 title: "Create purchase order",
                 subtitle: "Create a new purchase order",
                 classes: "@container",
@@ -2116,7 +2116,7 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
             .collect();
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: form(FormOpts {
+                panel: form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_get_picker_route::<
                         PurchaseOrderSelectTableKey,
                         PurchaseOrderSelectModalKey,
@@ -2125,7 +2125,7 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
                     inputs: html! {
                         (with_list_filter_common(
                             PurchaseOrderFilterForm::render_inputs(
-                                &FormCtx::form::<PurchaseOrderFilterForm>()
+                                &FormCtx::form::<PurchaseOrderFilterForm>(CsrfToken::current())
                                     .value(PurchaseOrderFilterFormField::Number, &self.filter_number),
                             ),
                             self.page_size,

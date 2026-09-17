@@ -7,7 +7,7 @@ use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
 
 use lariv_rs::components::label;
-use lariv_rs::html_form::{FormCtx, HtmlForm, UrlencodedFields};
+use lariv_rs::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
 use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
 use lariv_rs::plugins::finance_invoices::hub_table_addon::InvoiceHubTableAddon;
 use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
@@ -62,7 +62,7 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
             Vec::new()
         };
         DraftInvoiceSitesForm::render_inputs(
-            &FormCtx::form::<DraftInvoiceSitesForm>()
+            &FormCtx::form::<DraftInvoiceSitesForm>(CsrfToken::current())
                 .m2m(DraftInvoiceSitesFormField::Sites, &items),
         )
     }

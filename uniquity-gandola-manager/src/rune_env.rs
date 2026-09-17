@@ -560,6 +560,7 @@ impl CreatePurchaseOrderArgs {
         let po_lines_json = serde_json::to_string(&lines).map_err(|e| e.to_string())?;
 
         let form = PurchaseOrderForm {
+            csrf: lariv_rs::html_form::CsrfToken::current(),
             number: self.number,
             date: self.date,
             customer_id,
@@ -1153,6 +1154,7 @@ mod tests {
         });
         let parsed: UpdatePurchaseOrderArgs = serde_json::from_value(raw).expect("parse");
         let mut form = PurchaseOrderForm {
+            csrf: Default::default(),
             number: "PO-OLD".into(),
             date: "01/01/2026".into(),
             customer_id: 7,

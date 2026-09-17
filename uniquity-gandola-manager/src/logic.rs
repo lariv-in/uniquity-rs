@@ -3,13 +3,8 @@ use chrono::NaiveDate;
 use crate::entities::site;
 
 /// First linked site whose date window includes `today` (Odoo `_compute_current_site`).
-pub fn current_site_for<'a>(sites: &'a [site::Model], today: NaiveDate) -> Option<&'a site::Model> {
-    for site in sites {
-        if site_is_current(site, today) {
-            return Some(site);
-        }
-    }
-    None
+pub fn current_site_for(sites: &[site::Model], today: NaiveDate) -> Option<&site::Model> {
+    sites.iter().find(|site| site_is_current(site, today))
 }
 
 pub fn site_is_current(site: &site::Model, today: NaiveDate) -> bool {

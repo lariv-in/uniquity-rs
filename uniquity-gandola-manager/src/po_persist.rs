@@ -151,6 +151,7 @@ pub async fn purchase_order_form_from_model(
     tz: &str,
 ) -> PurchaseOrderForm {
     PurchaseOrderForm {
+        csrf: lariv_rs::html_form::CsrfToken::current(),
         number: po.number.clone(),
         date: lariv_rs::datetime::format_date(po.date),
         customer_id: po.customer_id,
@@ -222,18 +223,17 @@ pub async fn delete_purchase_order(db: &DatabaseConnection, id: i64) -> Result<(
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
-    if let Some(term_id) = term_id {
-        if let Err(e) = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
+    if let Some(term_id) = term_id
+        && let Err(e) = PurchaseOrderPaymentTermEntity::delete_by_id(term_id)
             .exec(db)
             .await
-        {
-            tracing::error!(
-                error = %e,
-                term_id,
-                po_id = id,
-                "failed to delete purchase order payment term after PO delete"
-            );
-        }
+    {
+        tracing::error!(
+            error = %e,
+            term_id,
+            po_id = id,
+            "failed to delete purchase order payment term after PO delete"
+        );
     }
     Ok(())
 }

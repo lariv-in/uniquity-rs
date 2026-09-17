@@ -55,10 +55,11 @@ async fn ensure_homepage_state(
     db: &DatabaseConnection,
     store: &DynFilestore,
 ) -> anyhow::Result<()> {
+    ensure_static_assets(db, store).await?;
+    remove_legacy_static_routes(db).await?;
+    reject_nonportable_asset_urls("homepage.html", HOMEPAGE_HTML)?;
     ensure_custom_theme(db, store).await?;
-    let media_urls = ensure_static_assets(db, store).await?;
-    let html = homepage_html_with_media_urls(&media_urls);
-    let (page, page_rewritten) = ensure_page_vnode(db, store, html.as_bytes()).await?;
+    let (page, page_rewritten) = ensure_page_vnode(db, store, HOMEPAGE_HTML.as_bytes()).await?;
     ensure_db_route(db, ROUTE_PATH, page.id, THEME, page_rewritten).await?;
     tracing::info!(page_id = page.id, "uniquity website: homepage route ready");
     Ok(())
@@ -122,12 +123,39 @@ async fn ensure_custom_theme(db: &DatabaseConnection, store: &DynFilestore) -> a
     Ok(())
 }
 
-fn homepage_html_with_media_urls(urls: &[(String, String)]) -> String {
-    let mut html = HOMEPAGE_HTML.to_string();
-    for (name, url) in urls {
-        html = html.replace(&format!("/static/{name}"), url);
+fn first_hardcoded_media_url(source: &str) -> Option<&str> {
+    const PREFIX: &str = "/media/";
+    let mut from = 0;
+    while let Some(rel) = source[from..].find(PREFIX) {
+        let start = from + rel;
+        let rest = &source[start + PREFIX.len()..];
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 {
+            let mut end = start + PREFIX.len() + digits;
+            if source.as_bytes().get(end) == Some(&b'/') {
+                end += 1;
+            }
+            return Some(&source[start..end]);
+        }
+        from = start + PREFIX.len();
     }
-    html
+    None
+}
+
+fn has_legacy_static_url(source: &str) -> bool {
+    source.contains("\"/static/") || source.contains("'/static/")
+}
+
+fn reject_nonportable_asset_urls(label: &str, source: &str) -> anyhow::Result<()> {
+    if let Some(url) = first_hardcoded_media_url(source) {
+        anyhow::bail!(
+            "{label} must use media_url(\"/website/static/{{filename}}\"), not hardcoded vnode URL {url}"
+        );
+    }
+    if has_legacy_static_url(source) {
+        anyhow::bail!("{label} must use media_url(\"/website/static/{{filename}}\")");
+    }
+    Ok(())
 }
 
 async fn ensure_page_vnode(
@@ -153,13 +181,8 @@ async fn ensure_page_vnode(
     ensure_file_vnode(db, store, parent_id, parent.as_ref(), PAGE_NAME, html).await
 }
 
-/// Seeds blobs + `/static/{name}` aliases. Returns `(filename, /media/{id}/)` pairs
-/// so the homepage can use the website plugin's public asset route instead of the
-/// catch-all (which production proxies often intercept for `/static/`).
-async fn ensure_static_assets(
-    db: &DatabaseConnection,
-    store: &DynFilestore,
-) -> anyhow::Result<Vec<(String, String)>> {
+/// Seeds blobs under `website/static/` for `media_url("/website/static/{name}")`.
+async fn ensure_static_assets(db: &DatabaseConnection, store: &DynFilestore) -> anyhow::Result<()> {
     let segments = ["website".into(), "static".into()];
     let parent_id = node::ensure_directory_path(db, store, None, &segments)
         .await
@@ -175,7 +198,6 @@ async fn ensure_static_assets(
         None => None,
     };
 
-    let mut urls = Vec::with_capacity(STATIC_ASSETS.len());
     for asset in STATIC_ASSETS {
         let vnode = ensure_file_vnode(
             db,
@@ -187,18 +209,30 @@ async fn ensure_static_assets(
         )
         .await?
         .0;
-        let media_url = public_asset_url(vnode.id);
         tracing::info!(
             name = asset.name,
             vnode_id = vnode.id,
-            media_url = %media_url,
+            media_url = %public_asset_url(vnode.id),
             bytes = asset.bytes.len(),
             "uniquity website: static asset ready"
         );
-        ensure_db_route(db, &format!("/static/{}", asset.name), vnode.id, "", false).await?;
-        urls.push((asset.name.to_string(), media_url));
     }
-    Ok(urls)
+    Ok(())
+}
+
+/// Drop leftover `/static/{name}` aliases from earlier seeds.
+async fn remove_legacy_static_routes(db: &DatabaseConnection) -> anyhow::Result<()> {
+    for asset in STATIC_ASSETS {
+        let path = format!("/static/{}", asset.name);
+        let res = DbRouteEntity::delete_many()
+            .filter(DbRouteColumn::Path.eq(path.clone()))
+            .exec(db)
+            .await?;
+        if res.rows_affected > 0 {
+            tracing::info!(path, "uniquity website: removed legacy static route");
+        }
+    }
+    Ok(())
 }
 
 async fn ensure_file_vnode(
@@ -307,4 +341,41 @@ async fn ensure_db_route(
     .await?;
     tracing::info!(path, page_id, "uniquity website: created db route");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HOMEPAGE_HTML, THEME_CSS, first_hardcoded_media_url, has_legacy_static_url,
+        reject_nonportable_asset_urls,
+    };
+
+    #[test]
+    fn seeded_assets_use_media_url_not_static_routes() {
+        let css = std::str::from_utf8(THEME_CSS).expect("theme css is utf-8");
+        for (label, source) in [("homepage.html", HOMEPAGE_HTML), ("uniquity.css", css)] {
+            assert_eq!(
+                first_hardcoded_media_url(source),
+                None,
+                "{label} hardcodes a /media/{{id}}/ vnode URL"
+            );
+            assert!(
+                !has_legacy_static_url(source),
+                "{label} still references /static/ instead of media_url"
+            );
+        }
+        assert!(
+            HOMEPAGE_HTML.contains("media_url('/website/static/"),
+            "homepage.html should call media_url(\"/website/static/...\")"
+        );
+    }
+
+    #[test]
+    fn reject_nonportable_asset_urls_catches_legacy_refs() {
+        let err = reject_nonportable_asset_urls("page", r#"<img src="/media/23/">"#).unwrap_err();
+        assert!(err.to_string().contains("/media/23/"), "{err}");
+        let err =
+            reject_nonportable_asset_urls("page", r#"<img src="/static/logo.svg">"#).unwrap_err();
+        assert!(err.to_string().contains("media_url"), "{err}");
+    }
 }

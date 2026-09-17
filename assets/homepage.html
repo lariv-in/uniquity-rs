@@ -1,41 +1,59 @@
+<style>
+	* {
+		box-sizing: border-box;
+	}
+
+	body {
+		margin: 0;
+	}
+
+	\n\n* {
+		box-sizing: border-box;
+	}
+
+	body {
+		margin: 0;
+	}
+</style>
+
 <body>
 	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta content="width=device-width, initial-scale=1" name="viewport" />
 	<title>Uniquity Ventures | Advancing India's Autonomous Future.</title>
-	<nav data-gjs-type="p_website.navbar" data-logo-alt="Uniquity Ventures" data-logo-src="/static/logo.svg"
-		data-nav-links='[{"title":"Services","path":"#services"},{"title":"Platforms","path":"#platforms"},{"title":"Contracting","path":"#contracting"},{"title":"Contact Us","path":"#contact"}]'
-		data-variant="uniquity" class="gjs-navbar site-header">
+	<nav data-gjs-type="p_website.navbar" data-logo-alt="Uniquity Ventures" data-logo-src="{{ media_url('/website/static/logo.svg') }}"
+		data-nav-links="[{&quot;title&quot;:&quot;Mission&quot;,&quot;path&quot;:&quot;#mission&quot;},{&quot;title&quot;:&quot;Industries&quot;,&quot;path&quot;:&quot;#industries&quot;},{&quot;title&quot;:&quot;Methods&quot;,&quot;path&quot;:&quot;#methods&quot;},{&quot;title&quot;:&quot;Contact Us&quot;,&quot;path&quot;:&quot;#contact&quot;}]"
+		data-variant="uniquity" class="gjs-navbar site-header bg-base-100 border-base-200">
 		<div class="container nav-container"><a href="/" class="gjs-navbar-brand brand"><img alt="Uniquity Ventures"
 					data-gjs-type="p_website.navbar-logo" class="gjs-navbar-logo brand-logo"
-					src="/static/logo.svg"></a><button type="button" aria-label="Toggle navigation"
-				aria-expanded="false" class="gjs-navbar-menu-btn mobile-nav-toggle"><span
-					class="hamburger-bar"></span><span class="hamburger-bar"></span><span
-					class="hamburger-bar"></span></button>
+					src="{{ media_url('/website/static/logo.svg') }}"></a><button aria-expanded="false" aria-label="Toggle navigation" type="button"
+				class="gjs-navbar-menu-btn mobile-nav-toggle"><span class="hamburger-bar"></span><span
+					class="hamburger-bar"></span><span class="hamburger-bar"></span></button>
 			<ul class="gjs-navbar-links gjs-navbar-desktop nav-menu">
-				<li><a href="#services" class="nav-link">Services</a></li>
-				<li><a href="#platforms" class="nav-link">Platforms</a></li>
-				<li><a href="#contracting" class="nav-link">Contracting</a></li>
-				<li><a href="#contact" class="nav-cta">Contact Us</a></li>
+				<li><a class="nav-link" href="#mission">Mission</a></li>
+				<li><a class="nav-link" href="#industries">Industries</a></li>
+				<li><a class="nav-link" href="#methods">Methods</a></li>
+				<li><a class="nav-link" href="#contact">Contact Us</a></li>
 			</ul>
 		</div>
 	</nav>
 	<section data-gjs-type="p_website.hero" data-show-button="false" data-show-media="true" class="gjs-hero hero">
-		<div aria-hidden="true" data-gjs-type="p_website.hero-media" class="gjs-hero-media hero-media"><video
-				data-gjs-type="p_website.video" class="gjs-video" autoplay muted loop playsinline
-				poster="/static/equipment.png" src="/static/hero-landscape.webm"
-				data-src-landscape="/static/hero-landscape.webm"
-				data-src-portrait="/static/hero-portrait.webm"></video></div>
+		<div aria-hidden="true" data-gjs-type="p_website.hero-media" class="gjs-hero-media hero-media"><video autoplay
+				data-gjs-type="p_website.video"
+				data-src-landscape="{{ media_url('/website/static/hero-landscape.webm') }}"
+				data-src-portrait="{{ media_url('/website/static/hero-portrait.webm') }}" loop muted playsinline=""
+				poster="{{ media_url('/website/static/hero.jpg') }}"
+				src="{{ media_url('/website/static/hero-landscape.webm') }}" id="igvrp" class="gjs-video"></video></div>
 		<div data-gjs-type="p_website.hero-inner" class="gjs-hero-inner hero-inner">
 			<div class="container">
 				<h1 class="gjs-hero-title hero-title">Advancing India's Autonomous Future.</h1>
-				<p class="gjs-hero-lead lead hero-lead">Uniquity Ventures lends industrial machinery to construction
-					sites across India. Today that fleet is built around suspended platforms that keep facade and
-					high-access work moving safely.</p>
+				<p class="gjs-hero-lead lead hero-lead">Uniquity Ventures supplies industrial machinery across India.
+					Backed by a diverse, multi-category fleet, we support operations across infrastructure,
+					manufacturing, commercial facilities, and construction.</p>
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.section" data-section-bg="base" id="stats" class="gjs-section stats-band">
-		<div aria-hidden="true" class="stats-band-bg"><img src="/static/hero.jpg" alt="" /></div>
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="stats" class="gjs-section stats-band section">
+		<div aria-hidden="true" class="stats-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
 		<div class="gjs-section-inner container min-h-12">
 			<div class="stat-grid">
 				<article class="stat">
@@ -46,79 +64,126 @@
 					<p class="stat-value">90%</p>
 					<p class="stat-label">Machinery Uptime Guarantee</p>
 				</article>
+				<article class="stat">
+					<p class="stat-value">20,000+</p>
+					<p class="stat-label">Machine Hours Rented</p>
+				</article>
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.section" data-section-bg="base" id="services"
-		class="gjs-section section services-band">
-		<div aria-hidden="true" class="services-band-bg"><img src="/static/hero.jpg" alt="" /></div>
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="mission"
+		class="gjs-section section mission-band">
 		<div class="gjs-section-inner container min-h-12">
-			<div class="split-copy">
-				<div data-align="left" data-gjs-type="p_website.section-header" data-header-style="default"
-					class="gjs-section-header section-header">
-					<h2 class="gjs-section-header-title">Our <span class="accent">Services</span></h2>
-					<p class="gjs-section-header-lead lead">From heavy machinery to site delivery, integrating every
-						layer</p>
-				</div>
-				<ul>
-					<li><strong>Industrial Equipment &amp; Rental:</strong> We provide the essential machinery that
-						keeps large-scale construction sites moving. From suspended platforms to specialized site
-						equipment, we ensure builders have the reliable tools they need to maintain safety and
-						maximize daily uptime.</li>
-					<li id="platforms"><strong>Suspended Platforms:</strong> Our current lending focus is suspended
-						platforms for facade, cladding, and high-access work. We deploy and support this equipment
-						so crews can work at height with dependable machines and a 90% machinery uptime guarantee.
-					</li>
-					<li id="contracting"><strong>Building &amp; Civil Contracting:</strong> We take full
-						responsibility for construction projects, managing everything from the initial
-						ground-breaking to the final handover. By acting as the main contractor, we simplify the
-						building process for our clients and deliver high-quality structures through disciplined
-						project management.</li>
-				</ul>
+			<div data-align="center" data-gjs-type="p_website.section-header" data-header-style="default"
+				class="gjs-section-header section-header text-center">
+				<h2 class="gjs-section-header-title">Our <span class="accent">Mission</span></h2>
+				<p class="gjs-section-header-lead lead">Put industrial machinery within reach of every construction
+					site and factory in India.</p>
+			</div>
+			<div class="mission-copy">
+				<p>Builders and manufacturers should not have to buy a fleet, staff a maintenance crew, or wait on
+					equipment before work can start. Uniquity Ventures lends industrial machinery across the country
+					and stays responsible for the machine for as long as the client needs it.</p>
+				<p>On our end we transport it, install it, maintain it, and dismantle it. On the commercial side we
+					match the hire to the job: regular rent, EMI that ends in ownership, a turn-key setup from
+					requirement to upkeep, or one-time contract job work on our premises or at a select client's
+					site.</p>
+			</div>
+			<div class="mission-grid">
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+					<h3 class="gjs-feature-card-title">Access without ownership</h3>
+					<p class="gjs-feature-card-desc">The right machine should be available without a large capital
+						outlay. Clients pay for use, not for a fleet they have to fund, store, and eventually
+						dispose of.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+					<h3 class="gjs-feature-card-title">Uptime we stand behind</h3>
+					<p class="gjs-feature-card-desc">A hired machine that sits idle is a delayed project. We deploy
+						and support equipment so crews can keep working, with a 90% machinery uptime guarantee.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+					<h3 class="gjs-feature-card-title">The operational burden stays with us</h3>
+					<p class="gjs-feature-card-desc">Sourcing, transport, installation, maintenance, and dismantling
+						are our work. Clients specify what they need to get done; we put a running machine in front
+						of them.</p>
+				</article>
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.cta" data-show-button="false" id="contact" class="gjs-cta section">
-		<div class="container contact-block">
-			<div class="gjs-cta-box cta-box">
-				<h2 class="gjs-cta-title">Talk To Our <span class="accent">Team</span></h2>
-				<p class="gjs-cta-text lead">Direct collaboration for the next generation of industrial infrastructure.
-				</p>
-				<p class="gjs-cta-text lead">We are actively seeking to collaborate with infrastructure developers to
-					deploy solutions in the Indian market. Whether you need machinery on site or a large-scale project
-					contractor, we provide the engineering bridge to move from concept to site-wide deployment.</p>
-				<p class="gjs-cta-text lead">For strategic proposals, R&amp;D collaborations, or contracting, please
-					reach out directly:</p>
-				<dl class="gjs-cta-details cta-details">
-					<div data-gjs-type="p_website.contact-detail" class="gjs-contact-detail cta-row">
-						<dt class="gjs-contact-detail-label">Founder</dt>
-						<dd class="gjs-contact-detail-value">Raj Tagore, Founder &amp; Managing Director: <a
-								href="mailto:raj.tagore@uniquity.in">raj.tagore@uniquity.in</a></dd>
-					</div>
-					<div data-gjs-type="p_website.contact-detail" class="gjs-contact-detail cta-row">
-						<dt class="gjs-contact-detail-label">Email</dt>
-						<dd class="gjs-contact-detail-value"><a
-								href="mailto:support@uniquity.in">support@uniquity.in</a></dd>
-					</div>
-					<div data-gjs-type="p_website.contact-detail" class="gjs-contact-detail cta-row">
-						<dt class="gjs-contact-detail-label">Phone</dt>
-						<dd class="gjs-contact-detail-value"><a href="tel:+918210098176">+91 82100 98176</a></dd>
-					</div>
-					<div data-gjs-type="p_website.contact-detail" class="gjs-contact-detail cta-row">
-						<dt class="gjs-contact-detail-label">Address</dt>
-						<dd class="gjs-contact-detail-value">3rd Floor, Unit no. 4, Inspire, Main Road, G Block BKC,
-							Bandra Kurla Complex, Mumbai, Maharashtra</dd>
-					</div>
-				</dl>
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="industries"
+		class="gjs-section section industries-band">
+		<div class="gjs-section-inner container min-h-12">
+			<div data-align="center" data-gjs-type="p_website.section-header" data-header-style="default"
+				class="gjs-section-header section-header text-center">
+				<h2 class="gjs-section-header-title">We lend machinery <span class="accent">to</span></h2>
+				<p class="gjs-section-header-lead lead">The same fleet supports building work at height and
+					production work on the shop floor.</p>
+			</div>
+			<div class="industry-grid">
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+					<h3 class="gjs-feature-card-title">Construction Sites &amp; Buildings</h3>
+					<p class="gjs-feature-card-desc">We lend machinery to active construction sites and building
+						projects: facade work, cladding, high-access operations, and general site work. Equipment
+						arrives installed and ready, so crews are not waiting on machines, and we stay responsible
+						for upkeep for as long as the hire lasts.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+					<h3 class="gjs-feature-card-title">Factories &amp; Manufacturing Plants</h3>
+					<p class="gjs-feature-card-desc">We lend machinery to factories and manufacturing plants that
+						need extra capacity, a specialized machine, or equipment they do not want to purchase
+						outright. From the shop floor to plant maintenance, we deliver, install, and support the
+						machine so production can continue without a large capital outlay.</p>
+				</article>
 			</div>
 		</div>
 	</section>
-	<footer class="site-footer">
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="methods"
+		class="gjs-section section methods-band">
+		<div aria-hidden="true" class="methods-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
+		<div class="gjs-section-inner container min-h-12">
+			<div data-align="left" data-gjs-type="p_website.section-header" data-header-style="default"
+				class="gjs-section-header section-header text-left">
+				<h2 class="gjs-section-header-title">We lend machinery <span class="accent">using</span></h2>
+				<p class="gjs-section-header-lead lead">Choose the commercial model that fits the job: regular
+					rental, a path to ownership, a fully managed setup, or one-time use of a machine.</p>
+			</div>
+			<div class="method-grid">
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="traditional">
+					<h3 class="gjs-feature-card-title">Traditional Lending</h3>
+					<p class="gjs-feature-card-desc">The client pays rent on a regular schedule for as long as they
+						need the machine. On our end we transport it to site, install it, maintain it through the
+						hire, and dismantle it when the work is finished. Ownership stays with us; the client's
+						obligation is the rent.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="emi">
+					<h3 class="gjs-feature-card-title">EMI Based</h3>
+					<p class="gjs-feature-card-desc">The client pays rent for a specified term. When that term ends,
+						ownership of the machine transfers to the client. This is for operations that want to
+						spread cost over time and eventually own the asset, without a large purchase up front.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="turnkey">
+					<h3 class="gjs-feature-card-title">Turn Key Solutions</h3>
+					<p class="gjs-feature-card-desc">The client specifies what they need to achieve. We recommend
+						the right machine, procure it, install it, and maintain it. They do not have to source
+						equipment, manage vendors, or run a maintenance programme—we remove that work from their
+						plate.</p>
+				</article>
+				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="job-work">
+					<h3 class="gjs-feature-card-title">Contract Job Work</h3>
+					<p class="gjs-feature-card-desc">For a one-time job, the client operates the required machine on
+						our premises, or at a select client's premises we make available. There is no long-term
+						hire and no machine sitting idle afterward: they use it for the job, then they are done.
+					</p>
+				</article>
+			</div>
+		</div>
+	</section>
+	<footer class="site-footer" id="contact">
 		<div class="container footer-grid">
-			<div><a href="/" aria-label="Uniquity Ventures" class="brand footer-brand"><img src="/static/logo.svg"
-						alt="Uniquity Ventures" class="brand-logo" /></a>
-				<p class="footer-tagline">Industrial machinery lending and civil contracting for India's built
-					environment. Currently deploying suspended platforms nationwide.</p>
+			<div><a aria-label="Uniquity Ventures" href="/" class="brand footer-brand"><img alt="Uniquity Ventures"
+						src="{{ media_url('/website/static/logo.svg') }}" class="brand-logo" /></a>
+				<p class="footer-tagline">Industrial machinery lending for construction sites, buildings, factories,
+					and manufacturing plants across India.</p>
 			</div>
 			<div>
 				<h4>Uniquity Ventures:</h4>
