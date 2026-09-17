@@ -52,25 +52,6 @@
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.section" data-section-bg="base" id="stats" class="gjs-section stats-band section">
-		<div aria-hidden="true" class="stats-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
-		<div class="gjs-section-inner container min-h-12">
-			<div class="stat-grid">
-				<article class="stat">
-					<p class="stat-value">50+</p>
-					<p class="stat-label">Work Orders Completed</p>
-				</article>
-				<article class="stat">
-					<p class="stat-value">90%</p>
-					<p class="stat-label">Machinery Uptime Guarantee</p>
-				</article>
-				<article class="stat">
-					<p class="stat-value">20,000+</p>
-					<p class="stat-label">Machine Hours Rented</p>
-				</article>
-			</div>
-		</div>
-	</section>
 	<section data-gjs-type="p_website.section" data-section-bg="base" id="mission"
 		class="gjs-section section mission-band">
 		<div class="gjs-section-inner container min-h-12">
@@ -110,70 +91,104 @@
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.section" data-section-bg="base" id="industries"
-		class="gjs-section section industries-band">
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="lending"
+		class="gjs-section section lending-band">
+		<div aria-hidden="true" class="lending-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
 		<div class="gjs-section-inner container min-h-12">
-			<div data-align="center" data-gjs-type="p_website.section-header" data-header-style="default"
-				class="gjs-section-header section-header text-center">
-				<h2 class="gjs-section-header-title">We lend machinery <span class="accent">to</span></h2>
-				<p class="gjs-section-header-lead lead">The same fleet supports building work at height and
-					production work on the shop floor.</p>
-			</div>
-			<div class="industry-grid">
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
-					<h3 class="gjs-feature-card-title">Construction Sites &amp; Buildings</h3>
-					<p class="gjs-feature-card-desc">We lend machinery to active construction sites and building
-						projects: facade work, cladding, high-access operations, and general site work. Equipment
-						arrives installed and ready, so crews are not waiting on machines, and we stay responsible
-						for upkeep for as long as the hire lasts.</p>
-				</article>
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
-					<h3 class="gjs-feature-card-title">Factories &amp; Manufacturing Plants</h3>
-					<p class="gjs-feature-card-desc">We lend machinery to factories and manufacturing plants that
-						need extra capacity, a specialized machine, or equipment they do not want to purchase
-						outright. From the shop floor to plant maintenance, we deliver, install, and support the
-						machine so production can continue without a large capital outlay.</p>
-				</article>
+			<div class="lending-columns">
+				<div id="industries" class="lending-col lending-to">
+					<div data-align="left" data-gjs-type="p_website.section-header" data-header-style="default"
+						class="gjs-section-header section-header text-left">
+						<h2 class="gjs-section-header-title">We lend machinery <span class="accent">to</span></h2>
+						<p class="gjs-section-header-lead lead">The same fleet supports building work at height and
+							production work on the shop floor.</p>
+					</div>
+					<div class="lending-subsections">
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+							<h3 class="gjs-feature-card-title">Construction Sites</h3>
+							<p class="gjs-feature-card-desc">Active sites need machines that can move with the job: facade
+								work, cladding, high-access operations, and general site work. We deliver, install, and
+								keep the equipment running so crews are not waiting on a machine, and we stay responsible
+								for upkeep for as long as the hire lasts.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+							<h3 class="gjs-feature-card-title">Buildings</h3>
+							<p class="gjs-feature-card-desc">Standing buildings need access equipment for retrofit, facade
+								maintenance, interior fit-out, and work at height without shutting the property down. We
+								place the right machine on site, install it, and take it away when the work is finished,
+								so building owners do not have to fund or store a fleet.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+							<h3 class="gjs-feature-card-title">Factories</h3>
+							<p class="gjs-feature-card-desc">We lend to factories when the shop floor needs extra
+								capacity or a specialized machine they do not want to purchase outright. We deliver,
+								install, and support the machine so production can continue without a large capital
+								outlay or a new maintenance crew.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature">
+							<h3 class="gjs-feature-card-title">Manufacturing Plants</h3>
+							<p class="gjs-feature-card-desc">Larger plants need equipment for line expansion, plant
+								maintenance, and jobs that sit outside the installed base. We match the machine to the
+								process, put it in place, and keep it running so the plant does not stop work to buy,
+								commission, or staff another asset.</p>
+						</article>
+					</div>
+				</div>
+				<div id="methods" class="lending-col lending-using">
+					<div data-align="left" data-gjs-type="p_website.section-header" data-header-style="default"
+						class="gjs-section-header section-header text-left">
+						<h2 class="gjs-section-header-title">We lend machinery <span class="accent">using</span></h2>
+						<p class="gjs-section-header-lead lead">Choose the commercial model that fits the job: regular
+							rental, a path to ownership, a fully managed setup, or one-time use of a machine.</p>
+					</div>
+					<div class="lending-subsections">
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="traditional">
+							<h3 class="gjs-feature-card-title">Traditional Lending</h3>
+							<p class="gjs-feature-card-desc">The client pays rent on a regular schedule for as long as they
+								need the machine. On our end we transport it to site, install it, maintain it through the
+								hire, and dismantle it when the work is finished. Ownership stays with us; the client's
+								obligation is the rent.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="emi">
+							<h3 class="gjs-feature-card-title">EMI Based</h3>
+							<p class="gjs-feature-card-desc">The client pays rent for a specified term. When that term ends,
+								ownership of the machine transfers to the client. This is for operations that want to
+								spread cost over time and eventually own the asset, without a large purchase up front.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="turnkey">
+							<h3 class="gjs-feature-card-title">Turn Key Solutions</h3>
+							<p class="gjs-feature-card-desc">The client specifies what they need to achieve. We recommend
+								the right machine, procure it, install it, and maintain it. They do not have to source
+								equipment, manage vendors, or run a maintenance programme—we remove that work from their
+								plate.</p>
+						</article>
+						<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="job-work">
+							<h3 class="gjs-feature-card-title">Contract Job Work</h3>
+							<p class="gjs-feature-card-desc">For a one-time job, the client operates the required machine on
+								our premises, or at a select client's premises we make available. There is no long-term
+								hire and no machine sitting idle afterward: they use it for the job, then they are done.
+							</p>
+						</article>
+					</div>
+				</div>
 			</div>
 		</div>
 	</section>
-	<section data-gjs-type="p_website.section" data-section-bg="base" id="methods"
-		class="gjs-section section methods-band">
-		<div aria-hidden="true" class="methods-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
+	<section data-gjs-type="p_website.section" data-section-bg="base" id="stats" class="gjs-section stats-band section">
+		<div aria-hidden="true" class="stats-band-bg"><img alt="" src="{{ media_url('/website/static/equipment.png') }}" /></div>
 		<div class="gjs-section-inner container min-h-12">
-			<div data-align="left" data-gjs-type="p_website.section-header" data-header-style="default"
-				class="gjs-section-header section-header text-left">
-				<h2 class="gjs-section-header-title">We lend machinery <span class="accent">using</span></h2>
-				<p class="gjs-section-header-lead lead">Choose the commercial model that fits the job: regular
-					rental, a path to ownership, a fully managed setup, or one-time use of a machine.</p>
-			</div>
-			<div class="method-grid">
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="traditional">
-					<h3 class="gjs-feature-card-title">Traditional Lending</h3>
-					<p class="gjs-feature-card-desc">The client pays rent on a regular schedule for as long as they
-						need the machine. On our end we transport it to site, install it, maintain it through the
-						hire, and dismantle it when the work is finished. Ownership stays with us; the client's
-						obligation is the rent.</p>
+			<div class="stat-grid">
+				<article class="stat">
+					<p class="stat-value">50+</p>
+					<p class="stat-label">Work Orders Completed</p>
 				</article>
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="emi">
-					<h3 class="gjs-feature-card-title">EMI Based</h3>
-					<p class="gjs-feature-card-desc">The client pays rent for a specified term. When that term ends,
-						ownership of the machine transfers to the client. This is for operations that want to
-						spread cost over time and eventually own the asset, without a large purchase up front.</p>
+				<article class="stat">
+					<p class="stat-value">90%</p>
+					<p class="stat-label">Machinery Uptime Guarantee</p>
 				</article>
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="turnkey">
-					<h3 class="gjs-feature-card-title">Turn Key Solutions</h3>
-					<p class="gjs-feature-card-desc">The client specifies what they need to achieve. We recommend
-						the right machine, procure it, install it, and maintain it. They do not have to source
-						equipment, manage vendors, or run a maintenance programme—we remove that work from their
-						plate.</p>
-				</article>
-				<article data-gjs-type="p_website.feature-card" class="gjs-feature-card feature" id="job-work">
-					<h3 class="gjs-feature-card-title">Contract Job Work</h3>
-					<p class="gjs-feature-card-desc">For a one-time job, the client operates the required machine on
-						our premises, or at a select client's premises we make available. There is no long-term
-						hire and no machine sitting idle afterward: they use it for the job, then they are done.
-					</p>
+				<article class="stat">
+					<p class="stat-value">20,000+</p>
+					<p class="stat-label">Machine Hours Rented</p>
 				</article>
 			</div>
 		</div>

@@ -382,8 +382,8 @@ h4 { font-size: 1.15rem; }
 
 .section-header .lead,
 .gjs-section-header-lead {
-	margin: 0 auto;
-	max-width: 42rem;
+	margin: 0;
+	max-width: none;
 	color: var(--text-muted);
 	font-size: 1.05rem;
 	font-weight: 400;
@@ -451,7 +451,7 @@ article.gjs-feature-card {
 
 .stat-grid {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
+	grid-template-columns: repeat(3, 1fr);
 	gap: 2.5rem;
 	text-align: center;
 }
@@ -473,8 +473,10 @@ article.gjs-feature-card {
 }
 
 #mission,
+#lending,
 #industries,
 #methods,
+#stats,
 #contact {
 	scroll-margin-top: calc(var(--nav-h) + 1rem);
 }
@@ -488,16 +490,18 @@ article.gjs-feature-card {
 }
 
 .mission-band .gjs-section-header-lead {
-	max-width: 42rem;
+	max-width: none;
 	font-size: 1.15rem;
 	line-height: 1.7;
 }
 
 .mission-copy {
-	max-width: 46rem;
-	margin: 0 auto 2.75rem;
+	width: 100%;
+	max-width: none;
+	margin: 0 0 2.75rem;
 	display: grid;
-	gap: 1.1rem;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--grid-gap);
 }
 
 .mission-copy p {
@@ -527,52 +531,28 @@ article.gjs-feature-card {
 	max-width: none;
 }
 
-.industry-grid,
-.method-grid {
-	display: grid;
-	grid-template-columns: repeat(2, 1fr);
-	gap: var(--grid-gap);
-}
-
-.industries-band .gjs-feature-card,
-.methods-band .gjs-feature-card {
-	text-align: left;
-	padding-left: 1.15rem;
-	border-left: 3px solid var(--color-accent);
-}
-
-.industries-band .gjs-feature-card-title,
-.methods-band .gjs-feature-card-title {
-	font-size: 1.45rem;
-}
-
-.industries-band .gjs-feature-card-desc,
-.methods-band .gjs-feature-card-desc {
-	max-width: none;
-}
-
-.methods-band {
+.lending-band {
 	position: relative;
 	isolation: isolate;
 	overflow: hidden;
 	background: #0d0d0d !important;
 }
 
-.methods-band-bg {
+.lending-band-bg {
 	position: absolute;
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
 }
 
-.methods-band-bg img {
+.lending-band-bg img {
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
 	object-position: center 40%;
 }
 
-.methods-band-bg::after {
+.lending-band-bg::after {
 	content: "";
 	position: absolute;
 	inset: 0;
@@ -581,29 +561,65 @@ article.gjs-feature-card {
 		linear-gradient(180deg, rgba(8, 8, 8, 0.2) 0%, rgba(8, 8, 8, 0.42) 100%);
 }
 
-.methods-band .gjs-section-inner {
+.lending-band .gjs-section-inner {
 	position: relative;
 	z-index: 1;
 }
 
-.methods-band .gjs-section-header-title {
+.lending-columns {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0;
+	align-items: start;
+}
+
+.lending-to {
+	padding-right: 2.75rem;
+}
+
+.lending-col .gjs-section-header {
+	margin-bottom: 2rem;
+}
+
+.lending-band .gjs-section-header-title {
+	font-size: clamp(1.7rem, 1.05rem + 1.5vw, 2.35rem);
 	color: #fff;
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65), 0 0 16px rgba(0, 0, 0, 0.35);
 }
 
-.methods-band .gjs-section-header-lead,
-.methods-band .lead {
+.lending-band .gjs-section-header-lead,
+.lending-band .lead {
 	margin-inline: 0;
+	max-width: none;
 	color: rgba(255, 255, 255, 0.92);
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65), 0 0 16px rgba(0, 0, 0, 0.35);
 }
 
-.methods-band .gjs-feature-card-title {
+.lending-subsections {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 1.75rem;
+}
+
+.lending-band .gjs-feature-card {
+	text-align: left;
+	padding-left: 1.15rem;
+	border-left: 3px solid var(--color-accent);
+}
+
+.lending-band .gjs-feature-card-title {
+	font-size: 1.25rem;
 	color: #fff;
 }
 
-.methods-band .gjs-feature-card-desc {
+.lending-band .gjs-feature-card-desc {
+	max-width: none;
 	color: rgba(255, 255, 255, 0.9);
+}
+
+.lending-using {
+	padding-left: 2.75rem;
+	border-left: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .contact-block h2,
@@ -722,13 +738,25 @@ article.gjs-feature-card {
 	.gjs-row.feature-grid,
 	.footer-grid,
 	.stat-grid,
-	.industry-grid,
-	.method-grid,
-	.mission-grid {
+	.mission-grid,
+	.mission-copy,
+	.lending-columns {
 		grid-template-columns: 1fr;
 	}
 
-	.methods-band-bg::after {
+	.lending-to {
+		padding-right: 0;
+		padding-bottom: 2rem;
+	}
+
+	.lending-using {
+		padding-left: 0;
+		border-left: 0;
+		padding-top: 2rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.16);
+	}
+
+	.lending-band-bg::after {
 		background:
 			linear-gradient(180deg, rgba(8, 8, 8, 0.7) 0%, rgba(8, 8, 8, 0.58) 100%);
 	}
