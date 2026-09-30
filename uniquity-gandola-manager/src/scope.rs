@@ -469,7 +469,14 @@ pub async fn related_invoices_for_site(
     db: &DatabaseConnection,
     site_id: i64,
     tz: &str,
-) -> Vec<(i64, String, String, String, String)> {
+) -> Vec<(
+    i64,
+    String,
+    String,
+    String,
+    String,
+    chrono::DateTime<chrono::Utc>,
+)> {
     let mut drafts = load_invoices_for_site(db, site_id).await;
     drafts.sort_by_key(|a| std::cmp::Reverse(a.id));
 
@@ -512,7 +519,7 @@ pub async fn related_invoices_for_site(
     let mut out: Vec<_> = best.into_values().collect();
     out.sort_by_key(|a| std::cmp::Reverse(a.0));
     out.into_iter()
-        .map(|(id, name, href, date, status, _, _)| (id, name, href, date, status))
+        .map(|(id, name, href, date, status, _, dt)| (id, name, href, date, status, dt))
         .collect()
 }
 

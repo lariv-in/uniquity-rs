@@ -118,6 +118,28 @@ pub struct DraftInvoiceSitesForm {
 }
 
 #[html_form]
+pub struct SiteInvoiceFilterForm {
+    #[form(label = "Number", widget = Text, name = "InvoiceNumber")]
+    pub number: String,
+
+    #[form(label = "Status", widget = Select, name = "InvoiceStatus")]
+    pub status: String,
+}
+
+impl SiteInvoiceFilterForm {
+    pub fn status_choices() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("", "Any"),
+            ("Draft", "Draft"),
+            ("Posted", "Posted"),
+            ("Partial", "Partial"),
+            ("Paid", "Paid"),
+            ("Cancelled", "Cancelled"),
+        ]
+    }
+}
+
+#[html_form]
 pub struct SiteFilterForm {
     #[form(label = "Name", widget = Text)]
     pub name: String,

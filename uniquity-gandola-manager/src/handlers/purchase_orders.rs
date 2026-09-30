@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    EntityTrait, PaginatorTrait, QueryOrder,
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     sea_query::{Expr, Order},
 };
 
@@ -97,15 +97,19 @@ async fn po_to_row(
     }
 }
 
-async fn query_purchase_orders(
+pub(crate) async fn query_purchase_orders(
     db: &sea_orm::DatabaseConnection,
     q: &PurchaseOrderListQuery,
     auth: &AuthContext,
     page_size: u32,
+    site_id: Option<i64>,
 ) -> ObjectList<PurchaseOrderRow> {
     let mut query = PurchaseOrderEntity::find();
     query = apply_number_filter_purchase_orders(query, q.number.as_deref());
     query = scope_purchase_orders(query, auth);
+    if let Some(site_id) = site_id {
+        query = query.filter(purchase_order::Column::SiteId.eq(site_id));
+    }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Number DESC") => {
@@ -202,7 +206,8 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PurchaseOrderListQuery>,
 ) -> maud::Markup {
-    let purchase_orders = query_purchase_orders(&state.db, &q, &ctx, q.page_size.get()).await;
+    let purchase_orders =
+        query_purchase_orders(&state.db, &q, &ctx, q.page_size.get(), None).await;
     let page = PurchaseOrderListPage {
         purchase_orders,
         filter_number: q.number.clone().unwrap_or_default(),
@@ -476,7 +481,7 @@ pub async fn select(
     Query(q): Query<PurchaseOrderSelectQuery>,
 ) -> maud::Markup {
     let purchase_orders =
-        query_purchase_orders(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+        query_purchase_orders(&state.db, &q.filter, &ctx, q.filter.page_size.get(), None).await;
     let page = PurchaseOrderSelectPage {
         purchase_orders,
         filter_number: q.filter.number.clone().unwrap_or_default(),

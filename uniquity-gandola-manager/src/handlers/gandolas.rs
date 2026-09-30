@@ -7,8 +7,8 @@ use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    EntityTrait, PaginatorTrait, QueryOrder,
-    sea_query::{Expr, Order},
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    sea_query::{Expr, Order, Query as SeaQuery},
 };
 
 use lariv_rs::{
@@ -25,7 +25,10 @@ use lariv_rs::{
 };
 
 use crate::{
-    entities::gandola::{self, Entity as GandolaEntity},
+    entities::{
+        gandola::{self, Entity as GandolaEntity},
+        gandola_site_link::{self, Entity as GandolaSiteLinkEntity},
+    },
     forms::GandolaForm,
     handlers::ModalNameQuery,
     handlers::sites::{SiteListQuery, query_sites},
@@ -105,15 +108,24 @@ async fn gandola_to_row(db: &sea_orm::DatabaseConnection, g: gandola::Model) -> 
     }
 }
 
-async fn query_gandolas(
+pub(crate) async fn query_gandolas(
     db: &sea_orm::DatabaseConnection,
     q: &GandolaListQuery,
     auth: &AuthContext,
     page_size: u32,
+    site_id: Option<i64>,
 ) -> ObjectList<GandolaRow> {
     let mut query = GandolaEntity::find();
     query = apply_name_filter_gandolas(query, q.name.as_deref());
     query = scope_gandolas(query, auth);
+    if let Some(site_id) = site_id {
+        let mut linked = SeaQuery::select();
+        linked
+            .column(gandola_site_link::Column::GandolaId)
+            .from(GandolaSiteLinkEntity)
+            .and_where(gandola_site_link::Column::SiteId.eq(site_id));
+        query = query.filter(gandola::Column::Id.in_subquery(linked));
+    }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(gandola::Column::Name),
@@ -160,7 +172,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<GandolaListQuery>,
 ) -> maud::Markup {
-    let gandolas = query_gandolas(&state.db, &q, &ctx, q.page_size.get()).await;
+    let gandolas = query_gandolas(&state.db, &q, &ctx, q.page_size.get(), None).await;
     let page = GandolaListPage {
         gandolas,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -435,7 +447,7 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<GandolaSelectQuery>,
 ) -> maud::Markup {
-    let gandolas = query_gandolas(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let gandolas = query_gandolas(&state.db, &q.filter, &ctx, q.filter.page_size.get(), None).await;
     let page = GandolaSelectPage {
         gandolas,
         filter_name: q.filter.name.clone().unwrap_or_default(),

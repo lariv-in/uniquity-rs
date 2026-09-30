@@ -7,6 +7,9 @@ lariv_rs::swap_key!(GandolaSelectTableKey, "gandola-selection-table");
 lariv_rs::swap_key!(GandolaSelectModalKey, "gandola-selection-modal");
 
 lariv_rs::swap_key!(SiteTableKey, "gandola-site-table");
+lariv_rs::swap_key!(SiteGandolasTableKey, "site-detail-gandolas-table");
+lariv_rs::swap_key!(SitePurchaseOrdersTableKey, "site-detail-purchase-orders-table");
+lariv_rs::swap_key!(SiteInvoicesTableKey, "site-detail-invoices-table");
 lariv_rs::swap_key!(SiteCreateModalKey, "gandola-site-create-modal");
 lariv_rs::swap_key!(SiteEditModalKey, "gandola-site-edit-modal");
 lariv_rs::swap_key!(SiteDeleteModalKey, "gandola-site-delete-modal");

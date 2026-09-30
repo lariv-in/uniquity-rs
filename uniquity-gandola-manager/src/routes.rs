@@ -4,8 +4,8 @@ use super::{
         GandolaDeleteModalKey, GandolaSelectModalKey, GandolaSelectTableKey, GandolaSitesTableKey,
         GandolaTableKey, PurchaseOrderDeleteModalKey, PurchaseOrderSelectModalKey,
         PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteDeleteModalKey,
-        SiteFkSelectModalKey, SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey,
-        SiteTableKey,
+        SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey, SiteSelectModalKey,
+        SiteSelectTableKey, SiteTableKey,
     },
 };
 
@@ -25,7 +25,7 @@ lariv_rs::define_plugin_routes! {
         get SiteDefaultRouteTag, "/gandola/sites", handlers::sites::list, fragment(SiteTableKey);
         get SiteCreateGetRouteTag, "/gandola/sites/create", handlers::sites::create_get, modal;
         post SiteCreatePostRouteTag, "/gandola/sites/create", handlers::sites::create_post;
-        get SiteDetailRouteTag, "/gandola/sites/s/{id}", handlers::sites::detail;
+        get SiteDetailRouteTag, "/gandola/sites/s/{id}", handlers::sites::detail, fragment(SiteGandolasTableKey);
         get SiteEditGetRouteTag, "/gandola/sites/s/{id}/edit", handlers::sites::edit_get, modal;
         post SiteEditPostRouteTag, "/gandola/sites/s/{id}/edit", handlers::sites::edit_post;
         get SiteDeleteGetRouteTag, "/gandola/sites/s/{id}/delete", handlers::sites::delete_get, modal;

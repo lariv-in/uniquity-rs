@@ -10,9 +10,11 @@ use lariv_rs::{
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, detail_header, field_text, field_textarea, field_title, form,
-        form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+        form_hx_get_picker_route, form_hx_get_route, form_hx_get_url, form_hx_post_selector,
+        form_hx_post_url,
         label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
-        row_attr_navigate_route, row_attr_select, row_attr_select_multi, shell_scaffold,
+        row_attr_navigate, row_attr_navigate_route, row_attr_select, row_attr_select_multi,
+        shell_scaffold,
         sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
     },
@@ -28,6 +30,7 @@ use lariv_rs::{
 use super::forms::{
     GandolaFilterForm, GandolaFilterFormField, GandolaForm, GandolaFormField,
     GandolaPreferencesForm, GandolaPreferencesFormField, PurchaseOrderFilterForm,
+    SiteInvoiceFilterForm, SiteInvoiceFilterFormField,
     PurchaseOrderFilterFormField, PurchaseOrderForm, PurchaseOrderFormField, SiteFilterForm,
     SiteFilterFormField, SiteForm, SiteFormField,
 };
@@ -36,8 +39,9 @@ use super::keys::{
     GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey, PurchaseOrderCreateModalKey,
     PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey, PurchaseOrderSelectModalKey,
     PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteCreateModalKey, SiteDeleteModalKey,
-    SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteSelectModalKey,
-    SiteSelectTableKey, SiteTableKey,
+    SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey,
+    SiteInvoicesTableKey, SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey,
+    SiteTableKey,
 };
 use super::routes::{
     GandolaCreatePostRouteTag, GandolaDefaultRouteTag, GandolaDeleteGetRouteTag,
@@ -246,34 +250,6 @@ fn status_badge(status: &str, label: &str) -> Markup {
     html! { span class=(class) { (label) } }
 }
 
-fn related_detail_table(
-    empty_label: &str,
-    colspan: u8,
-    headers: Markup,
-    rows: Vec<Markup>,
-) -> Markup {
-    html! {
-        div class="w-full min-w-0" {
-            div class="overflow-x-auto min-w-0 rounded-box border border-base-300 bg-base-100" {
-                table class="table table-sm min-w-max w-full" {
-                    thead { tr { (headers) } }
-                    tbody {
-                        @if rows.is_empty() {
-                            tr {
-                                td colspan=(colspan) class="text-center opacity-50 py-4" { (empty_label) }
-                            }
-                        } @else {
-                            @for row in &rows {
-                                (row)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
     choices
         .iter()
@@ -286,6 +262,157 @@ fn col_sort(path_and_query: &str, key: &str, label: &str, sort: &str) -> (String
         column_sort_url(path_and_query, key, sort),
         format!("{label}{}", sort_indicator(sort, key)),
     )
+}
+
+fn split_query(path_and_query: &str) -> (String, Vec<(String, String)>) {
+    let (path, query) = path_and_query
+        .split_once('?')
+        .unwrap_or((path_and_query, ""));
+    let pairs = if query.is_empty() {
+        Vec::new()
+    } else {
+        query
+            .split('&')
+            .filter_map(|pair| {
+                let (k, v) = pair.split_once('=')?;
+                Some((k.to_string(), v.to_string()))
+            })
+            .collect()
+    };
+    (path.to_string(), pairs)
+}
+
+fn join_query(path: &str, pairs: &[(String, String)]) -> String {
+    if pairs.is_empty() {
+        return path.to_string();
+    }
+    let qs = pairs
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{path}?{qs}")
+}
+
+fn rename_in_url(path_and_query: &str, from: &str, to: &str) -> String {
+    let (path, mut pairs) = split_query(path_and_query);
+    if from != to {
+        for (k, _) in &mut pairs {
+            if k == from {
+                *k = to.to_string();
+            }
+        }
+    }
+    join_query(&path, &pairs)
+}
+
+/// Sort URL for one table on a page that hosts several tables.
+///
+/// `sort_key` and `page_key` keep each table's sort and page out of the others' query params.
+fn keyed_sort_url(
+    path_and_query: &str,
+    sort_key: &str,
+    page_key: &str,
+    column: &str,
+    current_sort: &str,
+) -> String {
+    let synthetic = rename_in_url(
+        &rename_in_url(path_and_query, sort_key, "sort"),
+        page_key,
+        "page",
+    );
+    let sorted = column_sort_url(&synthetic, column, current_sort);
+    rename_in_url(&rename_in_url(&sorted, "sort", sort_key), "page", page_key)
+}
+
+fn keyed_col_sort(
+    path_and_query: &str,
+    sort_key: &str,
+    page_key: &str,
+    column: &str,
+    label: &str,
+    sort: &str,
+    default_desc: bool,
+) -> (String, String) {
+    let indicator_sort = if default_desc && sort.trim().is_empty() {
+        format!("{column} DESC")
+    } else {
+        sort.to_string()
+    };
+    let url_current = if default_desc
+        && (sort.trim().is_empty() || sort.trim().eq_ignore_ascii_case(&format!("{column} DESC")))
+    {
+        ""
+    } else {
+        sort
+    };
+    (
+        keyed_sort_url(path_and_query, sort_key, page_key, column, url_current),
+        format!("{label}{}", sort_indicator(&indicator_sort, column)),
+    )
+}
+
+fn keyed_pagination<K: SwapKey>(
+    path_and_query: &str,
+    page_key: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    let synthetic = rename_in_url(path_and_query, page_key, "page");
+    let owned = pagination_pages(&synthetic, number, num_pages, true);
+    let rewritten: Vec<(bool, String, bool, bool, String)> = owned
+        .into_iter()
+        .map(|(ellipsis, url, push_url, active, label)| {
+            let url = if url.is_empty() {
+                url
+            } else {
+                rename_in_url(&url, "page", page_key)
+            };
+            (ellipsis, url, push_url, active, label)
+        })
+        .collect();
+    let pages: Vec<PaginationPage<'_>> = rewritten
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination(TablePagination {
+        pages: &pages,
+        hx_target: K::SELECTOR,
+    })
+}
+
+fn relation_filter<K: SwapKey>(
+    path_and_query: &str,
+    page_key: &str,
+    inputs: Markup,
+    page_size: u32,
+) -> Markup {
+    table_button_filter(TableButtonFilter {
+        panel: form(
+            &CsrfToken::current(),
+            FormOpts {
+                attrs: form_hx_get_url::<K>(path_and_query),
+                inputs: html! {
+                    (with_list_filter_common(inputs, page_size))
+                    input type="hidden" name=(page_key) value="1" {}
+                },
+                actions: html! {
+                    (container_row("flex gap-2", html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                        (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                    }))
+                },
+                ..Default::default()
+            },
+        ),
+        ..Default::default()
+    })
 }
 
 lariv_rs::define_register_items! {
@@ -344,13 +471,6 @@ pub struct RelatedInvoice {
 }
 
 #[derive(Clone)]
-pub struct SitePurchaseOrderRow {
-    pub id: i64,
-    pub number: String,
-    pub date: String,
-}
-
-#[derive(Clone)]
 pub struct GandolaRow {
     pub id: i64,
     pub name: String,
@@ -369,17 +489,69 @@ pub struct GandolaListPage {
     pub page_size: u32,
 }
 
+fn gandola_column_labels(
+    path_and_query: &str,
+    sort: &str,
+    sort_key: &str,
+    page_key: &str,
+) -> (String, String, String, String, String, String) {
+    let (name_sort, name_label) =
+        keyed_col_sort(path_and_query, sort_key, page_key, "Name", "Name", sort, false);
+    let (current_site_sort, current_site_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "CurrentSite",
+        "Current Site",
+        sort,
+        false,
+    );
+    let (sites_sort, sites_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Sites",
+        "Sites",
+        sort,
+        false,
+    );
+    (
+        name_sort,
+        name_label,
+        current_site_sort,
+        current_site_label,
+        sites_sort,
+        sites_label,
+    )
+}
+
+fn gandola_table_rows(items: &[GandolaRow]) -> Vec<TableRow> {
+    items
+        .iter()
+        .map(|g| {
+            let sites = g.site_names.join(", ");
+            TableRow {
+                attrs: row_attr_navigate_route(GandolaDetailRouteTag::new(g.id)),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &g.name,
+                        classes: "",
+                    }),
+                    assigned_badge(g.is_assigned, &g.current_site_name),
+                    field_text(FieldText {
+                        value: &sites,
+                        classes: "",
+                    }),
+                ],
+            }
+        })
+        .collect()
+}
+
 impl GandolaListPage {
     pub fn render_table(&self) -> Markup {
-        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
-        let (current_site_sort, current_site_label) = col_sort(
-            &self.path_and_query,
-            "CurrentSite",
-            "Current Site",
-            &self.sort,
-        );
-        let (sites_sort, sites_label) =
-            col_sort(&self.path_and_query, "Sites", "Sites", &self.sort);
+        let (name_sort, name_label, current_site_sort, current_site_label, sites_sort, sites_label) =
+            gandola_column_labels(&self.path_and_query, &self.sort, "sort", "page");
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -400,28 +572,7 @@ impl GandolaListPage {
                 push_url: true,
             },
         ];
-        let rows: Vec<TableRow> = self
-            .gandolas
-            .items
-            .iter()
-            .map(|g| {
-                let sites = g.site_names.join(", ");
-                TableRow {
-                    attrs: row_attr_navigate_route(GandolaDetailRouteTag::new(g.id)),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &g.name,
-                            classes: "",
-                        }),
-                        assigned_badge(g.is_assigned, &g.current_site_name),
-                        field_text(FieldText {
-                            value: &sites,
-                            classes: "",
-                        }),
-                    ],
-                }
-            })
-            .collect();
+        let rows = gandola_table_rows(&self.gandolas.items);
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
@@ -1161,13 +1312,248 @@ pub struct SiteDetailPage {
     pub end_date: String,
     pub address: String,
     pub remarks: String,
-    pub gandolas: Vec<RelatedName>,
-    pub purchase_orders: Vec<SitePurchaseOrderRow>,
-    pub invoices: Vec<RelatedInvoice>,
+    pub gandolas: ObjectList<GandolaRow>,
+    pub gandola_filter_name: String,
+    pub gandola_sort: String,
+    pub purchase_orders: ObjectList<PurchaseOrderRow>,
+    pub po_filter_number: String,
+    pub po_sort: String,
+    pub invoices: ObjectList<RelatedInvoice>,
+    pub invoice_filter_number: String,
+    pub invoice_filter_status: String,
+    pub invoice_sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
     pub can_edit: bool,
 }
 
 impl SiteDetailPage {
+    pub fn render_gandolas_table(&self) -> Markup {
+        let (name_sort, name_label, current_site_sort, current_site_label, sites_sort, sites_label) =
+            gandola_column_labels(
+                &self.path_and_query,
+                &self.gandola_sort,
+                "g_sort",
+                "g_page",
+            );
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "CurrentSite",
+                label: &current_site_label,
+                sort_url: Some(&current_site_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Sites",
+                label: &sites_label,
+                sort_url: Some(&sites_sort),
+                push_url: true,
+            },
+        ];
+        let rows = gandola_table_rows(&self.gandolas.items);
+        let actions = relation_filter::<SiteGandolasTableKey>(
+            &self.path_and_query,
+            "g_page",
+            GandolaFilterForm::render_inputs(
+                &FormCtx::form::<GandolaFilterForm>(CsrfToken::current())
+                    .value(GandolaFilterFormField::Name, &self.gandola_filter_name),
+            ),
+            self.page_size,
+        );
+        let pagination = keyed_pagination::<SiteGandolasTableKey>(
+            &self.path_and_query,
+            "g_page",
+            self.gandolas.number,
+            self.gandolas.num_pages,
+        );
+        data_table_list_refresh::<SiteGandolasTableKey>(
+            "Gandolas",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+
+    pub fn render_purchase_orders_table(&self) -> Markup {
+        let (
+            number_sort,
+            number_label,
+            date_sort,
+            date_label,
+            customer_sort,
+            customer_label,
+            site_sort,
+            site_label,
+        ) = purchase_order_column_labels(
+            &self.path_and_query,
+            &self.po_sort,
+            "po_sort",
+            "po_page",
+        );
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Customer",
+                label: &customer_label,
+                sort_url: Some(&customer_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Site",
+                label: &site_label,
+                sort_url: Some(&site_sort),
+                push_url: true,
+            },
+        ];
+        let rows = purchase_order_table_rows(&self.purchase_orders.items);
+        let actions = relation_filter::<SitePurchaseOrdersTableKey>(
+            &self.path_and_query,
+            "po_page",
+            PurchaseOrderFilterForm::render_inputs(
+                &FormCtx::form::<PurchaseOrderFilterForm>(CsrfToken::current())
+                    .value(PurchaseOrderFilterFormField::Number, &self.po_filter_number),
+            ),
+            self.page_size,
+        );
+        let pagination = keyed_pagination::<SitePurchaseOrdersTableKey>(
+            &self.path_and_query,
+            "po_page",
+            self.purchase_orders.number,
+            self.purchase_orders.num_pages,
+        );
+        data_table_list_refresh::<SitePurchaseOrdersTableKey>(
+            "Purchase Orders",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+
+    pub fn render_invoices_table(&self) -> Markup {
+        let (number_sort, number_label) = keyed_col_sort(
+            &self.path_and_query,
+            "inv_sort",
+            "inv_page",
+            "Number",
+            "Number",
+            &self.invoice_sort,
+            false,
+        );
+        let (date_sort, date_label) = keyed_col_sort(
+            &self.path_and_query,
+            "inv_sort",
+            "inv_page",
+            "Date",
+            "Date",
+            &self.invoice_sort,
+            true,
+        );
+        let (status_sort, status_label) = keyed_col_sort(
+            &self.path_and_query,
+            "inv_sort",
+            "inv_page",
+            "Status",
+            "Status",
+            &self.invoice_sort,
+            false,
+        );
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Status",
+                label: &status_label,
+                sort_url: Some(&status_sort),
+                push_url: true,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .invoices
+            .items
+            .iter()
+            .map(|inv| TableRow {
+                attrs: row_attr_navigate(&inv.href),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &inv.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.date,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.status,
+                        classes: "",
+                    }),
+                ],
+            })
+            .collect();
+        let status_choices = choice_pairs(SiteInvoiceFilterForm::status_choices());
+        let actions = relation_filter::<SiteInvoicesTableKey>(
+            &self.path_and_query,
+            "inv_page",
+            SiteInvoiceFilterForm::render_inputs(
+                &FormCtx::form::<SiteInvoiceFilterForm>(CsrfToken::current())
+                    .value(
+                        SiteInvoiceFilterFormField::Number,
+                        &self.invoice_filter_number,
+                    )
+                    .value(
+                        SiteInvoiceFilterFormField::Status,
+                        &self.invoice_filter_status,
+                    )
+                    .choices(SiteInvoiceFilterFormField::Status, &status_choices),
+            ),
+            self.page_size,
+        );
+        let pagination = keyed_pagination::<SiteInvoicesTableKey>(
+            &self.path_and_query,
+            "inv_page",
+            self.invoices.number,
+            self.invoices.num_pages,
+        );
+        data_table_list_refresh::<SiteInvoicesTableKey>(
+            "Invoices",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+
     fn body(&self) -> Markup {
         let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
         let actions = if self.can_edit {
@@ -1204,56 +1590,11 @@ impl SiteDetailPage {
                         value: &self.remarks,
                         classes: "break-words min-w-0 max-w-full overflow-x-hidden",
                     })))
-                    (label("Gandolas", related_detail_table(
-                        "No gandolas",
-                        1,
-                        html! {
-                            th class="whitespace-nowrap" { "Name" }
-                        },
-                        self.gandolas.iter().map(|g| html! {
-                            tr {
-                                td class="whitespace-nowrap" {
-                                    a class="link" href=(GandolaDetailRouteTag::new(g.id).url()) { (g.name) }
-                                }
-                            }
-                        }).collect(),
-                    )))
-                    (label("Purchase Orders", related_detail_table(
-                        "No purchase orders",
-                        2,
-                        html! {
-                            th class="whitespace-nowrap" { "Number" }
-                            th class="whitespace-nowrap" { "Date" }
-                        },
-                        self.purchase_orders.iter().map(|po| html! {
-                            tr {
-                                td class="whitespace-nowrap" {
-                                    a class="link" href=(PurchaseOrderDetailRouteTag::new(po.id).url()) { (po.number) }
-                                }
-                                td class="whitespace-nowrap" { (po.date) }
-                            }
-                        }).collect(),
-                    )))
-                    (label("Invoices", related_detail_table(
-                        "No invoices",
-                        3,
-                        html! {
-                            th class="whitespace-nowrap" { "Number" }
-                            th class="whitespace-nowrap" { "Date" }
-                            th class="whitespace-nowrap" { "Status" }
-                        },
-                        self.invoices.iter().map(|inv| html! {
-                            tr {
-                                td class="whitespace-nowrap" {
-                                    a class="link" href=(inv.href) { (inv.name) }
-                                }
-                                td class="whitespace-nowrap" { (inv.date) }
-                                td class="whitespace-nowrap" { (inv.status) }
-                            }
-                        }).collect(),
-                    )))
                 }))
             }))
+            div class="mt-6" { (self.render_gandolas_table()) }
+            div class="mt-6" { (self.render_purchase_orders_table()) }
+            div class="mt-6" { (self.render_invoices_table()) }
         }
     }
 
@@ -1779,14 +2120,85 @@ pub struct PurchaseOrderListPage {
     pub page_size: u32,
 }
 
+fn purchase_order_column_labels(
+    path_and_query: &str,
+    sort: &str,
+    sort_key: &str,
+    page_key: &str,
+) -> (String, String, String, String, String, String, String, String) {
+    let (number_sort, number_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Number",
+        "Number",
+        sort,
+        false,
+    );
+    let (date_sort, date_label) =
+        keyed_col_sort(path_and_query, sort_key, page_key, "Date", "Date", sort, false);
+    let (customer_sort, customer_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Customer",
+        "Customer",
+        sort,
+        false,
+    );
+    let (site_sort, site_label) =
+        keyed_col_sort(path_and_query, sort_key, page_key, "Site", "Site", sort, false);
+    (
+        number_sort,
+        number_label,
+        date_sort,
+        date_label,
+        customer_sort,
+        customer_label,
+        site_sort,
+        site_label,
+    )
+}
+
+fn purchase_order_table_rows(items: &[PurchaseOrderRow]) -> Vec<TableRow> {
+    items
+        .iter()
+        .map(|po| TableRow {
+            attrs: row_attr_navigate_route(PurchaseOrderDetailRouteTag::new(po.id)),
+            cells: vec![
+                field_text(FieldText {
+                    value: &po.number,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &po.date,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &po.customer_name,
+                    classes: "",
+                }),
+                field_text(FieldText {
+                    value: &po.site_name,
+                    classes: "",
+                }),
+            ],
+        })
+        .collect()
+}
+
 impl PurchaseOrderListPage {
     pub fn render_table(&self) -> Markup {
-        let (number_sort, number_label) =
-            col_sort(&self.path_and_query, "Number", "Number", &self.sort);
-        let (date_sort, date_label) = col_sort(&self.path_and_query, "Date", "Date", &self.sort);
-        let (customer_sort, customer_label) =
-            col_sort(&self.path_and_query, "Customer", "Customer", &self.sort);
-        let (site_sort, site_label) = col_sort(&self.path_and_query, "Site", "Site", &self.sort);
+        let (
+            number_sort,
+            number_label,
+            date_sort,
+            date_label,
+            customer_sort,
+            customer_label,
+            site_sort,
+            site_label,
+        ) = purchase_order_column_labels(&self.path_and_query, &self.sort, "sort", "page");
         let headers = [
             TableColumnHeader {
                 key: "Number",
@@ -1813,32 +2225,7 @@ impl PurchaseOrderListPage {
                 push_url: true,
             },
         ];
-        let rows: Vec<TableRow> = self
-            .purchase_orders
-            .items
-            .iter()
-            .map(|po| TableRow {
-                attrs: row_attr_navigate_route(PurchaseOrderDetailRouteTag::new(po.id)),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &po.number,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &po.date,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &po.customer_name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &po.site_name,
-                        classes: "",
-                    }),
-                ],
-            })
-            .collect();
+        let rows = purchase_order_table_rows(&self.purchase_orders.items);
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {

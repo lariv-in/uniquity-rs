@@ -3,7 +3,7 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
@@ -30,26 +30,30 @@ use crate::{
         site::{self, Entity as SiteEntity},
     },
     forms::SiteForm,
-    handlers::ModalNameQuery,
+    handlers::{
+        ModalNameQuery,
+        gandolas::{GandolaListQuery, query_gandolas},
+        purchase_orders::{PurchaseOrderListQuery, query_purchase_orders},
+    },
     keys::{
         SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
-        SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoicesTableKey, SiteSelectModalKey,
+        SiteSelectTableKey, SitePurchaseOrdersTableKey, SiteTableKey,
     },
     routes::SiteDetailRouteTag,
     scope::{
         apply_name_filter_sites, apply_site_id_filter_sites, customer_name, find_site_scoped,
         gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
-        invoice_items_from_ids, is_superuser, load_gandolas_for_site,
-        load_purchase_orders_for_site, opt_string, purchase_order_items_for_site,
+        invoice_items_from_ids, is_superuser, load_gandolas_for_site, opt_string,
+        purchase_order_items_for_site,
         purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
         sync_site_invoices, sync_site_purchase_orders,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
     templates::{
-        ConfirmDeletePage, RelatedInvoice, RelatedName, SiteCreateModalPage, SiteDetailPage,
-        SiteEditModalPage, SiteFkSelectPage, SiteListPage, SitePurchaseOrderRow, SiteRow,
-        SiteSelectPage,
+        ConfirmDeletePage, RelatedInvoice, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
+        SiteFkSelectPage, SiteListPage, SiteRow, SiteSelectPage,
     },
 };
 
@@ -68,6 +72,35 @@ pub struct SiteListQuery {
     pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SiteDetailQuery {
+    #[serde(default, rename = "Name", alias = "name")]
+    pub gandola_name: Option<String>,
+    #[serde(default, rename = "g_sort")]
+    pub gandola_sort: Option<String>,
+    #[serde(default, rename = "g_page")]
+    pub gandola_page: QueryPage,
+
+    #[serde(default, rename = "Number", alias = "number")]
+    pub po_number: Option<String>,
+    #[serde(default, rename = "po_sort")]
+    pub po_sort: Option<String>,
+    #[serde(default, rename = "po_page")]
+    pub po_page: QueryPage,
+
+    #[serde(default, rename = "InvoiceNumber")]
+    pub invoice_number: Option<String>,
+    #[serde(default, rename = "InvoiceStatus")]
+    pub invoice_status: Option<String>,
+    #[serde(default, rename = "inv_sort")]
+    pub invoice_sort: Option<String>,
+    #[serde(default, rename = "inv_page")]
+    pub invoice_page: QueryPage,
+
     #[serde(default)]
     pub page_size: QueryPageSize,
 }
@@ -225,20 +258,108 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
+fn query_site_invoices(
+    mut rows: Vec<(i64, String, String, String, String, DateTime<Utc>)>,
+    number: Option<&str>,
+    status: Option<&str>,
+    sort: &str,
+    page: u32,
+    page_size: u32,
+) -> ObjectList<RelatedInvoice> {
+    let number = number.unwrap_or("").trim().to_lowercase();
+    let status = status.unwrap_or("").trim();
+    rows.retain(|row| {
+        (number.is_empty() || row.1.to_lowercase().contains(&number))
+            && (status.is_empty() || row.4.eq_ignore_ascii_case(status))
+    });
+    let sort = if sort.trim().is_empty() {
+        "Date DESC"
+    } else {
+        sort.trim()
+    };
+    rows.sort_by(|a, b| {
+        let ord = if sort.eq_ignore_ascii_case("Number DESC") {
+            b.1.cmp(&a.1)
+        } else if sort.eq_ignore_ascii_case("Number ASC") || sort.eq_ignore_ascii_case("Number") {
+            a.1.cmp(&b.1)
+        } else if sort.eq_ignore_ascii_case("Status DESC") {
+            b.4.cmp(&a.4)
+        } else if sort.eq_ignore_ascii_case("Status ASC") || sort.eq_ignore_ascii_case("Status") {
+            a.4.cmp(&b.4)
+        } else if sort.eq_ignore_ascii_case("Date ASC") || sort.eq_ignore_ascii_case("Date") {
+            a.5.cmp(&b.5)
+        } else {
+            b.5.cmp(&a.5)
+        };
+        ord.then(b.0.cmp(&a.0))
+    });
+    let total = rows.len() as u64;
+    let start = (page.saturating_sub(1) as usize).saturating_mul(page_size as usize);
+    let items = rows
+        .into_iter()
+        .skip(start)
+        .take(page_size as usize)
+        .map(|(id, name, href, date, status, _)| RelatedInvoice {
+            id,
+            name,
+            href,
+            date,
+            status,
+        })
+        .collect();
+    ObjectList::from_page(items, page, page_size, total)
+}
+
 pub async fn detail(
     Cap(state): Cap<GandolaManagerState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Path(id): Path<i64>,
+    Query(q): Query<SiteDetailQuery>,
 ) -> Response {
     let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(LIST_URL).into_response();
     };
-    let mut gandolas = load_gandolas_for_site(&state.db, s.id).await;
-    gandolas.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
-    let invoices = related_invoices_for_site(&state.db, s.id, &ctx.timezone).await;
-    let purchase_orders = load_purchase_orders_for_site(&state.db, s.id).await;
+    let mut gandola_query = GandolaListQuery {
+        name: q.gandola_name.clone(),
+        sort: q.gandola_sort.clone(),
+        ..Default::default()
+    };
+    gandola_query.page = q.gandola_page;
+    gandola_query.page_size = q.page_size;
+    let gandolas = query_gandolas(
+        &state.db,
+        &gandola_query,
+        &ctx,
+        q.page_size.get(),
+        Some(s.id),
+    )
+    .await;
+    let mut po_query = PurchaseOrderListQuery {
+        number: q.po_number.clone(),
+        sort: q.po_sort.clone(),
+        ..Default::default()
+    };
+    po_query.page = q.po_page;
+    po_query.page_size = q.page_size;
+    let purchase_orders = query_purchase_orders(
+        &state.db,
+        &po_query,
+        &ctx,
+        q.page_size.get(),
+        Some(s.id),
+    )
+    .await;
+    let invoices = query_site_invoices(
+        related_invoices_for_site(&state.db, s.id, &ctx.timezone).await,
+        q.invoice_number.as_deref(),
+        q.invoice_status.as_deref(),
+        q.invoice_sort.as_deref().unwrap_or(""),
+        q.invoice_page.get(),
+        q.page_size.get(),
+    );
     let page = SiteDetailPage {
         id: s.id,
         name: s.name,
@@ -251,33 +372,29 @@ pub async fn detail(
         end_date: format_date(s.end_date),
         address: s.address.unwrap_or_default(),
         remarks: s.remarks.unwrap_or_default(),
-        gandolas: gandolas
-            .into_iter()
-            .map(|g| RelatedName {
-                id: g.id,
-                name: g.name,
-            })
-            .collect(),
-        purchase_orders: purchase_orders
-            .into_iter()
-            .map(|po| SitePurchaseOrderRow {
-                id: po.id,
-                number: po.number,
-                date: lariv_rs::datetime::format_date(po.date),
-            })
-            .collect(),
-        invoices: invoices
-            .into_iter()
-            .map(|(id, name, href, date, status)| RelatedInvoice {
-                id,
-                name,
-                href,
-                date,
-                status,
-            })
-            .collect(),
+        gandolas,
+        gandola_filter_name: q.gandola_name.clone().unwrap_or_default(),
+        gandola_sort: q.gandola_sort.clone().unwrap_or_default(),
+        purchase_orders,
+        po_filter_number: q.po_number.clone().unwrap_or_default(),
+        po_sort: q.po_sort.clone().unwrap_or_default(),
+        invoices,
+        invoice_filter_number: q.invoice_number.clone().unwrap_or_default(),
+        invoice_filter_status: q.invoice_status.clone().unwrap_or_default(),
+        invoice_sort: q.invoice_sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
         can_edit: is_superuser(&ctx),
     };
+    if htmx.targets::<SiteGandolasTableKey>() {
+        return page.render_gandolas_table().into_response();
+    }
+    if htmx.targets::<SitePurchaseOrdersTableKey>() {
+        return page.render_purchase_orders_table().into_response();
+    }
+    if htmx.targets::<SiteInvoicesTableKey>() {
+        return page.render_invoices_table().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
