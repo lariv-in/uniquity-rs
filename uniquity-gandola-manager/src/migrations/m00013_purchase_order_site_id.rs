@@ -1,4 +1,3 @@
-use sea_orm::Statement;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -19,10 +18,7 @@ enum Sites {
 async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
     manager
         .get_connection()
-        .execute(Statement::from_string(
-            manager.get_connection().get_database_backend(),
-            sql.to_string(),
-        ))
+        .execute_unprepared(sql)
         .await
         .map(|_| ())
 }

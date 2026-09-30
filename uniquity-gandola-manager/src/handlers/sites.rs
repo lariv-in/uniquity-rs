@@ -7,8 +7,8 @@ use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    EntityTrait, PaginatorTrait, QueryOrder,
-    sea_query::{Expr, Order},
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    sea_query::{Expr, NullOrdering, Order, Query as SeaQuery},
 };
 
 use lariv_rs::{
@@ -25,7 +25,10 @@ use lariv_rs::{
 };
 
 use crate::{
-    entities::site::{self, Entity as SiteEntity},
+    entities::{
+        gandola_site_link::{self, Entity as GandolaSiteLinkEntity},
+        site::{self, Entity as SiteEntity},
+    },
     forms::SiteForm,
     handlers::ModalNameQuery,
     keys::{
@@ -113,17 +116,31 @@ async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRo
     }
 }
 
-async fn query_sites(
+pub(crate) async fn query_sites(
     db: &sea_orm::DatabaseConnection,
     q: &SiteListQuery,
     auth: &AuthContext,
     page_size: u32,
+    gandola_id: Option<i64>,
+    default_start_date_desc: bool,
 ) -> ObjectList<SiteRow> {
     let mut query = SiteEntity::find();
     query = apply_name_filter_sites(query, q.name.as_deref());
     query = apply_site_id_filter_sites(query, q.site_id.as_deref());
     query = scope_sites(query, auth);
-    let sort = q.sort.as_deref().unwrap_or("").trim();
+    if let Some(gandola_id) = gandola_id {
+        let mut linked = SeaQuery::select();
+        linked
+            .column(gandola_site_link::Column::SiteId)
+            .from(GandolaSiteLinkEntity)
+            .and_where(gandola_site_link::Column::GandolaId.eq(gandola_id));
+        query = query.filter(site::Column::Id.in_subquery(linked));
+    }
+    let mut sort = q.sort.as_deref().unwrap_or("").trim().to_string();
+    if sort.is_empty() && default_start_date_desc {
+        sort = "StartDate DESC".to_string();
+    }
+    let sort = sort.as_str();
     query = match sort {
         s if s.eq_ignore_ascii_case("Name DESC") => query.order_by_desc(site::Column::Name),
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
@@ -141,9 +158,9 @@ async fn query_sites(
         s if s.eq_ignore_ascii_case("Remarks ASC") || s.eq_ignore_ascii_case("Remarks") => {
             query.order_by_asc(site::Column::Remarks)
         }
-        s if s.eq_ignore_ascii_case("StartDate DESC") => {
-            query.order_by_desc(site::Column::StartDate)
-        }
+        s if s.eq_ignore_ascii_case("StartDate DESC") => query
+            .order_by_with_nulls(site::Column::StartDate, Order::Desc, NullOrdering::Last)
+            .order_by_desc(site::Column::Id),
         s if s.eq_ignore_ascii_case("StartDate ASC") || s.eq_ignore_ascii_case("StartDate") => {
             query.order_by_asc(site::Column::StartDate)
         }
@@ -185,7 +202,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<SiteListQuery>,
 ) -> maud::Markup {
-    let sites = query_sites(&state.db, &q, &ctx, q.page_size.get()).await;
+    let sites = query_sites(&state.db, &q, &ctx, q.page_size.get(), None, false).await;
     let page = SiteListPage {
         sites,
         filter_name: q.name.clone().unwrap_or_default(),
@@ -724,7 +741,15 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<SiteSelectQuery>,
 ) -> maud::Markup {
-    let sites = query_sites(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let sites = query_sites(
+        &state.db,
+        &q.filter,
+        &ctx,
+        q.filter.page_size.get(),
+        None,
+        true,
+    )
+    .await;
     let page = SiteSelectPage {
         sites,
         filter_name: q.filter.name.clone().unwrap_or_default(),
@@ -745,7 +770,15 @@ pub async fn fk_select(
     uri: Uri,
     Query(q): Query<SiteSelectQuery>,
 ) -> maud::Markup {
-    let sites = query_sites(&state.db, &q.filter, &ctx, q.filter.page_size.get()).await;
+    let sites = query_sites(
+        &state.db,
+        &q.filter,
+        &ctx,
+        q.filter.page_size.get(),
+        None,
+        false,
+    )
+    .await;
     let page = SiteFkSelectPage {
         sites,
         filter_name: q.filter.name.clone().unwrap_or_default(),

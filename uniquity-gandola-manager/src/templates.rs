@@ -4,9 +4,9 @@ use maud::{Markup, html};
 use lariv_rs::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
-        FieldText, FieldTextarea, FieldTitle, FormOpts, LayoutMain, LayoutSidebar, MainContentKey,
-        ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
-        SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+        FieldText, FieldTextarea, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
+        MainContentKey, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+        SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, detail_header, field_text, field_textarea, field_title, form,
@@ -33,7 +33,7 @@ use super::forms::{
 };
 use super::keys::{
     GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
-    GandolaSelectTableKey, GandolaTableKey, PurchaseOrderCreateModalKey,
+    GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey, PurchaseOrderCreateModalKey,
     PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey, PurchaseOrderSelectModalKey,
     PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteCreateModalKey, SiteDeleteModalKey,
     SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteSelectModalKey,
@@ -502,11 +502,63 @@ pub struct GandolaDetailPage {
     pub name: String,
     pub is_assigned: bool,
     pub current_site: Option<RelatedName>,
-    pub sites: Vec<RelatedName>,
+    pub sites: ObjectList<SiteRow>,
+    pub filter_name: String,
+    pub filter_site_id: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
     pub can_edit: bool,
 }
 
 impl GandolaDetailPage {
+    pub fn render_sites_table(&self) -> Markup {
+        let labels = site_column_labels(&self.path_and_query, &self.sort, true);
+        let headers = site_column_headers(&labels, true);
+        let rows = site_table_rows(&self.sites.items, |site| {
+            row_attr_navigate_route(SiteDetailRouteTag::new(site.id))
+        });
+        let actions = table_button_filter(TableButtonFilter {
+            panel: form(
+                &CsrfToken::current(),
+                FormOpts {
+                    attrs: form_hx_get_route::<GandolaSitesTableKey, GandolaDetailRouteTag>(
+                        GandolaDetailRouteTag::new(self.id),
+                    ),
+                    inputs: with_list_filter_common(
+                        SiteFilterForm::render_inputs(
+                            &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
+                                .value(SiteFilterFormField::Name, &self.filter_name)
+                                .value(SiteFilterFormField::SiteId, &self.filter_site_id),
+                        ),
+                        self.page_size,
+                    ),
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                },
+            ),
+            ..Default::default()
+        });
+        let pagination = render_pagination::<GandolaSitesTableKey>(
+            &self.path_and_query,
+            self.sites.number,
+            self.sites.num_pages,
+        );
+        data_table_list_refresh::<GandolaSitesTableKey>(
+            "Sites",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+
     fn body(&self) -> Markup {
         let assigned_label = if self.is_assigned { "Yes" } else { "No" };
         let current_name = self
@@ -538,15 +590,11 @@ impl GandolaDetailPage {
                     }))
                     (label("Is Currently Assigned", field_text(FieldText { value: assigned_label, classes: "" })))
                     (label("Current Site", assigned_badge(self.is_assigned, current_name)))
-                    (label("Sites", html! {
-                        div class="flex flex-col gap-1" {
-                            @for site in &self.sites {
-                                a class="link" href=(SiteDetailRouteTag::new(site.id).url()) { (site.name) }
-                            }
-                        }
-                    }))
                 }))
             }))
+            div class="mt-6" {
+                (self.render_sites_table())
+            }
         }
     }
 
@@ -653,29 +701,32 @@ impl RenderTemplate for GandolaCreateModalPage {
         };
         modal_keyed::<GandolaCreateModalKey>(
             "",
-            form(&CsrfToken::current(), FormOpts {
-                title: "Create Gandola",
-                subtitle: "Create a new gandola",
-                classes: "@container",
-                attrs: form_hx_post_url::<GandolaCreateModalKey>(&modal_create_post_query(
-                    GandolaCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: gandola_form_inputs(&self.name, &self.sites),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Gandola",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Gandola",
+                    subtitle: "Create a new gandola",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<GandolaCreateModalKey>(&modal_create_post_query(
+                        GandolaCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: gandola_form_inputs(&self.name, &self.sites),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Gandola",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -792,6 +843,220 @@ pub struct SiteRow {
     pub gandola_names: Vec<String>,
 }
 
+struct SiteColumnLabels {
+    name_sort: String,
+    name_label: String,
+    site_id_sort: String,
+    site_id_label: String,
+    address_sort: String,
+    address_label: String,
+    remarks_sort: String,
+    remarks_label: String,
+    start_date_sort: String,
+    start_date_label: String,
+    end_date_sort: String,
+    end_date_label: String,
+    status_sort: String,
+    status_label: String,
+    gandolas_sort: String,
+    gandolas_label: String,
+}
+
+fn site_col_sort(
+    path_and_query: &str,
+    key: &str,
+    label: &str,
+    sort: &str,
+    default_start_desc: bool,
+) -> (String, String) {
+    let indicator_sort = if default_start_desc && sort.trim().is_empty() {
+        "StartDate DESC"
+    } else {
+        sort
+    };
+    let url_current = if default_start_desc
+        && key.eq_ignore_ascii_case("StartDate")
+        && (sort.trim().is_empty() || sort.trim().eq_ignore_ascii_case("StartDate DESC"))
+    {
+        ""
+    } else {
+        sort
+    };
+    (
+        column_sort_url(path_and_query, key, url_current),
+        format!("{label}{}", sort_indicator(indicator_sort, key)),
+    )
+}
+
+fn site_column_labels(
+    path_and_query: &str,
+    sort: &str,
+    default_start_desc: bool,
+) -> SiteColumnLabels {
+    let (name_sort, name_label) =
+        site_col_sort(path_and_query, "Name", "Name", sort, default_start_desc);
+    let (site_id_sort, site_id_label) = site_col_sort(
+        path_and_query,
+        "SiteId",
+        "Site ID",
+        sort,
+        default_start_desc,
+    );
+    let (address_sort, address_label) = site_col_sort(
+        path_and_query,
+        "Address",
+        "Address",
+        sort,
+        default_start_desc,
+    );
+    let (remarks_sort, remarks_label) = site_col_sort(
+        path_and_query,
+        "Remarks",
+        "Remarks",
+        sort,
+        default_start_desc,
+    );
+    let (start_date_sort, start_date_label) = site_col_sort(
+        path_and_query,
+        "StartDate",
+        "Start Date",
+        sort,
+        default_start_desc,
+    );
+    let (end_date_sort, end_date_label) = site_col_sort(
+        path_and_query,
+        "EndDate",
+        "End Date",
+        sort,
+        default_start_desc,
+    );
+    let (status_sort, status_label) =
+        site_col_sort(path_and_query, "Status", "Status", sort, default_start_desc);
+    let (gandolas_sort, gandolas_label) = site_col_sort(
+        path_and_query,
+        "Gandolas",
+        "Gandolas",
+        sort,
+        default_start_desc,
+    );
+    SiteColumnLabels {
+        name_sort,
+        name_label,
+        site_id_sort,
+        site_id_label,
+        address_sort,
+        address_label,
+        remarks_sort,
+        remarks_label,
+        start_date_sort,
+        start_date_label,
+        end_date_sort,
+        end_date_label,
+        status_sort,
+        status_label,
+        gandolas_sort,
+        gandolas_label,
+    }
+}
+
+fn site_column_headers(labels: &SiteColumnLabels, push_url: bool) -> Vec<TableColumnHeader<'_>> {
+    vec![
+        TableColumnHeader {
+            key: "Name",
+            label: &labels.name_label,
+            sort_url: Some(&labels.name_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "SiteId",
+            label: &labels.site_id_label,
+            sort_url: Some(&labels.site_id_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "Address",
+            label: &labels.address_label,
+            sort_url: Some(&labels.address_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "Remarks",
+            label: &labels.remarks_label,
+            sort_url: Some(&labels.remarks_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "StartDate",
+            label: &labels.start_date_label,
+            sort_url: Some(&labels.start_date_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "EndDate",
+            label: &labels.end_date_label,
+            sort_url: Some(&labels.end_date_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "Status",
+            label: &labels.status_label,
+            sort_url: Some(&labels.status_sort),
+            push_url,
+        },
+        TableColumnHeader {
+            key: "Gandolas",
+            label: &labels.gandolas_label,
+            sort_url: Some(&labels.gandolas_sort),
+            push_url,
+        },
+    ]
+}
+
+fn site_cells(site: &SiteRow) -> Vec<Markup> {
+    let gandolas = site.gandola_names.join(", ");
+    vec![
+        field_text(FieldText {
+            value: &site.name,
+            classes: "",
+        }),
+        field_text(FieldText {
+            value: &site.site_id,
+            classes: "",
+        }),
+        field_text(FieldText {
+            value: &site.address,
+            classes: "",
+        }),
+        field_text(FieldText {
+            value: &site.remarks,
+            classes: "",
+        }),
+        field_text(FieldText {
+            value: &site.start_date,
+            classes: "",
+        }),
+        field_text(FieldText {
+            value: &site.end_date,
+            classes: "",
+        }),
+        status_badge(&site.status, &site.status_label),
+        field_text(FieldText {
+            value: &gandolas,
+            classes: "",
+        }),
+    ]
+}
+
+fn site_table_rows(sites: &[SiteRow], attrs: impl Fn(&SiteRow) -> HtmlAttrs) -> Vec<TableRow> {
+    sites
+        .iter()
+        .map(|site| TableRow {
+            attrs: attrs(site),
+            cells: site_cells(site),
+        })
+        .collect()
+}
+
 #[derive(Generic)]
 pub struct SiteListPage {
     pub sites: ObjectList<SiteRow>,
@@ -805,113 +1070,11 @@ pub struct SiteListPage {
 
 impl SiteListPage {
     pub fn render_table(&self) -> Markup {
-        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
-        let (site_id_sort, site_id_label) =
-            col_sort(&self.path_and_query, "SiteId", "Site ID", &self.sort);
-        let (address_sort, address_label) =
-            col_sort(&self.path_and_query, "Address", "Address", &self.sort);
-        let (remarks_sort, remarks_label) =
-            col_sort(&self.path_and_query, "Remarks", "Remarks", &self.sort);
-        let (start_date_sort, start_date_label) =
-            col_sort(&self.path_and_query, "StartDate", "Start Date", &self.sort);
-        let (end_date_sort, end_date_label) =
-            col_sort(&self.path_and_query, "EndDate", "End Date", &self.sort);
-        let (status_sort, status_label) =
-            col_sort(&self.path_and_query, "Status", "Status", &self.sort);
-        let (gandolas_sort, gandolas_label) =
-            col_sort(&self.path_and_query, "Gandolas", "Gandolas", &self.sort);
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "SiteId",
-                label: &site_id_label,
-                sort_url: Some(&site_id_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Address",
-                label: &address_label,
-                sort_url: Some(&address_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Remarks",
-                label: &remarks_label,
-                sort_url: Some(&remarks_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "StartDate",
-                label: &start_date_label,
-                sort_url: Some(&start_date_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "EndDate",
-                label: &end_date_label,
-                sort_url: Some(&end_date_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Status",
-                label: &status_label,
-                sort_url: Some(&status_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Gandolas",
-                label: &gandolas_label,
-                sort_url: Some(&gandolas_sort),
-                push_url: true,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .sites
-            .items
-            .iter()
-            .map(|s| {
-                let gandolas = s.gandola_names.join(", ");
-                TableRow {
-                    attrs: row_attr_navigate_route(SiteDetailRouteTag::new(s.id)),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &s.name,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &s.site_id,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &s.address,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &s.remarks,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &s.start_date,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &s.end_date,
-                            classes: "",
-                        }),
-                        status_badge(&s.status, &s.status_label),
-                        field_text(FieldText {
-                            value: &gandolas,
-                            classes: "",
-                        }),
-                    ],
-                }
-            })
-            .collect();
+        let labels = site_column_labels(&self.path_and_query, &self.sort, false);
+        let headers = site_column_headers(&labels, true);
+        let rows = site_table_rows(&self.sites.items, |site| {
+            row_attr_navigate_route(SiteDetailRouteTag::new(site.id))
+        });
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
@@ -1256,42 +1419,45 @@ impl RenderTemplate for SiteCreateModalPage {
         };
         modal_keyed::<SiteCreateModalKey>(
             "",
-            form(&CsrfToken::current(), FormOpts {
-                title: "Create Site",
-                subtitle: "Create a new site",
-                classes: "@container",
-                attrs: form_hx_post_url::<SiteCreateModalKey>(&modal_create_post_query(
-                    SiteCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: site_form_inputs(
-                    &self.name,
-                    &self.site_id,
-                    self.customer_id,
-                    &self.customer_display,
-                    &self.status,
-                    &self.start_date,
-                    &self.end_date,
-                    &self.address,
-                    &self.remarks,
-                    &self.gandolas,
-                    &self.invoices,
-                    &self.purchase_orders,
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save Site",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Site",
+                    subtitle: "Create a new site",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<SiteCreateModalKey>(&modal_create_post_query(
+                        SiteCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: site_form_inputs(
+                        &self.name,
+                        &self.site_id,
+                        self.customer_id,
+                        &self.customer_display,
+                        &self.status,
+                        &self.start_date,
+                        &self.end_date,
+                        &self.address,
+                        &self.remarks,
+                        &self.gandolas,
+                        &self.invoices,
+                        &self.purchase_orders,
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Site",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }
@@ -1315,38 +1481,11 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
         } else {
             self.target_input.as_str()
         };
-        let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
-        let (status_sort, status_label) =
-            col_sort(&self.path_and_query, "Status", "Status", &self.sort);
-        let headers = [
-            TableColumnHeader {
-                key: "Name",
-                label: &name_label,
-                sort_url: Some(&name_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Status",
-                label: &status_label,
-                sort_url: Some(&status_sort),
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .sites
-            .items
-            .iter()
-            .map(|s| TableRow {
-                attrs: row_attr_select_multi(target, &s.id.to_string(), &s.name),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &s.name,
-                        classes: "",
-                    }),
-                    status_badge(&s.status, &s.status_label),
-                ],
-            })
-            .collect();
+        let labels = site_column_labels(&self.path_and_query, &self.sort, true);
+        let headers = site_column_headers(&labels, false);
+        let rows = site_table_rows(&self.sites.items, |site| {
+            row_attr_select_multi(target, &site.id.to_string(), &site.name)
+        });
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
@@ -2027,34 +2166,39 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
         };
         modal_keyed::<PurchaseOrderCreateModalKey>(
             "!max-w-6xl w-full",
-            form(&CsrfToken::current(), FormOpts {
-                title: "Create purchase order",
-                subtitle: "Create a new purchase order",
-                classes: "@container",
-                attrs: form_hx_post_url::<PurchaseOrderCreateModalKey>(&modal_create_post_query(
-                    PurchaseOrderCreatePostRouteTag,
-                    form_name,
-                    &self.refresh_table,
-                    &self.target_input,
-                )),
-                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                inputs: purchase_order_form_inputs(
-                    &self.form,
-                    &self.customer_display,
-                    &self.site_display,
-                    &self.file_display,
-                ),
-                actions: html! {
-                    (container_row("flex justify-end gap-2 mt-2", html! {
-                        (button_submit(ButtonSubmit {
-                            label: "Save purchase order",
-                            classes: "btn-primary",
-                            ..Default::default()
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create purchase order",
+                    subtitle: "Create a new purchase order",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<PurchaseOrderCreateModalKey>(
+                        &modal_create_post_query(
+                            PurchaseOrderCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: purchase_order_form_inputs(
+                        &self.form,
+                        &self.customer_display,
+                        &self.site_display,
+                        &self.file_display,
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save purchase order",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
                         }))
-                    }))
+                    },
+                    ..Default::default()
                 },
-                ..Default::default()
-            }),
+            ),
         )
     }
 }

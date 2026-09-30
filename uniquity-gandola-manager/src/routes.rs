@@ -1,10 +1,11 @@
 use super::{
     handlers,
     keys::{
-        GandolaDeleteModalKey, GandolaSelectModalKey, GandolaSelectTableKey, GandolaTableKey,
-        PurchaseOrderDeleteModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
-        PurchaseOrderTableKey, SiteDeleteModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey,
-        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        GandolaDeleteModalKey, GandolaSelectModalKey, GandolaSelectTableKey, GandolaSitesTableKey,
+        GandolaTableKey, PurchaseOrderDeleteModalKey, PurchaseOrderSelectModalKey,
+        PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteDeleteModalKey,
+        SiteFkSelectModalKey, SiteFkSelectTableKey, SiteSelectModalKey, SiteSelectTableKey,
+        SiteTableKey,
     },
 };
 
@@ -14,7 +15,7 @@ lariv_rs::define_plugin_routes! {
         get GandolaDefaultRouteTag, "/gandola", handlers::gandolas::list, fragment(GandolaTableKey);
         get GandolaCreateGetRouteTag, "/gandola/create", handlers::gandolas::create_get, modal;
         post GandolaCreatePostRouteTag, "/gandola/create", handlers::gandolas::create_post;
-        get GandolaDetailRouteTag, "/gandola/g/{id}", handlers::gandolas::detail;
+        get GandolaDetailRouteTag, "/gandola/g/{id}", handlers::gandolas::detail, fragment(GandolaSitesTableKey);
         get GandolaEditGetRouteTag, "/gandola/g/{id}/edit", handlers::gandolas::edit_get, modal;
         post GandolaEditPostRouteTag, "/gandola/g/{id}/edit", handlers::gandolas::edit_post;
         get GandolaDeleteGetRouteTag, "/gandola/g/{id}/delete", handlers::gandolas::delete_get, modal;

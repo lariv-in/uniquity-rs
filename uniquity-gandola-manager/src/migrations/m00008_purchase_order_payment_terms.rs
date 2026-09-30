@@ -66,7 +66,7 @@ async fn execute(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
 async fn copy_terms(manager: &SchemaManager<'_>) -> Result<Vec<i64>, DbErr> {
     let conn = manager.get_connection();
     let rows = conn
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT id, draft_payment_term_id FROM purchase_orders \
              WHERE draft_payment_term_id IS NOT NULL"
@@ -81,7 +81,7 @@ async fn copy_terms(manager: &SchemaManager<'_>) -> Result<Vec<i64>, DbErr> {
         old_term_ids.push(old_term_id);
 
         let new_term = conn
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "INSERT INTO purchase_order_payment_terms (created_at, updated_at) \
                  SELECT created_at, updated_at FROM draft_payment_terms WHERE id = $1 \
@@ -96,7 +96,7 @@ async fn copy_terms(manager: &SchemaManager<'_>) -> Result<Vec<i64>, DbErr> {
             })?;
         let new_term_id: i64 = new_term.try_get("", "id")?;
 
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "INSERT INTO purchase_order_payment_term_lines \
              (created_at, updated_at, purchase_order_payment_term_id, line_order, \
@@ -108,7 +108,7 @@ async fn copy_terms(manager: &SchemaManager<'_>) -> Result<Vec<i64>, DbErr> {
         ))
         .await?;
 
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE purchase_orders SET payment_term_id = $1 WHERE id = $2",
             [new_term_id.into(), po_id.into()],

@@ -14,7 +14,7 @@ edition = "2024"
 [workspace.dependencies]
 lariv-rs = { 
 	# path = "../../lariv-rs",
-	git = "https://github.com/lariv-in/lariv-rs", rev = "c05f9fedeeef7ee218e0ea7a35b072a243cb1533",
+	git = "https://github.com/lariv-in/lariv-rs", rev = "08ffe6864431bc129047c794fcbb36e6727ad364",
 	default-features = false, features = [
 		"plugin-users",
 		"plugin-dashboard",
@@ -32,7 +32,7 @@ tokio = { version = "1", features = ["full"] }
 anyhow = { version = "1", features = ["backtrace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-sea-orm = { version = "1.1", features = [
+sea-orm = { version = "2.0", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
@@ -40,7 +40,7 @@ sea-orm = { version = "1.1", features = [
     "with-json",
     "with-rust_decimal",
 ] }
-sea-orm-migration = { version = "1.1", features = [
+sea-orm-migration = { version = "2.0", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
 ] }

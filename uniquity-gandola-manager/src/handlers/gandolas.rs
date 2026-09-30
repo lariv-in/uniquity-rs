@@ -28,9 +28,10 @@ use crate::{
     entities::gandola::{self, Entity as GandolaEntity},
     forms::GandolaForm,
     handlers::ModalNameQuery,
+    handlers::sites::{SiteListQuery, query_sites},
     keys::{
         GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
-        GandolaSelectTableKey, GandolaTableKey,
+        GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey,
     },
     logic::current_site_for,
     routes::GandolaDetailRouteTag,
@@ -186,13 +187,16 @@ pub async fn detail(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
+    uri: Uri,
     Path(id): Path<i64>,
+    Query(q): Query<SiteListQuery>,
 ) -> Response {
     let Some(g) = find_gandola_scoped(&state.db, id, &ctx).await else {
         return Redirect::to(LIST_URL).into_response();
     };
-    let sites = load_sites_for_gandola(&state.db, g.id).await;
-    let current = current_site_for(&sites, today_utc());
+    let linked = load_sites_for_gandola(&state.db, g.id).await;
+    let current = current_site_for(&linked, today_utc());
+    let sites = query_sites(&state.db, &q, &ctx, q.page_size.get(), Some(g.id), true).await;
     let page = GandolaDetailPage {
         id: g.id,
         name: g.name,
@@ -201,15 +205,17 @@ pub async fn detail(
             id: s.id,
             name: s.name.clone(),
         }),
-        sites: sites
-            .into_iter()
-            .map(|s| RelatedName {
-                id: s.id,
-                name: s.name,
-            })
-            .collect(),
+        sites,
+        filter_name: q.name.clone().unwrap_or_default(),
+        filter_site_id: q.site_id.clone().unwrap_or_default(),
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        page_size: q.page_size.get(),
         can_edit: is_superuser(&ctx),
     };
+    if htmx.targets::<GandolaSitesTableKey>() {
+        return page.render_sites_table().into_response();
+    }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 

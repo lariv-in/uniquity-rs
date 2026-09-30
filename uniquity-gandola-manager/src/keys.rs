@@ -1,4 +1,5 @@
 lariv_rs::swap_key!(GandolaTableKey, "gandola-table");
+lariv_rs::swap_key!(GandolaSitesTableKey, "gandola-detail-sites-table");
 lariv_rs::swap_key!(GandolaCreateModalKey, "gandola-create-modal");
 lariv_rs::swap_key!(GandolaEditModalKey, "gandola-edit-modal");
 lariv_rs::swap_key!(GandolaDeleteModalKey, "gandola-delete-modal");

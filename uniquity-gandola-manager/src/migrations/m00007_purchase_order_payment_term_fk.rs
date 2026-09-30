@@ -26,7 +26,7 @@ enum DraftPaymentTerms {
 async fn backfill_terms(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let conn = manager.get_connection();
     let rows = conn
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT id, payment_term_lines_json FROM purchase_orders".to_string(),
         ))
@@ -43,7 +43,7 @@ async fn backfill_terms(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         let term = upsert_draft_payment_term_lines(conn, None, &lines)
             .await
             .map_err(DbErr::Custom)?;
-        conn.execute(Statement::from_sql_and_values(
+        conn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE purchase_orders SET draft_payment_term_id = $1 WHERE id = $2",
             [term.id.into(), po_id.into()],
