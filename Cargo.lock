@@ -2977,7 +2977,6 @@ dependencies = [
 [[package]]
 name = "lariv-rs"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=08ffe6864431bc129047c794fcbb36e6727ad364#08ffe6864431bc129047c794fcbb36e6727ad364"
 dependencies = [
  "anyhow",
  "async-imap",
@@ -3048,7 +3047,6 @@ dependencies = [
 [[package]]
 name = "lariv-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/lariv-in/lariv-rs?rev=08ffe6864431bc129047c794fcbb36e6727ad364#08ffe6864431bc129047c794fcbb36e6727ad364"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6942,6 +6940,7 @@ name = "uniquity-ventures-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "frunk",

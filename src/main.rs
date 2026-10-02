@@ -8,6 +8,7 @@ use lariv_rs::plugins::{
 };
 use tracing_subscriber::EnvFilter;
 
+mod hr_role;
 mod website_seed;
 
 #[lariv_rs::main(
@@ -38,6 +39,8 @@ async fn main() -> anyhow::Result<()> {
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
     let app = uniquity_gandola_manager::install(app);
+    // After finance and gandola so `hr` is appended to allowlists those plugins already registered.
+    let app = hr_role::install(app);
     let app = otp::install(app);
     let app = pwa::install(app);
     let app = dashboard::install(app);

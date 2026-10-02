@@ -4,5 +4,5 @@ lariv_rs::define_register_apps! {
     name: "Gandola Manager";
     href: "/gandola/sites/";
     icon: "building-office-2";
-    roles: ["superuser"];
+    roles: ["superuser", "hr"];
 }

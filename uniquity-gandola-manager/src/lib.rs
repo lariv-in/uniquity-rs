@@ -62,6 +62,7 @@ lariv_rs::define_plugin_install! {
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
+        cap_hook(lariv_rs::plugins::users::role_authorization::RoleAuthorizationTag, lariv_rs::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
         commands(cli::Hook),

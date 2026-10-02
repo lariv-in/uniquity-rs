@@ -14,7 +14,7 @@ edition = "2024"
 [workspace.dependencies]
 lariv-rs = { 
 	# path = "../../lariv-rs",
-	git = "https://github.com/lariv-in/lariv-rs", rev = "08ffe6864431bc129047c794fcbb36e6727ad364",
+	git = "https://github.com/lariv-in/lariv-rs", rev = "150bd339d2ba275b94823fc5fc2ed1e264b518d9",
 	default-features = false, features = [
 		"plugin-users",
 		"plugin-dashboard",
@@ -85,6 +85,8 @@ lariv-rs = { workspace = true }
 uniquity-gandola-manager = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
+frunk = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
