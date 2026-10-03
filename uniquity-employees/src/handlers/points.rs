@@ -74,7 +74,7 @@ pub async fn list(
     Query(q): Query<PointsListQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/").into_response();
+        return Redirect::to(&lariv_rs::plugins::dashboard::routes::DashboardHomeRouteTag.url()).into_response();
     }
     let points = load_rows(&state.db, &q, &ctx).await;
     let page = PointsListPage {
@@ -104,10 +104,10 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/points/").into_response();
+        return Redirect::to(&crate::routes::PointsListRouteTag.url()).into_response();
     }
     let Some(pt) = find_points_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/employees/points/").into_response();
+        return Redirect::to(&crate::routes::PointsListRouteTag.url()).into_response();
     };
     let rows = query_points(&state.db, &ctx, 1, 1000, None).await.0;
     let detail = rows.into_iter().find(|r| r.id == pt.id).unwrap_or(PointsRow {
@@ -136,7 +136,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/points/").into_response();
+        return Redirect::to(&crate::routes::PointsListRouteTag.url()).into_response();
     }
     let page = PointsCreateModalPage {
         form_name: q.form_name(),
@@ -158,7 +158,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PointsForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/points/").into_response();
+        return Redirect::to(&crate::routes::PointsListRouteTag.url()).into_response();
     }
     let points = match Decimal::from_str(form.points.trim()) {
         Ok(d) => d,

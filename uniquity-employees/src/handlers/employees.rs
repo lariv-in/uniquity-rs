@@ -99,7 +99,7 @@ pub async fn list(
     Query(q): Query<EmployeeListQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/").into_response();
+        return Redirect::to(&lariv_rs::plugins::dashboard::routes::DashboardHomeRouteTag.url()).into_response();
     }
     let employees = load_rows(&state.db, &q, &ctx).await;
     let page = EmployeeListPage {
@@ -130,10 +130,10 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     let Some(emp) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     };
     let user_name = user_display_name(&state.db, emp.user_id).await;
     let user_email = crate::scope::load_user_map(&state.db, &[emp.user_id])
@@ -157,7 +157,7 @@ pub async fn create_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     let page = EmployeeCreateModalPage {
         form_name: q.form_name(),
@@ -178,7 +178,7 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     let user_display = user_display_name(&state.db, form.user_id).await;
     let now = Utc::now();
@@ -215,10 +215,10 @@ pub async fn edit_get(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     let Some(emp) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     };
     let user_display = user_display_name(&state.db, emp.user_id).await;
     let page = EmployeeFormPage {
@@ -236,10 +236,10 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<EmployeeForm>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     let Some(existing) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     };
     let now = Utc::now();
     let model = employee::ActiveModel {
@@ -282,13 +282,13 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if !require_superuser(&ctx) {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to("/employees/").into_response();
+        return Redirect::to(&crate::routes::EmployeesDefaultRouteTag.url()).into_response();
     }
     match employee::Entity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/employees/"),
+        Ok(_) => htmx.redirect(&crate::routes::EmployeesDefaultRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete employee");
             let page = ConfirmDeletePage {

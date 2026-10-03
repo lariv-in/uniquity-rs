@@ -37,15 +37,14 @@ use crate::{
     },
     keys::{
         SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
-        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoicesTableKey, SiteSelectModalKey,
-        SiteSelectTableKey, SitePurchaseOrdersTableKey, SiteTableKey,
+        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoicesTableKey,
+        SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
-    routes::SiteDetailRouteTag,
+    routes::{SiteDefaultRouteTag, SiteDetailRouteTag},
     scope::{
-        apply_name_filter_sites, apply_site_id_filter_sites, customer_name, find_site_scoped,
-        gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
-        invoice_items_from_ids, is_superuser, load_gandolas_for_site, opt_string,
-        purchase_order_items_for_site,
+        apply_name_filter_sites, apply_site_id_filter_sites, can_manage, customer_name,
+        find_site_scoped, gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
+        invoice_items_from_ids, load_gandolas_for_site, opt_string, purchase_order_items_for_site,
         purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
         sync_site_invoices, sync_site_purchase_orders,
     },
@@ -57,7 +56,9 @@ use crate::{
     },
 };
 
-const LIST_URL: &str = "/gandola/sites/";
+fn list_url() -> String {
+    SiteDefaultRouteTag.url()
+}
 
 /// Sort sites by the first linked gandola name (sites without gandolas sort as empty).
 const GANDOLA_NAME_SORT_EXPR: &str = "COALESCE((SELECT MIN(g.name) FROM gandola_sites gs INNER JOIN gandolas g ON g.id = gs.gandola_id WHERE gs.site_id = sites.id), '')";
@@ -242,7 +243,7 @@ pub async fn list(
         filter_site_id: q.site_id.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -320,7 +321,7 @@ pub async fn detail(
     Query(q): Query<SiteDetailQuery>,
 ) -> Response {
     let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let mut gandola_query = GandolaListQuery {
         name: q.gandola_name.clone(),
@@ -344,14 +345,8 @@ pub async fn detail(
     };
     po_query.page = q.po_page;
     po_query.page_size = q.page_size;
-    let purchase_orders = query_purchase_orders(
-        &state.db,
-        &po_query,
-        &ctx,
-        q.page_size.get(),
-        Some(s.id),
-    )
-    .await;
+    let purchase_orders =
+        query_purchase_orders(&state.db, &po_query, &ctx, q.page_size.get(), Some(s.id)).await;
     let invoices = query_site_invoices(
         related_invoices_for_site(&state.db, s.id, &ctx.timezone).await,
         q.invoice_number.as_deref(),
@@ -384,7 +379,7 @@ pub async fn detail(
         invoice_sort: q.invoice_sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
     };
     if htmx.targets::<SiteGandolasTableKey>() {
         return page.render_gandolas_table().into_response();
@@ -467,8 +462,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let page = SiteCreateModalPage {
         form_name: q.form_name(),
@@ -499,8 +494,8 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SiteForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
     let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
@@ -629,11 +624,11 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(s) = find_site_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let page = SiteEditModalPage {
         id: s.id,
@@ -693,11 +688,11 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<SiteForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(existing) = find_site_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
     let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
@@ -829,14 +824,14 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     if find_site_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     }
     match crate::site_persist::delete_site(&state.db, id).await {
-        Ok(()) => htmx.redirect(LIST_URL),
+        Ok(()) => htmx.redirect(&list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete site");
             let page = ConfirmDeletePage {
@@ -874,7 +869,7 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Sites".into()),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<SiteSelectTableKey, SiteSelectModalKey, _>(&htmx, &page)
@@ -903,7 +898,7 @@ pub async fn fk_select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "SiteID".into()),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<SiteFkSelectTableKey, SiteFkSelectModalKey, _>(&htmx, &page)

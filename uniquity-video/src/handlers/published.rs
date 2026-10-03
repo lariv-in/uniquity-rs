@@ -130,7 +130,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(pv) = find_published_video(&state.db, id).await else {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     };
     let yt = load_youtube_meta(&state, &pv.youtube_id).await;
     let watch_url = youtube::youtube_watch_url(&pv.youtube_id).unwrap_or_default();
@@ -229,7 +229,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(pv) = find_published_video(&state.db, id).await else {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     };
     let edited_display = edited_video_display(&state.db, pv.edited_video_id).await;
     let page = PublishedFormPage {
@@ -248,7 +248,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<PublishedVideoForm>,
 ) -> Response {
     let Some(existing) = find_published_video(&state.db, id).await else {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     };
     let video_id = match youtube::clean_youtube_video_id(&form.you_tube_video_id) {
         Ok(vid) => vid,
@@ -296,10 +296,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if find_published_video(&state.db, id).await.is_none() {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     }
     match published_video::Entity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/video/published/"),
+        Ok(_) => htmx.redirect(&crate::routes::PublishedListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete published video");
             let page = ConfirmDeletePage {
@@ -358,7 +358,7 @@ pub async fn editor_points_get(
         return Redirect::to(&PublishedDetailRouteTag::new(id).url()).into_response();
     }
     let Some(pv) = find_published_video(&state.db, id).await else {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     };
     let page = EditorPointsPage {
         published_id: pv.id,
@@ -378,7 +378,7 @@ pub async fn editor_points_post(
         return Redirect::to(&PublishedDetailRouteTag::new(id).url()).into_response();
     }
     let Some(pv) = find_published_video(&state.db, id).await else {
-        return Redirect::to("/video/published/").into_response();
+        return Redirect::to(&crate::routes::PublishedListRouteTag.url()).into_response();
     };
     if pv.assigned_to_id == 0 {
         return Redirect::to(&PublishedEditorPointsPostRouteTag::new(id).url()).into_response();

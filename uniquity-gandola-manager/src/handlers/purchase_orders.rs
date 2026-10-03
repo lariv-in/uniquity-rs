@@ -36,8 +36,8 @@ use crate::{
     po_lines::{default_po_lines_json, load_po_line_displays},
     routes::PurchaseOrderDetailRouteTag,
     scope::{
-        apply_number_filter_purchase_orders, customer_name, find_purchase_order_scoped,
-        is_superuser, parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
+        apply_number_filter_purchase_orders, can_manage, customer_name, find_purchase_order_scoped,
+        parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
     },
     state::GandolaManagerState,
     templates::{
@@ -47,7 +47,9 @@ use crate::{
     },
 };
 
-const LIST_URL: &str = "/gandola/purchase-orders/";
+fn list_url() -> String {
+    crate::routes::PurchaseOrderDefaultRouteTag.url()
+}
 
 const CUSTOMER_NAME_SORT_EXPR: &str =
     "COALESCE((SELECT name FROM customers WHERE customers.id = purchase_orders.customer_id), '')";
@@ -206,14 +208,13 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<PurchaseOrderListQuery>,
 ) -> maud::Markup {
-    let purchase_orders =
-        query_purchase_orders(&state.db, &q, &ctx, q.page_size.get(), None).await;
+    let purchase_orders = query_purchase_orders(&state.db, &q, &ctx, q.page_size.get(), None).await;
     let page = PurchaseOrderListPage {
         purchase_orders,
         filter_number: q.number.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -237,7 +238,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(po) = find_purchase_order_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let lines = load_po_line_displays(&state.db, po.id).await;
     let page = PurchaseOrderDetailPage {
@@ -263,7 +264,7 @@ pub async fn detail(
                 rate: l.rate,
             })
             .collect(),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -295,8 +296,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let page = create_modal_from_form(
         &state.db,
@@ -318,8 +319,8 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<PurchaseOrderForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let form_name = q.form_name();
     let refresh_table = q.refresh_table();
@@ -376,11 +377,11 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(po) = find_purchase_order_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let form = form_from_model(&state.db, &po, &ctx.timezone).await;
     let page = edit_modal_from_form(&state.db, id, &form, q.form_name(), String::new()).await;
@@ -396,11 +397,11 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<PurchaseOrderForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(existing) = find_purchase_order_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let form_name = q.form_name();
     match crate::po_persist::persist_updated_purchase_order(
@@ -448,17 +449,17 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     if find_purchase_order_scoped(&state.db, id, &ctx)
         .await
         .is_none()
     {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     }
     match crate::po_persist::delete_purchase_order(&state.db, id).await {
-        Ok(()) => htmx.redirect(LIST_URL),
+        Ok(()) => htmx.redirect(&list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete purchase order");
             let page = ConfirmDeletePage {
@@ -491,7 +492,7 @@ pub async fn select(
             .target_input
             .clone()
             .unwrap_or_else(|| "PurchaseOrders".into()),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey, _>(

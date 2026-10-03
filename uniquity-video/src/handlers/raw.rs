@@ -140,7 +140,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(raw) = find_raw_footage(&state.db, id).await else {
-        return Redirect::to("/video/raw/").into_response();
+        return Redirect::to(&crate::routes::RawListRouteTag.url()).into_response();
     };
     let page = RawDetailPage {
         id: raw.id,
@@ -231,7 +231,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(raw) = find_raw_footage(&state.db, id).await else {
-        return Redirect::to("/video/raw/").into_response();
+        return Redirect::to(&crate::routes::RawListRouteTag.url()).into_response();
     };
     let file_items: Vec<ManyToManyItem> = raw
         .file_ids
@@ -259,7 +259,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<RawFootageForm>,
 ) -> Response {
     let Some(existing) = find_raw_footage(&state.db, id).await else {
-        return Redirect::to("/video/raw/").into_response();
+        return Redirect::to(&crate::routes::RawListRouteTag.url()).into_response();
     };
     let now = Utc::now();
     let model = raw_footage::ActiveModel {
@@ -306,10 +306,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if find_raw_footage(&state.db, id).await.is_none() {
-        return Redirect::to("/video/raw/").into_response();
+        return Redirect::to(&crate::routes::RawListRouteTag.url()).into_response();
     }
     match raw_footage::Entity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/video/raw/"),
+        Ok(_) => htmx.redirect(&crate::routes::RawListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete raw footage");
             let page = ConfirmDeletePage {

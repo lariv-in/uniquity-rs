@@ -20,7 +20,9 @@ use crate::{
     templates::GandolaPreferencesPage,
 };
 
-const LIST_URL: &str = "/gandola/sites/";
+fn list_url() -> String {
+    crate::routes::SiteDefaultRouteTag.url()
+}
 const DEFAULT_GEMINI_MODEL: &str = "gemini-2.5-flash";
 
 fn product_id_str(id: Option<i64>) -> String {
@@ -130,7 +132,7 @@ pub async fn post(
     HtmlFormBody(form): HtmlFormBody<GandolaPreferencesForm>,
 ) -> Response {
     if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     }
     let existing = load_preferences(&state.db).await;
     let now = Utc::now();

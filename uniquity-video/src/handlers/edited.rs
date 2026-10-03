@@ -121,7 +121,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(ev) = find_edited_video(&state.db, id).await else {
-        return Redirect::to("/video/edited/").into_response();
+        return Redirect::to(&crate::routes::EditedListRouteTag.url()).into_response();
     };
     let page = EditedDetailPage {
         id: ev.id,
@@ -189,7 +189,7 @@ pub async fn edit_get(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(ev) = find_edited_video(&state.db, id).await else {
-        return Redirect::to("/video/edited/").into_response();
+        return Redirect::to(&crate::routes::EditedListRouteTag.url()).into_response();
     };
     let page = EditedFormPage {
         id: ev.id,
@@ -208,7 +208,7 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<EditedVideoForm>,
 ) -> Response {
     let Some(existing) = find_edited_video(&state.db, id).await else {
-        return Redirect::to("/video/edited/").into_response();
+        return Redirect::to(&crate::routes::EditedListRouteTag.url()).into_response();
     };
     let now = Utc::now();
     let model = edited_video::ActiveModel {
@@ -252,10 +252,10 @@ pub async fn delete_post(
     Path(id): Path<i64>,
 ) -> Response {
     if find_edited_video(&state.db, id).await.is_none() {
-        return Redirect::to("/video/edited/").into_response();
+        return Redirect::to(&crate::routes::EditedListRouteTag.url()).into_response();
     }
     match edited_video::Entity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect("/video/edited/"),
+        Ok(_) => htmx.redirect(&crate::routes::EditedListRouteTag.url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete edited video");
             let page = ConfirmDeletePage {

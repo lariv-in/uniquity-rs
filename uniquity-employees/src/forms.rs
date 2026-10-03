@@ -2,6 +2,9 @@ use lariv_rs::html_form::{
     html_form,
     widgets::{ForeignKey, Text},
 };
+use lariv_rs::plugins::users::routes::UsersSelectRouteTag;
+
+use super::routes::EmployeesSelectRouteTag;
 
 #[html_form]
 pub struct EmployeeForm {
@@ -9,7 +12,7 @@ pub struct EmployeeForm {
         label = "User",
         required,
         widget = ForeignKey,
-        url = "/users/select",
+        route = UsersSelectRouteTag,
         swap_key = "fk-user",
         display = "user_display",
         placeholder = "Select user…"
@@ -32,7 +35,7 @@ pub struct PointsForm {
         label = "Employee",
         required,
         widget = ForeignKey,
-        url = "/employees/select",
+        route = EmployeesSelectRouteTag,
         swap_key = "fk-employee",
         display = "employee_display",
         placeholder = "Select employee…"

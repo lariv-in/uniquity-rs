@@ -45,15 +45,23 @@ pub fn is_superuser(auth: &AuthContext) -> bool {
     auth.user.is_superuser
 }
 
+/// Gandola Manager allowlist (`hr`, plus any superuser): list, detail, create, edit, and delete.
+pub fn can_manage(auth: &AuthContext) -> bool {
+    lariv_rs::plugins::users::role_authorization::principal_allowed(
+        auth,
+        &lariv_rs::plugins::users::role_authorization::roles_for::<crate::routes::GandolaAccess>(),
+    )
+}
+
 pub fn scope_gandolas(query: Select<GandolaEntity>, auth: &AuthContext) -> Select<GandolaEntity> {
-    if is_superuser(auth) {
+    if can_manage(auth) {
         return query;
     }
     query.filter(Expr::cust("1 = 0"))
 }
 
 pub fn scope_sites(query: Select<SiteEntity>, auth: &AuthContext) -> Select<SiteEntity> {
-    if is_superuser(auth) {
+    if can_manage(auth) {
         return query;
     }
     query.filter(Expr::cust("1 = 0"))
@@ -63,7 +71,7 @@ pub fn scope_purchase_orders(
     query: Select<PurchaseOrderEntity>,
     auth: &AuthContext,
 ) -> Select<PurchaseOrderEntity> {
-    if is_superuser(auth) {
+    if can_manage(auth) {
         return query;
     }
     query.filter(Expr::cust("1 = 0"))

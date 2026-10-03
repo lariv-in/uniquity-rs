@@ -149,7 +149,7 @@ async fn create_draft_invoice_via_http() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/finance-invoices/create")
+                .uri(lariv_rs::plugins::finance_invoices::routes::DraftInvoiceCreatePostRouteTag::PATH)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("cookie", format!("auth-token={token}"))
                 .body(Body::from(body))

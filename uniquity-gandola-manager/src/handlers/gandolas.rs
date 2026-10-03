@@ -37,9 +37,9 @@ use crate::{
         GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey,
     },
     logic::current_site_for,
-    routes::GandolaDetailRouteTag,
+    routes::{GandolaDefaultRouteTag, GandolaDetailRouteTag},
     scope::{
-        apply_name_filter_gandolas, find_gandola_scoped, is_superuser, load_sites_for_gandola,
+        apply_name_filter_gandolas, can_manage, find_gandola_scoped, load_sites_for_gandola,
         scope_gandolas, site_items_for_gandola, site_items_from_ids, sync_gandola_sites,
     },
     state::GandolaManagerState,
@@ -49,7 +49,9 @@ use crate::{
     },
 };
 
-const LIST_URL: &str = "/gandola/";
+fn list_url() -> String {
+    GandolaDefaultRouteTag.url()
+}
 
 /// Sort gandolas by the first linked site name (gandolas without sites sort as empty).
 const SITE_NAME_SORT_EXPR: &str = "COALESCE((SELECT MIN(s.name) FROM gandola_sites gs INNER JOIN sites s ON s.id = gs.site_id WHERE gs.gandola_id = gandolas.id), '')";
@@ -178,7 +180,7 @@ pub async fn list(
         filter_name: q.name.clone().unwrap_or_default(),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
@@ -204,7 +206,7 @@ pub async fn detail(
     Query(q): Query<SiteListQuery>,
 ) -> Response {
     let Some(g) = find_gandola_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let linked = load_sites_for_gandola(&state.db, g.id).await;
     let current = current_site_for(&linked, today_utc());
@@ -223,7 +225,7 @@ pub async fn detail(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
     };
     if htmx.targets::<GandolaSitesTableKey>() {
         return page.render_sites_table().into_response();
@@ -254,8 +256,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let page = GandolaCreateModalPage {
         form_name: q.form_name(),
@@ -276,8 +278,8 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<GandolaForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let sites = site_items_from_ids(&state.db, &form.sites).await;
     let render_error = |error: String| {
@@ -326,11 +328,11 @@ pub async fn edit_get(
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(g) = find_gandola_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let page = GandolaEditModalPage {
         id: g.id,
@@ -351,11 +353,11 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<GandolaForm>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     let Some(existing) = find_gandola_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     };
     let sites = site_items_from_ids(&state.db, &form.sites).await;
     let render_error = |error: String| {
@@ -418,14 +420,14 @@ pub async fn delete_post(
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    if !is_superuser(&ctx) {
-        return Redirect::to(LIST_URL).into_response();
+    if !can_manage(&ctx) {
+        return Redirect::to(&list_url()).into_response();
     }
     if find_gandola_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to(LIST_URL).into_response();
+        return Redirect::to(&list_url()).into_response();
     }
     match GandolaEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect(LIST_URL),
+        Ok(_) => htmx.redirect(&list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete gandola");
             let page = ConfirmDeletePage {
@@ -454,7 +456,7 @@ pub async fn select(
         sort: q.filter.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         target_input: q.target_input.clone().unwrap_or_else(|| "Gandolas".into()),
-        can_edit: is_superuser(&ctx),
+        can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<GandolaSelectTableKey, GandolaSelectModalKey, _>(&htmx, &page)

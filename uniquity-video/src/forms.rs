@@ -2,6 +2,9 @@ use lariv_rs::html_form::{
     html_form,
     widgets::{ForeignKey, ManyToMany, Text},
 };
+use lariv_rs::plugins::filesystem::routes::VNodeFileSelectRouteTag;
+
+use super::routes::{EditedSelectRouteTag, RawEmployeeSelectRouteTag, RawSelectRouteTag};
 
 #[html_form]
 pub struct RawFootageForm {
@@ -11,7 +14,7 @@ pub struct RawFootageForm {
     #[form(
         label = "Files",
         widget = ManyToMany,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-raw-files",
         placeholder = "Select files…"
     )]
@@ -21,7 +24,7 @@ pub struct RawFootageForm {
         label = "Assigned to",
         required,
         widget = ForeignKey,
-        url = "/video/raw/select-employee/",
+        route = RawEmployeeSelectRouteTag,
         swap_key = "fk-assigned-employee",
         display = "assigned_display",
         placeholder = "Select employee…"
@@ -41,7 +44,7 @@ pub struct EditedVideoForm {
         label = "Raw footage",
         required,
         widget = ForeignKey,
-        url = "/video/raw/select/",
+        route = RawSelectRouteTag,
         swap_key = "fk-raw-footage",
         display = "raw_display",
         placeholder = "Select raw footage…"
@@ -52,7 +55,7 @@ pub struct EditedVideoForm {
         label = "Output file",
         required,
         widget = ForeignKey,
-        url = "/filesystem/file-select/",
+        route = VNodeFileSelectRouteTag,
         swap_key = "fk-edited-vnode",
         display = "vnode_display",
         placeholder = "Select output file…"
@@ -66,7 +69,7 @@ pub struct PublishedVideoForm {
         label = "Edited video",
         required,
         widget = ForeignKey,
-        url = "/video/edited/select/",
+        route = EditedSelectRouteTag,
         swap_key = "fk-edited-video",
         display = "edited_display",
         placeholder = "Select edited cut…"
