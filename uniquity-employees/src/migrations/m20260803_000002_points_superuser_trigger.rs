@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
 CREATE OR REPLACE FUNCTION uniquity_points_transaction_check_from_superuser() RETURNS TRIGGER AS $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM users WHERE id = NEW.from_user_id AND is_superuser IS TRUE
+    SELECT 1 FROM users WHERE id = NEW.from_user_id AND role = 'superuser'
   ) THEN
     RAISE EXCEPTION 'from_user_id must reference a superuser';
   END IF;

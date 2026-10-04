@@ -4,14 +4,15 @@ pub mod decimal;
 pub mod schema;
 pub mod typst;
 
+use lariv_rs::plugins::users::roles::Superuser;
 use lariv_rs::plugins::users::state::AuthContext;
 
-/// Whether the user has superuser access (all Uniquity apps require this).
+/// Whether the user has the superuser role.
 pub fn is_superuser(auth: &AuthContext) -> bool {
-    auth.user.is_superuser
+    Superuser::matches(&auth.role)
 }
 
-/// Deny write access for non-superuser users.
+/// Whether the user has the superuser role.
 pub fn require_superuser(auth: &AuthContext) -> bool {
     is_superuser(auth)
 }

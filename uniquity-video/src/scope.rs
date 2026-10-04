@@ -9,6 +9,7 @@ use lariv_rs::plugins::{
     filesystem::entities::filesystem_node::{self, Entity as VNodeEntity},
     users::state::AuthContext,
 };
+use uniquity_common::is_superuser;
 use uniquity_employees::{
     entities::employee::{self, Entity as EmployeeEntity},
     scope::employee_display_name,
@@ -86,7 +87,7 @@ pub async fn scope_raw_select(
     db: &DatabaseConnection,
     auth: &AuthContext,
 ) -> Select<RawFootageEntity> {
-    if auth.user.is_superuser {
+    if is_superuser(auth) {
         return query;
     }
     let Ok(Some(emp)) = EmployeeEntity::find()

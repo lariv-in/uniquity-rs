@@ -202,7 +202,7 @@ pub async fn create_for_employee(
     to_employee_id: i64,
     points: Decimal,
 ) -> Result<points_transaction::Model, sea_orm::DbErr> {
-    if !auth.user.is_superuser {
+    if !require_superuser(auth) {
         return Err(sea_orm::DbErr::Custom(
             "only superusers can create points transactions".into(),
         ));
