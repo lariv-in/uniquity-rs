@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
@@ -9,6 +10,8 @@ use sea_orm::{
 use lariv_rs::components::ManyToManyItem;
 use lariv_rs::plugins::customer::entities::customer::Entity as CustomerEntity;
 use lariv_rs::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
+use lariv_rs::plugins::filesystem::routes::VNodeFileSelectInRouteTag;
+use lariv_rs::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
 use lariv_rs::plugins::finance_invoices::entities::cancelled_invoice::{
     self, Entity as CancelledInvoiceEntity,
 };
@@ -42,7 +45,7 @@ use crate::entities::{
 };
 
 pub fn is_superuser(auth: &AuthContext) -> bool {
-    auth.user.is_superuser
+    lariv_rs::plugins::users::roles::Superuser::matches(&auth.role)
 }
 
 /// Gandola Manager allowlist (`hr`, plus any superuser): list, detail, create, edit, and delete.
@@ -161,6 +164,150 @@ pub async fn vnode_name(db: &DatabaseConnection, vnode_id: Option<i64>) -> Strin
     lariv_rs::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
         .map(|n| n.name)
         .unwrap_or_else(|| format!("#{id}"))
+}
+
+pub async fn vnode_path(db: &DatabaseConnection, vnode_id: Option<i64>) -> String {
+    let Some(id) = vnode_id.filter(|&id| id > 0) else {
+        return String::new();
+    };
+    let Some(node) =
+        lariv_rs::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
+    else {
+        return format!("#{id}");
+    };
+    lariv_rs::plugins::filesystem::node::get_path(db, &node).await
+}
+
+/// Accepts an empty id, or the id of a filesystem directory.
+pub async fn require_vnode_directory(
+    db: &DatabaseConnection,
+    vnode_id: Option<i64>,
+) -> Result<Option<i64>, String> {
+    let Some(id) = vnode_id.filter(|&id| id > 0) else {
+        return Ok(None);
+    };
+    match VNodeEntity::find_by_id(id).one(db).await {
+        Ok(Some(node)) if node.is_directory => Ok(Some(node.id)),
+        Ok(Some(_)) => Err("Purchase order files directory must be a folder.".into()),
+        Ok(None) => Err("Purchase order files directory was not found.".into()),
+        Err(e) => {
+            tracing::error!(error = %e, "find filesystem node");
+            Err("Could not load the purchase order files directory.".into())
+        }
+    }
+}
+
+/// Filesystem path used when no purchase-order files directory has been saved.
+pub const DEFAULT_PURCHASE_ORDER_FILES_PATH: &str = "/Purchase Orders";
+
+const DEFAULT_PURCHASE_ORDER_FILES_NAME: &str = "Purchase Orders";
+
+/// File-picker URL that opens inside `directory_id`.
+/// Empty when `directory_id` is missing, so the picker starts at the filesystem root.
+pub fn purchase_order_file_select_url(directory_id: Option<i64>) -> String {
+    match directory_id.filter(|&id| id > 0) {
+        Some(id) => VNodeFileSelectInRouteTag::new(id).url(),
+        None => String::new(),
+    }
+}
+
+/// Saved directory when it is a folder; otherwise `/Purchase Orders`.
+pub async fn effective_purchase_order_files_directory_id(
+    db: &DatabaseConnection,
+    configured: Option<i64>,
+) -> Option<i64> {
+    if let Some(id) = configured.filter(|&id| id > 0)
+        && let Ok(Some(node)) = VNodeEntity::find_by_id(id).one(db).await
+        && node.is_directory
+    {
+        return Some(node.id);
+    }
+    if configured.filter(|&id| id > 0).is_some() {
+        return configured;
+    }
+    default_purchase_order_files_directory_id(db).await
+}
+
+async fn default_purchase_order_files_directory_id(db: &DatabaseConnection) -> Option<i64> {
+    match lariv_rs::plugins::filesystem::node::get_by_path(db, DEFAULT_PURCHASE_ORDER_FILES_PATH)
+        .await
+    {
+        Ok((Some(node), _)) if node.is_directory => return Some(node.id),
+        Ok((Some(node), _)) => {
+            tracing::warn!(
+                id = node.id,
+                path = DEFAULT_PURCHASE_ORDER_FILES_PATH,
+                "default purchase order path is not a directory"
+            );
+            return None;
+        }
+        Ok((None, _)) => {}
+        Err(lariv_rs::plugins::filesystem::node::NodeError::Validation(msg))
+            if msg.starts_with("path not found") => {}
+        Err(e) => {
+            tracing::error!(error = %e, "lookup default purchase order directory");
+            return None;
+        }
+    }
+    let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+    match lariv_rs::plugins::filesystem::node::ensure_directory_path(
+        db,
+        store.as_ref(),
+        None,
+        &[DEFAULT_PURCHASE_ORDER_FILES_NAME.to_string()],
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!(error = %e, "create default purchase order directory");
+            None
+        }
+    }
+}
+
+async fn backfill_default_po_files_directory(
+    db: &DatabaseConnection,
+    prefs: &mut preferences::Model,
+) {
+    if prefs
+        .purchase_order_files_directory_id
+        .filter(|&id| id > 0)
+        .is_some()
+    {
+        return;
+    }
+    let Some(id) = default_purchase_order_files_directory_id(db).await else {
+        return;
+    };
+    let now = Utc::now();
+    let am = preferences::ActiveModel {
+        id: Set(prefs.id),
+        purchase_order_files_directory_id: Set(Some(id)),
+        updated_at: Set(Some(now)),
+        ..Default::default()
+    };
+    match am.update(db).await {
+        Ok(_) => {
+            prefs.purchase_order_files_directory_id = Some(id);
+            prefs.updated_at = Some(now);
+        }
+        Err(e) => {
+            tracing::error!(error = %e, directory_id = id, "save default purchase order directory");
+        }
+    }
+}
+
+pub async fn purchase_order_file_select_url_from_prefs(db: &DatabaseConnection) -> String {
+    let prefs = load_preferences(db).await;
+    let id = match prefs.purchase_order_files_directory_id.filter(|&id| id > 0) {
+        Some(id) => match VNodeEntity::find_by_id(id).one(db).await {
+            Ok(Some(node)) if node.is_directory => Some(node.id),
+            _ => default_purchase_order_files_directory_id(db).await,
+        },
+        None => default_purchase_order_files_directory_id(db).await,
+    };
+    purchase_order_file_select_url(id)
 }
 
 pub async fn load_sites_for_gandola(db: &DatabaseConnection, gandola_id: i64) -> Vec<site::Model> {
@@ -818,32 +965,37 @@ pub fn parse_optional_i64(s: &str) -> Option<i64> {
 }
 
 pub async fn load_preferences(db: &DatabaseConnection) -> preferences::Model {
-    if let Ok(Some(p)) = PreferencesEntity::find_by_id(1i64).one(db).await {
-        return p;
-    }
-    let now = Utc::now();
-    let am = preferences::ActiveModel {
-        id: Set(1),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        gandola_product_id: Set(None),
-        tpi_product_id: Set(None),
-        dti_product_id: Set(None),
-        payment_term_lines_json: Set(Some(default_payment_term_lines_json())),
-        gemini_api_key: Set(String::new()),
-        gemini_model: Set("gemini-2.5-flash".to_string()),
+    let mut prefs = if let Ok(Some(p)) = PreferencesEntity::find_by_id(1i64).one(db).await {
+        p
+    } else {
+        let now = Utc::now();
+        let am = preferences::ActiveModel {
+            id: Set(1),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            gandola_product_id: Set(None),
+            tpi_product_id: Set(None),
+            dti_product_id: Set(None),
+            payment_term_lines_json: Set(Some(default_payment_term_lines_json())),
+            gemini_api_key: Set(String::new()),
+            gemini_model: Set("gemini-2.5-flash".to_string()),
+            purchase_order_files_directory_id: Set(None),
+        };
+        am.insert(db).await.unwrap_or(preferences::Model {
+            id: 1,
+            created_at: Some(now),
+            updated_at: Some(now),
+            gandola_product_id: None,
+            tpi_product_id: None,
+            dti_product_id: None,
+            payment_term_lines_json: Some(default_payment_term_lines_json()),
+            gemini_api_key: String::new(),
+            gemini_model: "gemini-2.5-flash".to_string(),
+            purchase_order_files_directory_id: None,
+        })
     };
-    am.insert(db).await.unwrap_or(preferences::Model {
-        id: 1,
-        created_at: Some(now),
-        updated_at: Some(now),
-        gandola_product_id: None,
-        tpi_product_id: None,
-        dti_product_id: None,
-        payment_term_lines_json: Some(default_payment_term_lines_json()),
-        gemini_api_key: String::new(),
-        gemini_model: "gemini-2.5-flash".to_string(),
-    })
+    backfill_default_po_files_directory(db, &mut prefs).await;
+    prefs
 }
 
 pub fn opt_string(s: String) -> Option<String> {
@@ -852,5 +1004,28 @@ pub fn opt_string(s: String) -> Option<String> {
         None
     } else {
         Some(t.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_PURCHASE_ORDER_FILES_PATH, purchase_order_file_select_url};
+
+    #[test]
+    fn default_purchase_order_directory_path() {
+        assert_eq!(DEFAULT_PURCHASE_ORDER_FILES_PATH, "/Purchase Orders");
+    }
+
+    #[test]
+    fn file_select_opens_inside_configured_directory() {
+        let url = purchase_order_file_select_url(Some(42));
+        assert!(url.contains("/filesystem/file-select/in/42"), "{url}");
+    }
+
+    #[test]
+    fn file_select_stays_unset_without_directory() {
+        assert!(purchase_order_file_select_url(None).is_empty());
+        assert!(purchase_order_file_select_url(Some(0)).is_empty());
+        assert!(purchase_order_file_select_url(Some(-1)).is_empty());
     }
 }

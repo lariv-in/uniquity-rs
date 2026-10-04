@@ -1,16 +1,13 @@
-//! Deployment role `hr`: Accounting and Gandola Manager, plus the routes they need.
-
-use frunk::{HCons, hlist::HList};
-use sea_orm::DatabaseConnection;
+//! Deployment role `hr`: Accounting, Gandola Manager, the filesystem, and the assistant.
+//! `hr` can open the filesystem and the assistant chat.
+//! Changing filesystem permissions stays with admin and superuser.
+//! Changing assistant skills stays with admin and superuser. Assistant preferences stay superuser-only.
 
 use lariv_rs::{
-    app::{App, MountedApp},
     apps::{AppsCapability, AppsRegistrar},
-    capability::CapStore,
-    db::{DbCap, DbTag},
-    hooks::{AttachState, RunSeed},
     plugins::{
         customer::routes::{CustomerMutate, CustomerView},
+        filesystem::FILESYSTEM_APP_KEY,
         finance_accounts::{
             ACCOUNTING_APP_KEY,
             routes::{FinanceAccountsMutate, FinanceAccountsView},
@@ -19,38 +16,26 @@ use lariv_rs::{
         finance_invoices::routes::{FinanceInvoicesMutate, FinanceInvoicesView},
         finance_products::routes::{FinanceProductsMutate, FinanceProductsView},
         finance_taxes::routes::{FinanceTaxesMutate, FinanceTaxesView},
-        users::role_authorization::{RoleAuthorizationRegistrar, RoleAuthorizationRegistry},
-    },
-    traits::{
-        add::{AddCapability, CapTagAbsent},
-        get::{GetByCapTag, GetByTag},
+        llm_assistant::apps::{LLM_ASSISTANT_APP_KEY, allow_sidebar_role},
+        users::{
+            role_authorization::{RoleAuthorizationRegistrar, RoleAuthorizationRegistry},
+            role_registry::{Role, RoleRegistrar, RoleRegistry},
+        },
     },
 };
 
-pub const HR_ROLE: &str = "hr";
+use uniquity_gandola_manager::routes::Hr;
+
+pub const HR_ROLE: &str = <Hr as Role>::NAME;
 
 pub struct HrRoleTag;
-
-#[derive(Clone)]
-pub struct HrRoleState {
-    pub db: DatabaseConnection,
-}
-
-impl HrRoleState {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
-    }
-}
-
-lariv_rs::define_passthrough_cap!(HrRoleStateCap, HrRoleTag, HrRoleState);
 
 lariv_rs::define_plugin_install! {
     plugin: HrRoleTag;
     steps: [
         apps(AppsHook),
         cap_hook(lariv_rs::plugins::users::role_authorization::RoleAuthorizationTag, lariv_rs::plugins::users::role_authorization::RoleAuthorizationCap, RoleHook),
-        state(StateHook),
-        seeds(SeedsHook),
+        cap_hook(lariv_rs::plugins::users::role_registry::RoleRegistryTag, lariv_rs::plugins::users::role_registry::RoleRegistryCap, CatalogHook),
     ]
 }
 
@@ -59,19 +44,21 @@ pub struct AppsHook;
 
 impl AppsRegistrar for AppsHook {
     fn register_apps(self, apps: AppsCapability) -> AppsCapability {
-        let Some(mut accounting) = apps
-            .apps()
-            .iter()
-            .find(|tile| tile.key == ACCOUNTING_APP_KEY)
-            .cloned()
-        else {
-            return apps;
-        };
-        if !accounting.roles.iter().any(|role| role == HR_ROLE) {
-            accounting.roles.push(HR_ROLE.into());
-        }
-        apps.register(accounting)
+        let apps = allow_hr_app(apps, ACCOUNTING_APP_KEY);
+        let apps = allow_hr_app(apps, FILESYSTEM_APP_KEY);
+        allow_sidebar_role(HR_ROLE);
+        allow_hr_app(apps, LLM_ASSISTANT_APP_KEY)
     }
+}
+
+fn allow_hr_app(apps: AppsCapability, key: &str) -> AppsCapability {
+    let Some(mut tile) = apps.apps().iter().find(|tile| tile.key == key).cloned() else {
+        return apps;
+    };
+    if !tile.roles.iter().any(|role| role == HR_ROLE) {
+        tile.roles.push(HR_ROLE.into());
+    }
+    apps.register(tile)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -92,6 +79,9 @@ impl RoleAuthorizationRegistrar for RoleHook {
             .patch::<FinanceCreditNotesView>(allow_hr)
             .patch::<CustomerView>(allow_hr)
             .patch::<CustomerMutate>(allow_hr)
+        // FilesystemPermissions stays admin and superuser.
+        // LlmSkillsMutate stays admin and superuser.
+        // LlmPrefsAdmin stays superuser-only.
     }
 }
 
@@ -101,94 +91,79 @@ fn allow_hr(roles: &mut Vec<String>) {
     }
 }
 
+/// Registers [`Hr`] on the role catalog so it can be assigned to a user.
 #[derive(Clone, Copy, Default)]
-pub struct StateHook;
+pub struct CatalogHook;
 
-impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
-where
-    L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
-    L: HList + CapTagAbsent<HrRoleTag, TagProof>,
-{
-    type Output = HCons<HrRoleStateCap, L>;
-
-    fn attach_state(app: App<L>) -> App<Self::Output> {
-        let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
-        app.add_capability(CapStore::with_items(HrRoleState::new(conn)))
+impl RoleRegistrar for CatalogHook {
+    fn register_roles(self, registry: RoleRegistry) -> RoleRegistry {
+        registry.register::<Hr>()
     }
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct SeedsHook;
-
-#[async_trait::async_trait]
-impl<M, Idx> RunSeed<M, Idx> for SeedsHook
-where
-    M: GetByTag<HrRoleTag, Idx, Value = HrRoleState> + Sync,
-{
-    async fn run_seed(app: &MountedApp<M>) -> anyhow::Result<()> {
-        seed(app.get_capability_output::<HrRoleTag, Idx>()).await?;
-        Ok(())
-    }
-}
-
-async fn seed(state: &HrRoleState) -> anyhow::Result<()> {
-    use chrono::Utc;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
-
-    use lariv_rs::plugins::users::entities::role::{self, Entity as RoleEntity};
-
-    if RoleEntity::find()
-        .filter(role::Column::Name.eq(HR_ROLE))
-        .one(&state.db)
-        .await?
-        .is_some()
-    {
-        sync_roles_id_sequence(&state.db).await?;
-        return Ok(());
-    }
-
-    // Roles such as `unassigned` are inserted with an explicit id, which does not
-    // advance the Postgres sequence. Using that sequence collides on `roles_pkey`.
-    let next_id = RoleEntity::find()
-        .all(&state.db)
-        .await?
-        .into_iter()
-        .map(|role| role.id)
-        .max()
-        .unwrap_or(0)
-        + 1;
-    let now = Utc::now();
-    let model = role::ActiveModel {
-        id: Set(next_id),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        name: Set(HR_ROLE.into()),
-        title: Set("HR".into()),
-        description: Set("Accounting and Gandola Manager.".into()),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lariv_rs::apps::{AppsCapability, AppsRegistrar};
+    use lariv_rs::plugins::filesystem::{
+        apps::Hook as FilesystemAppsHook,
+        routes::{FilesystemPermissions, RoleHook as FilesystemRoleHook},
     };
-    match model.insert(&state.db).await {
-        Ok(_) => {}
-        Err(err) => {
-            if RoleEntity::find()
-                .filter(role::Column::Name.eq(HR_ROLE))
-                .one(&state.db)
-                .await?
-                .is_none()
-            {
-                return Err(err.into());
-            }
-        }
+    use lariv_rs::plugins::llm_assistant::{
+        apps::Hook as LlmAppsHook,
+        routes::{LlmPrefsAdmin, LlmSkillsMutate, RoleHook as LlmRoleHook},
+    };
+    use lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistrar;
+
+    #[test]
+    fn hr_can_open_filesystem_but_not_change_permissions() {
+        let apps = FilesystemAppsHook.register_apps(AppsCapability::new());
+        let apps = AppsHook.register_apps(apps);
+        let filesystem = apps
+            .apps()
+            .iter()
+            .find(|tile| tile.key == FILESYSTEM_APP_KEY)
+            .expect("filesystem tile");
+        assert!(filesystem.roles.iter().any(|role| role == HR_ROLE));
+        assert!(
+            apps.visible_apps(HR_ROLE)
+                .iter()
+                .any(|tile| tile.key == FILESYSTEM_APP_KEY)
+        );
+
+        let registry = FilesystemRoleHook.register_roles(RoleAuthorizationRegistry::new());
+        let registry = RoleHook.register_roles(registry);
+        let permissions = registry.roles::<FilesystemPermissions>();
+        assert!(permissions.iter().any(|role| role == "admin"));
+        assert!(!permissions.iter().any(|role| role == HR_ROLE));
     }
-    sync_roles_id_sequence(&state.db).await?;
-    Ok(())
-}
 
-async fn sync_roles_id_sequence(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
-    use sea_orm::ConnectionTrait;
+    #[test]
+    fn hr_can_open_assistant_but_not_change_skills_or_preferences() {
+        let apps = LlmAppsHook.register_apps(AppsCapability::new());
+        let apps = AppsHook.register_apps(apps);
+        let assistant = apps
+            .apps()
+            .iter()
+            .find(|tile| tile.key == LLM_ASSISTANT_APP_KEY)
+            .expect("assistant tile");
+        assert!(assistant.roles.iter().any(|role| role == HR_ROLE));
+        assert!(
+            apps.visible_apps(HR_ROLE)
+                .iter()
+                .any(|tile| tile.key == LLM_ASSISTANT_APP_KEY)
+        );
+        assert!(lariv_rs::plugins::llm_assistant::apps::sidebar_visible(
+            Some(HR_ROLE)
+        ));
 
-    db.execute_unprepared(
-        "SELECT setval(pg_get_serial_sequence('roles', 'id'), (SELECT COALESCE(MAX(id), 1) FROM roles))",
-    )
-    .await?;
-    Ok(())
+        let registry = LlmRoleHook.register_roles(RoleAuthorizationRegistry::new());
+        let registry = RoleHook.register_roles(registry);
+        let skills = registry.roles::<LlmSkillsMutate>();
+        assert!(skills.iter().any(|role| role == "admin"));
+        assert!(!skills.iter().any(|role| role == HR_ROLE));
+        let preferences = registry.roles::<LlmPrefsAdmin>();
+        assert!(preferences.is_empty());
+        assert!(!preferences.iter().any(|role| role == HR_ROLE));
+    }
 }

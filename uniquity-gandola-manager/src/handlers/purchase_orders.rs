@@ -37,7 +37,8 @@ use crate::{
     routes::PurchaseOrderDetailRouteTag,
     scope::{
         apply_number_filter_purchase_orders, can_manage, customer_name, find_purchase_order_scoped,
-        parse_optional_i64, scope_purchase_orders, site_name, vnode_name,
+        parse_optional_i64, purchase_order_file_select_url_from_prefs, scope_purchase_orders,
+        site_name, vnode_name,
     },
     state::GandolaManagerState,
     templates::{
@@ -158,6 +159,7 @@ struct PoFormContext {
     customer_display: String,
     site_display: String,
     file_display: String,
+    file_select_url: String,
 }
 
 async fn load_form_context(
@@ -178,6 +180,7 @@ async fn load_form_context(
             String::new()
         },
         file_display: vnode_name(db, parse_optional_i64(file_id)).await,
+        file_select_url: purchase_order_file_select_url_from_prefs(db).await,
     }
 }
 
@@ -286,6 +289,7 @@ async fn create_modal_from_form(
         customer_display: ctx.customer_display,
         site_display: ctx.site_display,
         file_display: ctx.file_display,
+        file_select_url: ctx.file_select_url,
         error,
     }
 }
@@ -366,6 +370,7 @@ async fn edit_modal_from_form(
         customer_display: ctx.customer_display,
         site_display: ctx.site_display,
         file_display: ctx.file_display,
+        file_select_url: ctx.file_select_url,
         error,
     }
 }

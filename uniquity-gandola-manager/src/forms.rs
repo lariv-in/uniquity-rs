@@ -3,7 +3,7 @@ use lariv_rs::html_form::{
     widgets::{Date, Password, Select, Text, Textarea},
 };
 use lariv_rs::plugins::customer::routes::CustomerFkSelectRouteTag;
-use lariv_rs::plugins::filesystem::routes::VNodeFileSelectRouteTag;
+use lariv_rs::plugins::filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
 use lariv_rs::plugins::finance_invoices::forms::PaymentTermLinesDraft;
 use lariv_rs::plugins::finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
 use lariv_rs::plugins::finance_products::routes::ProductFkSelectRouteTag;
@@ -117,6 +117,20 @@ pub struct DraftInvoiceSitesForm {
     pub sites: Vec<i64>,
 }
 
+/// Sites column filter on the invoice hub. The HTML name matches the column key.
+#[html_form]
+pub struct InvoiceHubSitesFilterForm {
+    #[form(
+        label = "Sites",
+        widget = ForeignKey,
+        route = SiteFkSelectRouteTag,
+        swap_key = "invoice-hub-site",
+        display = "site",
+        placeholder = "Select site…"
+    )]
+    pub sites: String,
+}
+
 #[html_form]
 pub struct SiteInvoiceFilterForm {
     #[form(label = "Number", widget = Text, name = "InvoiceNumber")]
@@ -179,6 +193,16 @@ pub struct GandolaPreferencesForm {
         placeholder = "Select product…"
     )]
     pub dti_product_id: String,
+
+    #[form(
+        label = "Purchase order files directory",
+        widget = ForeignKey,
+        route = VNodeSelectRouteTag,
+        swap_key = "gandola-pref-po-files-dir",
+        display = "po_files_directory",
+        placeholder = "Select directory…"
+    )]
+    pub purchase_order_files_directory_id: String,
 
     #[form(label = "Gemini API key", widget = Password)]
     pub gemini_api_key: String,

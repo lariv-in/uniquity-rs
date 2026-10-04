@@ -15,7 +15,10 @@ use lariv_rs::{
 use crate::{
     entities::preferences,
     forms::GandolaPreferencesForm,
-    scope::{is_superuser, load_preferences, parse_optional_i64, product_name},
+    scope::{
+        effective_purchase_order_files_directory_id, is_superuser, load_preferences,
+        parse_optional_i64, product_name, require_vnode_directory, vnode_name,
+    },
     state::GandolaManagerState,
     templates::GandolaPreferencesPage,
 };
@@ -90,6 +93,10 @@ async fn page_from_prefs(
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    let directory_id =
+        effective_purchase_order_files_directory_id(db, prefs.purchase_order_files_directory_id)
+            .await;
+    let directory_display = vnode_name(db, directory_id).await;
     GandolaPreferencesPage {
         gandola_product_id: product_id_str(prefs.gandola_product_id),
         gandola_product_display: product_name(db, prefs.gandola_product_id).await,
@@ -108,6 +115,8 @@ async fn page_from_prefs(
         gemini_api_key: prefs.gemini_api_key.clone(),
         gemini_model,
         gemini_model_choices,
+        purchase_order_files_directory_id: product_id_str(directory_id),
+        purchase_order_files_directory_display: directory_display,
         error,
         can_edit,
     }
@@ -136,6 +145,24 @@ pub async fn post(
     }
     let existing = load_preferences(&state.db).await;
     let now = Utc::now();
+    let directory_id = parse_optional_i64(&form.purchase_order_files_directory_id);
+    if let Err(message) = require_vnode_directory(&state.db, directory_id).await {
+        let prefs = preferences::Model {
+            id: existing.id,
+            created_at: existing.created_at,
+            updated_at: Some(now),
+            gandola_product_id: parse_optional_i64(&form.gandola_product_id),
+            tpi_product_id: parse_optional_i64(&form.tpi_product_id),
+            dti_product_id: parse_optional_i64(&form.dti_product_id),
+            payment_term_lines_json: Some(form.payment_term_lines_json.clone()),
+            gemini_api_key: form.gemini_api_key.trim().to_string(),
+            gemini_model: gemini_model_or_default(&form.gemini_model),
+            purchase_order_files_directory_id: directory_id,
+        };
+        let page = page_from_prefs(&state.db, &prefs, message, true).await;
+        return html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
     let payment_term = if form.payment_term_lines_json.trim().is_empty() {
         default_payment_term_lines_json()
     } else {
@@ -149,6 +176,7 @@ pub async fn post(
         payment_term_lines_json: Set(Some(payment_term)),
         gemini_api_key: Set(form.gemini_api_key.trim().to_string()),
         gemini_model: Set(gemini_model_or_default(&form.gemini_model)),
+        purchase_order_files_directory_id: Set(directory_id),
         updated_at: Set(Some(now)),
         ..Default::default()
     };
@@ -175,6 +203,7 @@ pub async fn post(
                 )),
                 gemini_api_key: Set(form.gemini_api_key.trim().to_string()),
                 gemini_model: Set(gemini_model_or_default(&form.gemini_model)),
+                purchase_order_files_directory_id: Set(directory_id),
             };
             match insert.insert(&state.db).await {
                 Ok(saved) => {
@@ -193,6 +222,7 @@ pub async fn post(
                         payment_term_lines_json: Some(form.payment_term_lines_json.clone()),
                         gemini_api_key: form.gemini_api_key.trim().to_string(),
                         gemini_model: gemini_model_or_default(&form.gemini_model),
+                        purchase_order_files_directory_id: directory_id,
                     };
                     let page = page_from_prefs(&state.db, &prefs, e.to_string(), true).await;
                     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))

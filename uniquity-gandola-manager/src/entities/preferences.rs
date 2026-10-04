@@ -15,6 +15,7 @@ pub struct Model {
     pub payment_term_lines_json: Option<String>,
     pub gemini_api_key: String,
     pub gemini_model: String,
+    pub purchase_order_files_directory_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

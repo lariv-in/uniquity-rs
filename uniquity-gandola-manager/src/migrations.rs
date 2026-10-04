@@ -23,6 +23,7 @@ mod m00018_site_site_id;
 mod m00019_gandola_invoice_date_formats;
 mod m00020_drop_gandola_invoice_date_formats;
 mod m00021_site_remarks;
+mod m00022_gandola_po_files_directory;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -52,6 +53,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00019_gandola_invoice_date_formats::Migration),
             Box::new(m00020_drop_gandola_invoice_date_formats::Migration),
             Box::new(m00021_site_remarks::Migration),
+            Box::new(m00022_gandola_po_files_directory::Migration),
         ]
     }
 }

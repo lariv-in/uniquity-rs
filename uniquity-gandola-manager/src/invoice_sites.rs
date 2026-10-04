@@ -5,19 +5,26 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
+use sea_orm::sea_query::{Expr, SimpleExpr};
 
 use lariv_rs::components::label;
 use lariv_rs::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
 use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
+use lariv_rs::plugins::finance_invoices::hub_filter_addon::{
+    HubQueryParams, InvoiceHubFilterAddon,
+};
 use lariv_rs::plugins::finance_invoices::hub_table_addon::InvoiceHubTableAddon;
 use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
 
-use crate::forms::{DraftInvoiceSitesForm, DraftInvoiceSitesFormField};
+use crate::forms::{
+    DraftInvoiceSitesForm, DraftInvoiceSitesFormField, InvoiceHubSitesFilterForm,
+    InvoiceHubSitesFilterFormField,
+};
 use crate::routes::SiteDetailRouteTag;
 use crate::scope::{
-    load_sites_for_invoice, site_items_for_invoice, site_items_from_ids, site_names_for_invoices,
-    sync_invoice_sites,
+    load_sites_for_invoice, site_items_for_invoice, site_items_from_ids, site_name,
+    site_names_for_invoices, sync_invoice_sites,
 };
 
 pub static INVOICE_SITES_ADDON: InvoiceSitesAddon = InvoiceSitesAddon;
@@ -29,6 +36,9 @@ pub fn register() {
         &INVOICE_SITES_ADDON,
     );
     lariv_rs::plugins::finance_invoices::hub_table_addon::register_invoice_hub_table_addon(
+        &INVOICE_SITES_ADDON,
+    );
+    lariv_rs::plugins::finance_invoices::hub_filter_addon::register_invoice_hub_filter_addon(
         &INVOICE_SITES_ADDON,
     );
     lariv_rs::plugins::finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
@@ -125,6 +135,73 @@ impl InvoiceHubTableAddon for InvoiceSitesAddon {
 }
 
 #[async_trait]
+impl InvoiceHubFilterAddon for InvoiceSitesAddon {
+    fn id(&self) -> &'static str {
+        "uniquity-site-invoices"
+    }
+
+    async fn render_inputs(&self, db: &DatabaseConnection, params: &HubQueryParams<'_>) -> Markup {
+        let raw = params.get("Sites").unwrap_or_default();
+        let site_id = raw.parse::<i64>().ok().filter(|id| *id > 0);
+        let (value, display) = match site_id {
+            Some(id) => (id.to_string(), site_name(db, id).await),
+            None => (String::new(), String::new()),
+        };
+        render_site_filter(&value, &display)
+    }
+
+    fn sql_predicate(
+        &self,
+        params: &HubQueryParams<'_>,
+        draft_invoice_id_sql: &str,
+    ) -> Option<SimpleExpr> {
+        let raw = params.get("Sites")?;
+        match raw.parse::<i64>() {
+            Ok(site_id) if site_id > 0 => Some(sites_linked_to(draft_invoice_id_sql, site_id)),
+            Ok(_) => None,
+            Err(_) => Some(Expr::cust("FALSE")),
+        }
+    }
+}
+
+fn render_site_filter(site_id: &str, display: &str) -> Markup {
+    InvoiceHubSitesFilterForm::render_inputs(
+        &FormCtx::form::<InvoiceHubSitesFilterForm>(CsrfToken::current())
+            .value(InvoiceHubSitesFilterFormField::Sites, site_id)
+            .display(InvoiceHubSitesFilterFormField::Sites, display),
+    )
+}
+
+/// Core hub passes one of a few trusted draft-id expressions. Reject anything else
+/// before it is interpolated into SQL.
+fn draft_id_sql_is_safe(sql: &str) -> bool {
+    if sql == "draft_invoices.id" || sql == "posted_invoices.draft_invoice_id" {
+        return true;
+    }
+    let Some(rest) =
+        sql.strip_prefix("(SELECT pi.draft_invoice_id FROM posted_invoices pi WHERE pi.id = ")
+    else {
+        return false;
+    };
+    let Some(table) = rest.strip_suffix(".posted_invoice_id)") else {
+        return false;
+    };
+    !table.is_empty() && table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn sites_linked_to(draft_invoice_id_sql: &str, site_id: i64) -> SimpleExpr {
+    if !draft_id_sql_is_safe(draft_invoice_id_sql) {
+        return Expr::cust("FALSE");
+    }
+    Expr::cust_with_values(
+        format!(
+            "EXISTS (SELECT 1 FROM site_invoices si WHERE si.draft_invoice_id = ({draft_invoice_id_sql}) AND si.site_id = $1)"
+        ),
+        [site_id],
+    )
+}
+
+#[async_trait]
 impl InvoicePdfContextAddon for InvoiceSitesAddon {
     fn id(&self) -> &'static str {
         "uniquity-site-invoices"
@@ -162,5 +239,76 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
                 "Remarks": "Access from north gate",
             }]
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::sea_query::{PostgresQueryBuilder, Query, Value};
+
+    fn predicate_sql(query: &str, draft_sql: &str) -> Option<(String, Vec<Value>)> {
+        let expr = InvoiceSitesAddon.sql_predicate(&HubQueryParams::new(query), draft_sql)?;
+        let (sql, values) = Query::select()
+            .expr(expr)
+            .to_owned()
+            .build(PostgresQueryBuilder);
+        Some((sql, values.into_iter().collect()))
+    }
+
+    #[test]
+    fn sites_filter_is_inactive_without_a_value() {
+        assert!(predicate_sql("", "draft_invoices.id").is_none());
+        assert!(predicate_sql("Sites=", "draft_invoices.id").is_none());
+        assert!(predicate_sql("Sites=%20", "draft_invoices.id").is_none());
+        assert!(predicate_sql("Number=1", "draft_invoices.id").is_none());
+    }
+
+    #[test]
+    fn sites_filter_binds_the_selected_site_id() {
+        let (sql, values) = predicate_sql("Sites=42", "draft_invoices.id").expect("predicate");
+        assert!(sql.contains("site_invoices"));
+        assert!(sql.contains("draft_invoices.id"));
+        assert!(sql.contains("si.site_id = $1"));
+        assert!(!sql.contains("42"));
+        assert_eq!(values, vec![Value::BigInt(Some(42))]);
+    }
+
+    #[test]
+    fn sites_filter_rejects_a_non_numeric_value() {
+        let (sql, values) = predicate_sql("Sites=North", "draft_invoices.id").expect("predicate");
+        assert!(sql.contains("FALSE"));
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn sites_filter_covers_posted_and_settlement_rows() {
+        let via =
+            lariv_rs::plugins::finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
+                "paid_invoices",
+            );
+        let (sql, _) = predicate_sql("Sites=7", &via).expect("predicate");
+        assert!(sql.contains("paid_invoices.posted_invoice_id"));
+        let (posted, _) =
+            predicate_sql("Sites=7", "posted_invoices.draft_invoice_id").expect("posted");
+        assert!(posted.contains("posted_invoices.draft_invoice_id"));
+    }
+
+    #[test]
+    fn sites_filter_rejects_untrusted_draft_id_sql() {
+        let (sql, values) =
+            predicate_sql("Sites=7", "draft_invoices.id) OR (TRUE").expect("predicate");
+        assert!(sql.contains("FALSE"));
+        assert!(values.is_empty());
+        assert!(!sql.contains("site_invoices"));
+    }
+
+    #[test]
+    fn sites_filter_input_is_a_site_picker() {
+        let html = render_site_filter("42", "North Gate").into_string();
+        assert!(html.contains(r#"name="Sites""#));
+        assert!(html.contains("North Gate"));
+        assert!(html.contains("/gandola/sites/pick-site"));
+        assert!(html.contains("Select site"));
     }
 }

@@ -11,11 +11,9 @@ use lariv_rs::{
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
         delete_confirmation, detail, detail_header, field_text, field_textarea, field_title, form,
         form_hx_get_picker_route, form_hx_get_route, form_hx_get_url, form_hx_post_selector,
-        form_hx_post_url,
-        label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
+        form_hx_post_url, label, layout_main, layout_sidebar, modal, modal_keyed, pagination_pages,
         row_attr_navigate, row_attr_navigate_route, row_attr_select, row_attr_select_multi,
-        shell_scaffold,
-        sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
+        shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_filter,
         table_create_button, table_pagination, with_list_filter_common,
     },
     html_form::{CsrfToken, FormCtx, HtmlForm},
@@ -30,9 +28,9 @@ use lariv_rs::{
 use super::forms::{
     GandolaFilterForm, GandolaFilterFormField, GandolaForm, GandolaFormField,
     GandolaPreferencesForm, GandolaPreferencesFormField, PurchaseOrderFilterForm,
-    SiteInvoiceFilterForm, SiteInvoiceFilterFormField,
     PurchaseOrderFilterFormField, PurchaseOrderForm, PurchaseOrderFormField, SiteFilterForm,
-    SiteFilterFormField, SiteForm, SiteFormField,
+    SiteFilterFormField, SiteForm, SiteFormField, SiteInvoiceFilterForm,
+    SiteInvoiceFilterFormField,
 };
 use super::keys::{
     GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
@@ -495,8 +493,15 @@ fn gandola_column_labels(
     sort_key: &str,
     page_key: &str,
 ) -> (String, String, String, String, String, String) {
-    let (name_sort, name_label) =
-        keyed_col_sort(path_and_query, sort_key, page_key, "Name", "Name", sort, false);
+    let (name_sort, name_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Name",
+        "Name",
+        sort,
+        false,
+    );
     let (current_site_sort, current_site_label) = keyed_col_sort(
         path_and_query,
         sort_key,
@@ -1330,12 +1335,7 @@ pub struct SiteDetailPage {
 impl SiteDetailPage {
     pub fn render_gandolas_table(&self) -> Markup {
         let (name_sort, name_label, current_site_sort, current_site_label, sites_sort, sites_label) =
-            gandola_column_labels(
-                &self.path_and_query,
-                &self.gandola_sort,
-                "g_sort",
-                "g_page",
-            );
+            gandola_column_labels(&self.path_and_query, &self.gandola_sort, "g_sort", "g_page");
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -1392,12 +1392,7 @@ impl SiteDetailPage {
             customer_label,
             site_sort,
             site_label,
-        ) = purchase_order_column_labels(
-            &self.path_and_query,
-            &self.po_sort,
-            "po_sort",
-            "po_page",
-        );
+        ) = purchase_order_column_labels(&self.path_and_query, &self.po_sort, "po_sort", "po_page");
         let headers = [
             TableColumnHeader {
                 key: "Number",
@@ -2009,6 +2004,8 @@ pub struct GandolaPreferencesPage {
     pub gemini_api_key: String,
     pub gemini_model: String,
     pub gemini_model_choices: Vec<(String, String)>,
+    pub purchase_order_files_directory_id: String,
+    pub purchase_order_files_directory_display: String,
     pub error: String,
     pub can_edit: bool,
 }
@@ -2036,6 +2033,14 @@ impl GandolaPreferencesPage {
                                     .display(GandolaPreferencesFormField::TpiProductId, &self.tpi_product_display)
                                     .value(GandolaPreferencesFormField::DtiProductId, &self.dti_product_id)
                                     .display(GandolaPreferencesFormField::DtiProductId, &self.dti_product_display)
+                                    .value(
+                                        GandolaPreferencesFormField::PurchaseOrderFilesDirectoryId,
+                                        &self.purchase_order_files_directory_id,
+                                    )
+                                    .display(
+                                        GandolaPreferencesFormField::PurchaseOrderFilesDirectoryId,
+                                        &self.purchase_order_files_directory_display,
+                                    )
                                     .value(GandolaPreferencesFormField::GeminiApiKey, &self.gemini_api_key)
                                     .value(GandolaPreferencesFormField::GeminiModel, &self.gemini_model)
                                     .choices(GandolaPreferencesFormField::GeminiModel, &self.gemini_model_choices)
@@ -2054,6 +2059,14 @@ impl GandolaPreferencesPage {
                         (label("Gandola Rent Product", field_text(FieldText { value: &self.gandola_product_display, classes: "" })))
                         (label("TPI Product", field_text(FieldText { value: &self.tpi_product_display, classes: "" })))
                         (label("DTI Product", field_text(FieldText { value: &self.dti_product_display, classes: "" })))
+                        (label("Purchase order files directory", field_text(FieldText {
+                            value: if self.purchase_order_files_directory_display.trim().is_empty() {
+                                "Not set"
+                            } else {
+                                &self.purchase_order_files_directory_display
+                            },
+                            classes: "",
+                        })))
                         (label("Gemini API key", field_text(FieldText {
                             value: if self.gemini_api_key.trim().is_empty() { "Not set" } else { "Configured" },
                             classes: "",
@@ -2125,7 +2138,16 @@ fn purchase_order_column_labels(
     sort: &str,
     sort_key: &str,
     page_key: &str,
-) -> (String, String, String, String, String, String, String, String) {
+) -> (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+) {
     let (number_sort, number_label) = keyed_col_sort(
         path_and_query,
         sort_key,
@@ -2135,8 +2157,15 @@ fn purchase_order_column_labels(
         sort,
         false,
     );
-    let (date_sort, date_label) =
-        keyed_col_sort(path_and_query, sort_key, page_key, "Date", "Date", sort, false);
+    let (date_sort, date_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Date",
+        "Date",
+        sort,
+        false,
+    );
     let (customer_sort, customer_label) = keyed_col_sort(
         path_and_query,
         sort_key,
@@ -2146,8 +2175,15 @@ fn purchase_order_column_labels(
         sort,
         false,
     );
-    let (site_sort, site_label) =
-        keyed_col_sort(path_and_query, sort_key, page_key, "Site", "Site", sort, false);
+    let (site_sort, site_label) = keyed_col_sort(
+        path_and_query,
+        sort_key,
+        page_key,
+        "Site",
+        "Site",
+        sort,
+        false,
+    );
     (
         number_sort,
         number_label,
@@ -2451,34 +2487,37 @@ fn purchase_order_form_inputs(
     customer_display: &str,
     site_display: &str,
     file_display: &str,
+    file_select_url: &str,
 ) -> Markup {
-    PurchaseOrderForm::render_inputs(
-        &FormCtx::form::<PurchaseOrderForm>(CsrfToken::current())
-            .value(PurchaseOrderFormField::Number, &form.number)
-            .value(PurchaseOrderFormField::Date, &form.date)
-            .value(
-                PurchaseOrderFormField::CustomerId,
-                fk_value(form.customer_id),
-            )
-            .display(PurchaseOrderFormField::CustomerId, customer_display)
-            .value(PurchaseOrderFormField::SiteId, fk_value(form.site_id))
-            .display(PurchaseOrderFormField::SiteId, site_display)
-            .value(PurchaseOrderFormField::FileId, &form.file_id)
-            .display(PurchaseOrderFormField::FileId, file_display)
-            .value(
-                PurchaseOrderFormField::PaymentTermLinesJson,
-                &form.payment_term_lines_json,
-            )
-            .value(PurchaseOrderFormField::PoLinesJson, &form.po_lines_json)
-            .value(
-                PurchaseOrderFormField::BillingAddress,
-                &form.billing_address,
-            )
-            .value(
-                PurchaseOrderFormField::ShippingAddress,
-                &form.shipping_address,
-            ),
-    )
+    let mut ctx = FormCtx::form::<PurchaseOrderForm>(CsrfToken::current())
+        .value(PurchaseOrderFormField::Number, &form.number)
+        .value(PurchaseOrderFormField::Date, &form.date)
+        .value(
+            PurchaseOrderFormField::CustomerId,
+            fk_value(form.customer_id),
+        )
+        .display(PurchaseOrderFormField::CustomerId, customer_display)
+        .value(PurchaseOrderFormField::SiteId, fk_value(form.site_id))
+        .display(PurchaseOrderFormField::SiteId, site_display)
+        .value(PurchaseOrderFormField::FileId, &form.file_id)
+        .display(PurchaseOrderFormField::FileId, file_display)
+        .value(
+            PurchaseOrderFormField::PaymentTermLinesJson,
+            &form.payment_term_lines_json,
+        )
+        .value(PurchaseOrderFormField::PoLinesJson, &form.po_lines_json)
+        .value(
+            PurchaseOrderFormField::BillingAddress,
+            &form.billing_address,
+        )
+        .value(
+            PurchaseOrderFormField::ShippingAddress,
+            &form.shipping_address,
+        );
+    if !file_select_url.is_empty() {
+        ctx = ctx.url(PurchaseOrderFormField::FileId, file_select_url);
+    }
+    PurchaseOrderForm::render_inputs(&ctx)
 }
 
 #[derive(Generic)]
@@ -2489,6 +2528,7 @@ pub struct PurchaseOrderEditModalPage {
     pub customer_display: String,
     pub site_display: String,
     pub file_display: String,
+    pub file_select_url: String,
     pub error: String,
 }
 
@@ -2511,6 +2551,7 @@ impl RenderTemplate for PurchaseOrderEditModalPage {
                         &self.customer_display,
                         &self.site_display,
                         &self.file_display,
+                        &self.file_select_url,
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
@@ -2541,6 +2582,7 @@ pub struct PurchaseOrderCreateModalPage {
     pub customer_display: String,
     pub site_display: String,
     pub file_display: String,
+    pub file_select_url: String,
     pub error: String,
 }
 
@@ -2573,6 +2615,7 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
                         &self.customer_display,
                         &self.site_display,
                         &self.file_display,
+                        &self.file_select_url,
                     ),
                     actions: html! {
                         (container_row("flex justify-end gap-2 mt-2", html! {
