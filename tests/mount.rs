@@ -14,7 +14,6 @@ use lariv_plugin_dashboard as dashboard;
 use lariv_plugin_filesystem as filesystem;
 use lariv_plugin_finance_accounts as finance_accounts;
 use lariv_plugin_finance_creditnotes as finance_creditnotes;
-use lariv_plugin_finance_customer as finance_customer;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
 use lariv_plugin_finance_products as finance_products;
@@ -81,7 +80,6 @@ async fn uniquity_stack_mounts() {
                     let app = contacts::install(app);
                     let app = tasks::install(app);
                     let app = crm::install(app);
-                    let app = finance_customer::install(app);
                     let app = finance_creditnotes::install(app);
                     let app = finance_taxes::install(app);
                     let app = finance_products::install(app);

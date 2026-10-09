@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 lariv-core = { workspace = true }
-lariv-plugin-customer = { workspace = true }
+lariv-plugin-contacts = { workspace = true }
 lariv-plugin-filesystem = { workspace = true }
 lariv-plugin-finance-common = { workspace = true }
 lariv-plugin-finance-invoices = { workspace = true }

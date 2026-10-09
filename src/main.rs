@@ -1,14 +1,16 @@
+#![feature(impl_trait_in_assoc_type)]
 #![recursion_limit = "4096"]
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_customer, finance_indian, finance_invoices, finance_products, finance_taxes,
+    finance_indian, finance_invoices, finance_products, finance_taxes,
     llm_assistant, otp, pwa, tasks, users, website,
 };
 use tracing_subscriber::EnvFilter;
 
 mod hr_role;
+mod invoice_line_quantity;
 mod website_seed;
 
 #[lariv_rs::main(
@@ -17,6 +19,10 @@ mod website_seed;
     thread_name = "uniquity-server"
 )]
 async fn main() -> anyhow::Result<()> {
+    // rustls is built with both aws-lc-rs and ring, so it will not choose a
+    // process-wide provider. The rest of the stack uses aws-lc-rs.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
@@ -36,11 +42,11 @@ async fn main() -> anyhow::Result<()> {
     // Before CRM so `tasks` can copy `crm_tasks` before CRM drops those tables.
     let app = tasks::install(app);
     let app = crm::install(app);
-    let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = invoice_line_quantity::install(app);
     let app = finance_indian::install(app);
     let app = uniquity_gandola_manager::install(app);
     // After finance and gandola so `hr` is appended to allowlists those plugins already registered.

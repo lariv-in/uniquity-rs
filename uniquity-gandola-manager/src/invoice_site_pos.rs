@@ -16,7 +16,7 @@ use lariv_plugin_finance_invoices::entities::posted_invoice::{
 };
 use lariv_plugin_finance_invoices::logic::draft::DraftLinePending;
 use lariv_plugin_finance_invoices::logic::{
-    CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
+    BillTo, CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
 };
 use lariv_plugin_finance_products::entities::product::{self, Entity as ProductEntity};
 
@@ -277,7 +277,7 @@ async fn invoice_one_purchase_order(
             remarks: None,
             datetime,
             delivery_date: None,
-            customer_id: po.customer_id,
+            bill_to: BillTo::new(false, None, Some(po.customer_id)),
             payment_term_lines,
             header_tax_ids: Vec::new(),
             lines: pending,

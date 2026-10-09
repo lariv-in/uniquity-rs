@@ -52,7 +52,7 @@ fn list_url() -> String {
 }
 
 const CUSTOMER_NAME_SORT_EXPR: &str =
-    "COALESCE((SELECT name FROM customers WHERE customers.id = purchase_orders.customer_id), '')";
+    "COALESCE((SELECT name FROM crm_companies WHERE crm_companies.id = purchase_orders.customer_id), '')";
 const SITE_NAME_SORT_EXPR: &str =
     "COALESCE((SELECT name FROM sites WHERE sites.id = purchase_orders.site_id), '')";
 

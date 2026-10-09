@@ -14,7 +14,6 @@ lariv-plugin-filesystem = { path = "../../lariv-rs/plugins/filesystem" }
 lariv-plugin-finance-accounts = { path = "../../lariv-rs/plugins/finance_accounts" }
 lariv-plugin-finance-common = { path = "../../lariv-rs/plugins/finance_common" }
 lariv-plugin-finance-creditnotes = { path = "../../lariv-rs/plugins/finance_creditnotes" }
-lariv-plugin-finance-customer = { path = "../../lariv-rs/plugins/finance_customer" }
 lariv-plugin-finance-indian = { path = "../../lariv-rs/plugins/finance_indian" }
 lariv-plugin-finance-invoices = { path = "../../lariv-rs/plugins/finance_invoices" }
 lariv-plugin-finance-products = { path = "../../lariv-rs/plugins/finance_products" }

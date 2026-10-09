@@ -9,8 +9,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_customer::customer_type::CustomerType;
-use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
+use lariv_plugin_contacts::entities::company::{self, Entity as CompanyEntity};
 
 use crate::entities::gandola::{self, Entity as GandolaEntity};
 use crate::entities::gandola_site_link::{self, Entity as GandolaSiteLinkEntity};
@@ -86,13 +85,13 @@ pub fn load_gandola_sites_csv(path: &Path) -> Result<Vec<GandolaSiteRelRow>, Str
         .map_err(|e| e.to_string())
 }
 
-async fn find_customer_by_gstin(db: &DatabaseConnection, gstin: &str) -> Option<customer::Model> {
+async fn find_customer_by_gstin(db: &DatabaseConnection, gstin: &str) -> Option<company::Model> {
     let gstin = gstin.trim();
     if gstin.is_empty() {
         return None;
     }
-    if let Ok(Some(c)) = CustomerEntity::find()
-        .filter(customer::Column::Gstin.eq(gstin))
+    if let Ok(Some(c)) = CompanyEntity::find()
+        .filter(company::Column::Gstin.eq(gstin))
         .one(db)
         .await
     {
@@ -100,8 +99,8 @@ async fn find_customer_by_gstin(db: &DatabaseConnection, gstin: &str) -> Option<
     }
     let upper = gstin.to_ascii_uppercase();
     if upper != gstin {
-        if let Ok(Some(c)) = CustomerEntity::find()
-            .filter(customer::Column::Gstin.eq(upper))
+        if let Ok(Some(c)) = CompanyEntity::find()
+            .filter(company::Column::Gstin.eq(upper))
             .one(db)
             .await
         {
@@ -111,20 +110,20 @@ async fn find_customer_by_gstin(db: &DatabaseConnection, gstin: &str) -> Option<
     None
 }
 
-async fn find_customer_by_name(db: &DatabaseConnection, name: &str) -> Option<customer::Model> {
+async fn find_customer_by_name(db: &DatabaseConnection, name: &str) -> Option<company::Model> {
     let name = name.trim();
     if name.is_empty() {
         return None;
     }
-    if let Ok(Some(c)) = CustomerEntity::find()
-        .filter(customer::Column::Name.eq(name))
+    if let Ok(Some(c)) = CompanyEntity::find()
+        .filter(company::Column::Name.eq(name))
         .one(db)
         .await
     {
         return Some(c);
     }
-    let Ok(matches) = CustomerEntity::find()
-        .filter(customer::Column::Name.contains(name))
+    let Ok(matches) = CompanyEntity::find()
+        .filter(company::Column::Name.contains(name))
         .all(db)
         .await
     else {
@@ -145,15 +144,14 @@ pub async fn create_customer(
     db: &DatabaseConnection,
     name: &str,
     gstin: &str,
-) -> Result<customer::Model, String> {
+) -> Result<company::Model, String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("customer name is required".into());
     }
     let now = Utc::now();
     let gstin = gstin.trim();
-    let model = customer::ActiveModel {
-        customer_type: Set(CustomerType::Business),
+    let model = company::ActiveModel {
         name: Set(name.to_string()),
         gstin: Set(opt_string(gstin.to_string())),
         created_at: Set(Some(now)),
@@ -169,7 +167,7 @@ pub async fn resolve_customer(
     gstin: &str,
     create_missing: bool,
     dry_run: bool,
-) -> Result<customer::Model, String> {
+) -> Result<company::Model, String> {
     if let Some(c) = find_customer_by_gstin(db, gstin).await {
         return Ok(c);
     }

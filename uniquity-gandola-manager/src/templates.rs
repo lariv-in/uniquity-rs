@@ -23,7 +23,7 @@ use lariv_core::{
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
-use lariv_plugin_customer::routes::CustomerDetailRouteTag;
+use lariv_plugin_contacts::routes::CompanyDetailRouteTag;
 use lariv_plugin_filesystem::routes::VNodeDetailRouteTag;
 
 use super::forms::{
@@ -1551,7 +1551,7 @@ impl SiteDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
+        let customer_url = CompanyDetailRouteTag::new(self.customer_id).url();
         let actions = if self.can_edit {
             html! {
                 (button_modal_form(ButtonModalForm {
@@ -2356,7 +2356,7 @@ pub struct PurchaseOrderDetailPage {
 
 impl PurchaseOrderDetailPage {
     fn body(&self) -> Markup {
-        let customer_url = CustomerDetailRouteTag::new(self.customer_id).url();
+        let customer_url = CompanyDetailRouteTag::new(self.customer_id).url();
         let site_url = SiteDetailRouteTag::new(self.site_id).url();
         let actions = if self.can_edit {
             html! {

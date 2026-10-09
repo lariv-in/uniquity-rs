@@ -2,7 +2,7 @@ use lariv_core::html_form::{
     html_form,
     widgets::{Date, Password, Select, Text, Textarea},
 };
-use lariv_plugin_customer::routes::CustomerFkSelectRouteTag;
+use lariv_plugin_contacts::routes::CompanyFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
 use lariv_plugin_finance_invoices::forms::PaymentTermLinesDraft;
 use lariv_plugin_finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
@@ -49,7 +49,7 @@ pub struct SiteForm {
         label = "Customer",
         required,
         widget = ForeignKey,
-        route = CustomerFkSelectRouteTag,
+        route = CompanyFkSelectRouteTag,
         swap_key = "gandola-site-customer",
         display = "customer",
         placeholder = "Select customer…"
@@ -226,7 +226,7 @@ pub struct PurchaseOrderForm {
         label = "Customer",
         required,
         widget = ForeignKey,
-        route = CustomerFkSelectRouteTag,
+        route = CompanyFkSelectRouteTag,
         swap_key = "gandola-po-customer",
         display = "customer",
         placeholder = "Select customer…"

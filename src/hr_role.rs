@@ -4,7 +4,7 @@
 //! Changing assistant skills stays with admin and superuser. Assistant preferences stay superuser-only.
 
 use lariv_core::apps::{AppsCapability, AppsRegistrar};
-use lariv_plugin_customer::routes::{CustomerMutate, CustomerView};
+use lariv_plugin_contacts::routes::{ContactsMutate, ContactsView};
 use lariv_plugin_filesystem::FILESYSTEM_APP_KEY;
 use lariv_plugin_finance_accounts::{
     ACCOUNTING_APP_KEY,
@@ -73,8 +73,8 @@ impl RoleAuthorizationRegistrar for RoleHook {
             .patch::<FinanceTaxesView>(allow_hr)
             .patch::<FinanceTaxesMutate>(allow_hr)
             .patch::<FinanceCreditNotesView>(allow_hr)
-            .patch::<CustomerView>(allow_hr)
-            .patch::<CustomerMutate>(allow_hr)
+            .patch::<ContactsView>(allow_hr)
+            .patch::<ContactsMutate>(allow_hr)
         // FilesystemPermissions stays admin and superuser.
         // LlmSkillsMutate stays admin and superuser.
         // LlmPrefsAdmin stays superuser-only.

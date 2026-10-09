@@ -8,7 +8,7 @@ use sea_orm::{
 };
 
 use lariv_core::components::ManyToManyItem;
-use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_contacts::entities::CompanyEntity;
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_plugin_filesystem::routes::VNodeFileSelectInRouteTag;
 use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
@@ -939,7 +939,7 @@ pub async fn customer_name(db: &DatabaseConnection, customer_id: i64) -> String 
         return String::new();
     }
     lariv_core::web::opt_or_log(
-        CustomerEntity::find_by_id(customer_id).one(db).await,
+        CompanyEntity::find_by_id(customer_id).one(db).await,
         "find by id",
     )
     .map(|c| c.name)

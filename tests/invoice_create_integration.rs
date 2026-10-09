@@ -10,7 +10,7 @@ use chrono::Utc;
 use lariv_core::app::App;
 use lariv_core::db::DbTag;
 use lariv_core::http::into_axum_router;
-use lariv_plugin_customer::entities::customer as customer_entity;
+use lariv_plugin_contacts::entities::company as company_entity;
 use lariv_plugin_finance_invoices::entities::{
     DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
     draft_invoice_line, draft_payment_term_line,
@@ -26,7 +26,6 @@ use lariv_plugin_dashboard as dashboard;
 use lariv_plugin_filesystem as filesystem;
 use lariv_plugin_finance_accounts as finance_accounts;
 use lariv_plugin_finance_creditnotes as finance_creditnotes;
-use lariv_plugin_finance_customer as finance_customer;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
 use lariv_plugin_finance_products as finance_products;
@@ -77,7 +76,6 @@ async fn create_draft_invoice_via_http() {
     let app = contacts::install(app);
     let app = tasks::install(app);
     let app = crm::install(app);
-    let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
@@ -96,7 +94,7 @@ async fn create_draft_invoice_via_http() {
     let db = app.get_capability_output::<DbTag, _>().conn.clone();
     let users_state = app.get_capability_output::<UsersTag, _>();
 
-    let customer = customer_entity::ActiveModel {
+    let company = company_entity::ActiveModel {
         name: Set("Test Customer".into()),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
@@ -104,7 +102,7 @@ async fn create_draft_invoice_via_http() {
     }
     .insert(&db)
     .await
-    .expect("customer");
+    .expect("company");
 
     let tax = tax::ActiveModel {
         name: Set("GST 18%".into()),
@@ -154,8 +152,8 @@ async fn create_draft_invoice_via_http() {
         r#"[{"date_kind":"relative","due_date":"","due_duration":"15 days","amount_kind":"relative","amount":"","amount_percentage":"100"}]"#,
     );
     let body = format!(
-        "number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
-        customer.id,
+        "number=&datetime=2025-06-01T12:00&CustomerCompany={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
+        company.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
     );
@@ -178,7 +176,8 @@ async fn create_draft_invoice_via_http() {
 
     let drafts = DraftInvoiceEntity::find().all(&db).await.expect("drafts");
     assert_eq!(drafts.len(), 1);
-    assert_eq!(drafts[0].customer_id, customer.id);
+    assert!(!drafts[0].bill_to_individual);
+    assert_eq!(drafts[0].customer_company, Some(company.id));
 
     let term_id = drafts[0]
         .draft_payment_term_id
