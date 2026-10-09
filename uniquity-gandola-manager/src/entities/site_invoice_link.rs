@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use lariv_rs::plugins::finance_invoices::entities::draft_invoice;
+use lariv_plugin_finance_invoices::entities::draft_invoice;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "site_invoices")]

@@ -4,8 +4,8 @@ pub mod decimal;
 pub mod schema;
 pub mod typst;
 
-use lariv_rs::plugins::users::roles::Superuser;
-use lariv_rs::plugins::users::state::AuthContext;
+use lariv_plugin_users::roles::Superuser;
+use lariv_plugin_users::state::AuthContext;
 
 /// Whether the user has the superuser role.
 pub fn is_superuser(auth: &AuthContext) -> bool {

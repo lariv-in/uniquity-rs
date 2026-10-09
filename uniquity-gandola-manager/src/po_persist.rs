@@ -5,7 +5,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use lariv_rs::plugins::finance_invoices::logic::parse_payment_term_lines_json;
+use lariv_plugin_finance_invoices::logic::parse_payment_term_lines_json;
 
 use crate::entities::{
     PurchaseOrderPaymentTermEntity, SiteEntity,
@@ -23,7 +23,7 @@ fn parse_date(s: &str) -> Result<chrono::NaiveDate, &'static str> {
     if s.is_empty() {
         return Err("date is required");
     }
-    lariv_rs::datetime::parse_date(s).ok_or("invalid date")
+    lariv_core::datetime::parse_date(s).ok_or("invalid date")
 }
 
 pub fn validate_purchase_order_form(
@@ -54,7 +54,7 @@ pub async fn resolve_site_and_customer(
         return Err("select a site".into());
     }
     let site =
-        lariv_rs::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
+        lariv_core::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
             .ok_or_else(|| "select a site".to_string())?;
     if customer_id > 0 && site.customer_id != customer_id {
         return Err("site does not belong to the selected customer".into());
@@ -71,7 +71,7 @@ pub async fn purchase_order_number_taken(
     if let Some(id) = except_id {
         query = query.filter(purchase_order::Column::Id.ne(id));
     }
-    lariv_rs::web::opt_or_log(query.one(db).await, "db find one").is_some()
+    lariv_core::web::opt_or_log(query.one(db).await, "db find one").is_some()
 }
 
 pub async fn persist_new_purchase_order(
@@ -151,9 +151,9 @@ pub async fn purchase_order_form_from_model(
     tz: &str,
 ) -> PurchaseOrderForm {
     PurchaseOrderForm {
-        csrf: lariv_rs::html_form::CsrfToken::current(),
+        csrf: lariv_core::html_form::CsrfToken::current(),
         number: po.number.clone(),
-        date: lariv_rs::datetime::format_date(po.date),
+        date: lariv_core::datetime::format_date(po.date),
         customer_id: po.customer_id,
         site_id: po.site_id,
         file_id: po

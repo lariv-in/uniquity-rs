@@ -1,4 +1,4 @@
-use lariv_rs::db::trigram;
+use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]

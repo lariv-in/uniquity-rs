@@ -2,15 +2,15 @@ use axum::response::{IntoResponse, Redirect, Response};
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 
-use lariv_rs::{
+use lariv_core::{
     components::{SharedChromeFolder, SlotCtx},
     genai::GenaiClient,
     html_form::HtmlFormBody,
     http::Cap,
-    plugins::finance_invoices::logic::default_payment_term_lines_json,
-    plugins::users::middleware::RequireAuth,
     web::{Htmx, html_built_page_or_app_layout},
 };
+use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
+use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::preferences,

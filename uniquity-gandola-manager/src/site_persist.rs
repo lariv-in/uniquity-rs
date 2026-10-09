@@ -29,7 +29,7 @@ pub fn parse_optional_date(s: &str) -> Result<Option<NaiveDate>, String> {
     if s.is_empty() {
         return Ok(None);
     }
-    lariv_rs::datetime::parse_date(s)
+    lariv_core::datetime::parse_date(s)
         .map(Some)
         .ok_or_else(|| "invalid date".to_string())
 }

@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use lariv_rs::plugins::finance_invoices::entities::draft_invoice;
+use lariv_plugin_finance_invoices::entities::draft_invoice;
 
 use crate::site_status::SiteStatus;
 

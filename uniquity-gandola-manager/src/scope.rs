@@ -7,33 +7,33 @@ use sea_orm::{
     EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
-use lariv_rs::components::ManyToManyItem;
-use lariv_rs::plugins::customer::entities::customer::Entity as CustomerEntity;
-use lariv_rs::plugins::filesystem::entities::filesystem_node::Entity as VNodeEntity;
-use lariv_rs::plugins::filesystem::routes::VNodeFileSelectInRouteTag;
-use lariv_rs::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
-use lariv_rs::plugins::finance_invoices::entities::cancelled_invoice::{
+use lariv_core::components::ManyToManyItem;
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
+use lariv_plugin_filesystem::routes::VNodeFileSelectInRouteTag;
+use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
+use lariv_plugin_finance_invoices::entities::cancelled_invoice::{
     self, Entity as CancelledInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::entities::draft_invoice::{
+use lariv_plugin_finance_invoices::entities::draft_invoice::{
     self, Entity as DraftInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::entities::paid_invoice::{
+use lariv_plugin_finance_invoices::entities::paid_invoice::{
     self, Entity as PaidInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::entities::partially_paid_invoice::{
+use lariv_plugin_finance_invoices::entities::partially_paid_invoice::{
     self, Entity as PartiallyPaidInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::entities::posted_invoice::{
+use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::logic::default_payment_term_lines_json;
-use lariv_rs::plugins::finance_invoices::routes::{
+use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
+use lariv_plugin_finance_invoices::routes::{
     CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
     PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
 };
-use lariv_rs::plugins::finance_products::entities::product::Entity as ProductEntity;
-use lariv_rs::plugins::users::state::AuthContext;
+use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
+use lariv_plugin_users::state::AuthContext;
 
 use crate::entities::{
     gandola::{self, Entity as GandolaEntity},
@@ -45,14 +45,14 @@ use crate::entities::{
 };
 
 pub fn is_superuser(auth: &AuthContext) -> bool {
-    lariv_rs::plugins::users::roles::Superuser::matches(&auth.role)
+    lariv_plugin_users::roles::Superuser::matches(&auth.role)
 }
 
 /// Gandola Manager allowlist (`hr`, plus any superuser): list, detail, create, edit, and delete.
 pub fn can_manage(auth: &AuthContext) -> bool {
-    lariv_rs::plugins::users::role_authorization::principal_allowed(
+    lariv_plugin_users::role_authorization::principal_allowed(
         auth,
-        &lariv_rs::plugins::users::role_authorization::roles_for::<crate::routes::GandolaAccess>(),
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::GandolaAccess>(),
     )
 }
 
@@ -125,7 +125,7 @@ pub async fn find_gandola_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<gandola::Model> {
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         scope_gandolas(GandolaEntity::find_by_id(id), auth)
             .one(db)
             .await,
@@ -138,7 +138,7 @@ pub async fn find_site_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<site::Model> {
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         scope_sites(SiteEntity::find_by_id(id), auth).one(db).await,
         "find by id",
     )
@@ -149,7 +149,7 @@ pub async fn find_purchase_order_scoped(
     id: i64,
     auth: &AuthContext,
 ) -> Option<purchase_order::Model> {
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         scope_purchase_orders(PurchaseOrderEntity::find_by_id(id), auth)
             .one(db)
             .await,
@@ -161,7 +161,7 @@ pub async fn vnode_name(db: &DatabaseConnection, vnode_id: Option<i64>) -> Strin
     let Some(id) = vnode_id.filter(|&id| id > 0) else {
         return String::new();
     };
-    lariv_rs::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
+    lariv_core::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
         .map(|n| n.name)
         .unwrap_or_else(|| format!("#{id}"))
 }
@@ -171,11 +171,11 @@ pub async fn vnode_path(db: &DatabaseConnection, vnode_id: Option<i64>) -> Strin
         return String::new();
     };
     let Some(node) =
-        lariv_rs::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
+        lariv_core::web::opt_or_log(VNodeEntity::find_by_id(id).one(db).await, "find by id")
     else {
         return format!("#{id}");
     };
-    lariv_rs::plugins::filesystem::node::get_path(db, &node).await
+    lariv_plugin_filesystem::node::get_path(db, &node).await
 }
 
 /// Accepts an empty id, or the id of a filesystem directory.
@@ -229,7 +229,7 @@ pub async fn effective_purchase_order_files_directory_id(
 }
 
 async fn default_purchase_order_files_directory_id(db: &DatabaseConnection) -> Option<i64> {
-    match lariv_rs::plugins::filesystem::node::get_by_path(db, DEFAULT_PURCHASE_ORDER_FILES_PATH)
+    match lariv_plugin_filesystem::node::get_by_path(db, DEFAULT_PURCHASE_ORDER_FILES_PATH)
         .await
     {
         Ok((Some(node), _)) if node.is_directory => return Some(node.id),
@@ -242,7 +242,7 @@ async fn default_purchase_order_files_directory_id(db: &DatabaseConnection) -> O
             return None;
         }
         Ok((None, _)) => {}
-        Err(lariv_rs::plugins::filesystem::node::NodeError::Validation(msg))
+        Err(lariv_plugin_filesystem::node::NodeError::Validation(msg))
             if msg.starts_with("path not found") => {}
         Err(e) => {
             tracing::error!(error = %e, "lookup default purchase order directory");
@@ -250,7 +250,7 @@ async fn default_purchase_order_files_directory_id(db: &DatabaseConnection) -> O
         }
     }
     let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
-    match lariv_rs::plugins::filesystem::node::ensure_directory_path(
+    match lariv_plugin_filesystem::node::ensure_directory_path(
         db,
         store.as_ref(),
         None,
@@ -660,7 +660,7 @@ pub async fn related_invoices_for_site(
         };
         let key = invoice_group_key(&d, &name);
         let rank = invoice_status_rank(&status);
-        let date = lariv_rs::datetime::format_date_in_tz(d.datetime, tz);
+        let date = lariv_core::datetime::format_date_in_tz(d.datetime, tz);
         let row = (d.id, name, href, date, status, rank, d.datetime);
         match best.get(&key) {
             Some((existing_id, _, _, _, _, existing_rank, _))
@@ -895,7 +895,7 @@ pub async fn site_name(db: &DatabaseConnection, site_id: i64) -> String {
     if site_id <= 0 {
         return String::new();
     }
-    lariv_rs::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
+    lariv_core::web::opt_or_log(SiteEntity::find_by_id(site_id).one(db).await, "find by id")
         .map(|s| s.name)
         .unwrap_or_else(|| format!("#{site_id}"))
 }
@@ -938,7 +938,7 @@ pub async fn customer_name(db: &DatabaseConnection, customer_id: i64) -> String 
     if customer_id <= 0 {
         return String::new();
     }
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         CustomerEntity::find_by_id(customer_id).one(db).await,
         "find by id",
     )
@@ -950,7 +950,7 @@ pub async fn product_name(db: &DatabaseConnection, product_id: Option<i64>) -> S
     let Some(id) = product_id.filter(|&id| id > 0) else {
         return String::new();
     };
-    lariv_rs::web::opt_or_log(ProductEntity::find_by_id(id).one(db).await, "find by id")
+    lariv_core::web::opt_or_log(ProductEntity::find_by_id(id).one(db).await, "find by id")
         .map(|p| p.name)
         .unwrap_or_else(|| format!("#{id}"))
 }

@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-lariv-rs = { workspace = true }
+lariv-core = { workspace = true }
+lariv-plugin-users = { workspace = true }
 rust_decimal = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }

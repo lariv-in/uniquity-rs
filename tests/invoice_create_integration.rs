@@ -1,29 +1,42 @@
 //! Postgres integration test: create draft invoice via HTTP and verify DB state.
 
-#![recursion_limit = "512"]
+#![recursion_limit = "4096"]
 
 use std::path::PathBuf;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use chrono::Utc;
-use lariv_rs::app::App;
-use lariv_rs::db::DbTag;
-use lariv_rs::http::into_axum_router;
-use lariv_rs::plugins::customer::entities::customer as customer_entity;
-use lariv_rs::plugins::finance_invoices::entities::{
+use lariv_core::app::App;
+use lariv_core::db::DbTag;
+use lariv_core::http::into_axum_router;
+use lariv_plugin_customer::entities::customer as customer_entity;
+use lariv_plugin_finance_invoices::entities::{
     DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
     draft_invoice_line, draft_payment_term_line,
 };
-use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
-use lariv_rs::plugins::finance_products::entities::product;
-use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
-use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
-use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
-use lariv_rs::plugins::{
-    crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
-};
+use lariv_plugin_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
+use lariv_plugin_finance_products::entities::product;
+use lariv_plugin_finance_products::preferences::set_product_tax_ids;
+use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
+use lariv_plugin_contacts as contacts;
+use lariv_plugin_crm as crm;
+use lariv_plugin_customer as customer;
+use lariv_plugin_dashboard as dashboard;
+use lariv_plugin_filesystem as filesystem;
+use lariv_plugin_finance_accounts as finance_accounts;
+use lariv_plugin_finance_creditnotes as finance_creditnotes;
+use lariv_plugin_finance_customer as finance_customer;
+use lariv_plugin_finance_indian as finance_indian;
+use lariv_plugin_finance_invoices as finance_invoices;
+use lariv_plugin_finance_products as finance_products;
+use lariv_plugin_finance_taxes as finance_taxes;
+use lariv_plugin_llm_assistant as llm_assistant;
+use lariv_plugin_otp as otp;
+use lariv_plugin_pwa as pwa;
+use lariv_plugin_tasks as tasks;
+use lariv_plugin_users as users;
+use lariv_plugin_users::{UsersTag, auth, entities::user::Entity as UserEntity};
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use tower::ServiceExt;
@@ -61,6 +74,8 @@ async fn create_draft_invoice_via_http() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = customer::install(app);
+    let app = contacts::install(app);
+    let app = tasks::install(app);
     let app = crm::install(app);
     let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
@@ -107,8 +122,9 @@ async fn create_draft_invoice_via_http() {
         name: Set("Test Product".into()),
         product_type: Set(product::ProductType::Goods),
         reference: Set(Some("REF-001".into())),
-        base_cost: Set(Decimal::from(40)),
-        sales_price: Set(Decimal::from(100)),
+        variables: Set("{}".into()),
+        base_price_formula: Set("decimal(\"40\")".into()),
+        sales_price_formula: Set("decimal(\"100\")".into()),
         hsn_code: Set(1234),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
@@ -122,7 +138,7 @@ async fn create_draft_invoice_via_http() {
         .expect("product taxes");
 
     let admin = UserEntity::find()
-        .filter(lariv_rs::plugins::users::entities::user::Column::Email.eq("admin@test.local"))
+        .filter(lariv_plugin_users::entities::user::Column::Email.eq("admin@test.local"))
         .one(&db)
         .await
         .expect("query admin")
@@ -149,7 +165,7 @@ async fn create_draft_invoice_via_http() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(lariv_rs::plugins::finance_invoices::routes::DraftInvoiceCreatePostRouteTag::PATH)
+                .uri(lariv_plugin_finance_invoices::routes::DraftInvoiceCreatePostRouteTag::PATH)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("cookie", format!("auth-token={token}"))
                 .body(Body::from(body))
@@ -181,7 +197,7 @@ async fn create_draft_invoice_via_http() {
     assert_eq!(pt_lines.len(), 1);
     assert_eq!(
         pt_lines[0].amount_kind,
-        lariv_rs::plugins::finance_invoices::PaymentTermAmountKind::Relative
+        lariv_plugin_finance_invoices::PaymentTermAmountKind::Relative
     );
     assert_eq!(pt_lines[0].amount_percentage, Some(Decimal::from(100)));
 

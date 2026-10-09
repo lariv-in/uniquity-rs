@@ -11,12 +11,13 @@ use sea_orm::{
     sea_query::{Expr, Order, Query as SeaQuery},
 };
 
-use lariv_rs::{
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+
+use lariv_core::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
-    plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,

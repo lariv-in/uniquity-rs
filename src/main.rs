@@ -1,10 +1,10 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "4096"]
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
-    users, website,
+    contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
+    finance_customer, finance_indian, finance_invoices, finance_products, finance_taxes,
+    llm_assistant, otp, pwa, tasks, users, website,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -31,6 +31,10 @@ async fn main() -> anyhow::Result<()> {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = customer::install(app);
+    // Before CRM so contacts tables exist for lead foreign keys.
+    let app = contacts::install(app);
+    // Before CRM so `tasks` can copy `crm_tasks` before CRM drops those tables.
+    let app = tasks::install(app);
     let app = crm::install(app);
     let app = finance_customer::install(app);
     let app = finance_creditnotes::install(app);
@@ -42,19 +46,15 @@ async fn main() -> anyhow::Result<()> {
     // After finance and gandola so `hr` is appended to allowlists those plugins already registered.
     let app = hr_role::install(app);
     let app = otp::install(app);
-    let app = pwa::install(app);
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.
     let app = website::install(app);
+    let app = pwa::install(app);
+    let app = website_seed::install(app);
 
     let app = app.load_config("config.toml").await?;
     let app = app.mount();
     app.run_migrations().await?;
-    app.run_seeds().await?;
-    let website = app.get_capability_output::<website::WebsiteTag, _>();
-    tracing::info!("uniquity website: seeding homepage and media");
-    website_seed::ensure_homepage(website).await?;
-    tracing::info!("uniquity website: seed complete");
     app.run().await?;
     Ok(())
 }

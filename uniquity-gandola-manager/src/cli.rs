@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 use frunk::{HCons, hlist::HList};
-use lariv_rs::{
+use lariv_core::{
     app::MountedApp,
     command::{CommandCapability, CommandRegistrar, RunCommand},
     tag::Tagged,

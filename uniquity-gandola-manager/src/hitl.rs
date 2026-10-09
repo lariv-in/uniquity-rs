@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use lariv_rs::plugins::llm_assistant::hitl::{HitlCapability, HitlRegistrar};
-use lariv_rs::rune_env::{NativeBinding, RuneEnvCtx};
+use lariv_plugin_llm_assistant::hitl::{HitlCapability, HitlRegistrar};
+use lariv_core::rune_env::{NativeBinding, RuneEnvCtx};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -35,7 +35,7 @@ fn delete_purchase_order(
     crate::rune_env::block_on_async(async move {
         crate::po_persist::delete_purchase_order(&db, id).await
     })?;
-    lariv_rs::rune_env::json_to_rune(json!({ "id": id, "deleted": true }))
+    lariv_core::rune_env::json_to_rune(json!({ "id": id, "deleted": true }))
 }
 
 fn delete_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
@@ -44,7 +44,7 @@ fn delete_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value
     crate::rune_env::block_on_async(
         async move { crate::site_persist::delete_site(&db, id).await },
     )?;
-    lariv_rs::rune_env::json_to_rune(json!({ "id": id, "deleted": true }))
+    lariv_core::rune_env::json_to_rune(json!({ "id": id, "deleted": true }))
 }
 
 fn parse_id_args(args: &[rune::Value], fn_name: &str) -> Result<i64, String> {
@@ -65,7 +65,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_rs::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use sea_orm::DatabaseConnection;
 
     fn test_env_ctx<'a>(

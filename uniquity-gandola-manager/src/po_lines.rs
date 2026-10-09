@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 
-use lariv_rs::plugins::finance_common::decimal::{self, parse_decimal};
+use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 
 use crate::entities::purchase_order_line::{self, Entity as PurchaseOrderLineEntity};
 
@@ -48,7 +48,7 @@ fn parse_required_date(s: &str) -> Result<NaiveDate, String> {
     if s.is_empty() {
         return Err("delivery date is required".to_string());
     }
-    lariv_rs::datetime::parse_date(s).ok_or_else(|| "invalid delivery date".to_string())
+    lariv_core::datetime::parse_date(s).ok_or_else(|| "invalid delivery date".to_string())
 }
 
 pub async fn po_lines_form_json(db: &DatabaseConnection, purchase_order_id: i64) -> String {
@@ -68,7 +68,7 @@ pub async fn po_lines_form_json(db: &DatabaseConnection, purchase_order_id: i64)
             item_code: ln.item_code,
             description: ln.description,
             unit: ln.unit,
-            delivery_date: lariv_rs::datetime::format_date(ln.delivery_date),
+            delivery_date: lariv_core::datetime::format_date(ln.delivery_date),
             quantity: decimal::decimal_display(ln.quantity),
             rate: decimal::decimal_display(ln.rate),
         })
@@ -101,7 +101,7 @@ pub async fn load_po_line_displays(
             item_code: ln.item_code,
             description: ln.description,
             unit: ln.unit,
-            delivery_date: lariv_rs::datetime::format_date(ln.delivery_date),
+            delivery_date: lariv_core::datetime::format_date(ln.delivery_date),
             quantity: decimal::decimal_display(ln.quantity),
             rate: decimal::decimal_display(ln.rate),
         })

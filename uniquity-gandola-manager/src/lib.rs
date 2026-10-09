@@ -31,7 +31,7 @@ pub mod tools;
 
 use frunk::{HCons, hlist::HList};
 
-use lariv_rs::{
+use lariv_core::{
     app::App,
     capability::CapStore,
     db::{DbCap, DbTag},
@@ -46,23 +46,23 @@ use state::GandolaManagerState;
 
 pub struct GandolaManagerTag;
 
-lariv_rs::define_passthrough_cap!(
+lariv_core::define_passthrough_cap!(
     GandolaManagerStateCap,
     GandolaManagerTag,
     GandolaManagerState
 );
 
-lariv_rs::define_plugin_install! {
+lariv_core::define_plugin_install! {
     plugin: GandolaManagerTag;
     steps: [
-        cap_hook(lariv_rs::plugins::llm_assistant::hitl::HitlTag, lariv_rs::plugins::llm_assistant::hitl::HitlCap, hitl::Hook),
+        cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
         rune_env(rune_env::Hook),
         tools(tools::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
-        cap_hook(lariv_rs::plugins::users::role_authorization::RoleAuthorizationTag, lariv_rs::plugins::users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
         commands(cli::Hook),

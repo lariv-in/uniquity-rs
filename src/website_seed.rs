@@ -1,9 +1,16 @@
 //! Idempotent seed for the Uniquity Ventures public homepage, static media, and Custom theme.
+//!
+//! Registered as a [`lariv_core::hooks::RunSeed`] hook so it runs only for `seed`, not `serve`.
 
 use chrono::Utc;
-use lariv_rs::plugins::filesystem::node::{self, NodeFile};
-use lariv_rs::plugins::filesystem::storage::DynFilestore;
-use lariv_rs::plugins::website::{
+use lariv_core::app::MountedApp;
+use lariv_core::hooks::RunSeed;
+use lariv_core::plugin_install::define_plugin_install;
+use lariv_core::traits::get::GetByTag;
+use lariv_plugin_filesystem::node::{self, NodeFile};
+use lariv_plugin_filesystem::storage::DynFilestore;
+use lariv_plugin_website::{
+    WebsiteTag,
     builder_assets::public_asset_url,
     entities::{
         WebsitePreferences,
@@ -26,6 +33,32 @@ const PAGE_NAME: &str = "index.html";
 const THEME_CSS_NAME: &str = "uniquity.css";
 const THEME_JS_NAME: &str = "uniquity.js";
 const THEME: &str = CUSTOM_THEME_ID;
+
+/// Hook identity for the deployment-local website seed (distinct from [`WebsiteTag`] state).
+pub struct UniquityWebsiteSeedTag;
+
+define_plugin_install! {
+    plugin: UniquityWebsiteSeedTag;
+    /// Queue homepage/media seed for the `seed` CLI command.
+    steps: [seeds(SeedsHook)]
+}
+
+/// Runs [`ensure_homepage`] when seed hooks execute.
+#[derive(Clone, Copy, Default)]
+pub struct SeedsHook;
+
+#[async_trait::async_trait]
+impl<M, WebsiteIdx> RunSeed<M, WebsiteIdx> for SeedsHook
+where
+    M: GetByTag<WebsiteTag, WebsiteIdx, Value = WebsiteState> + Sync,
+{
+    async fn run_seed(app: &MountedApp<M>) -> anyhow::Result<()> {
+        tracing::info!("uniquity website: seeding homepage and media");
+        ensure_homepage(app.get_capability_output::<WebsiteTag, WebsiteIdx>()).await?;
+        tracing::info!("uniquity website: seed complete");
+        Ok(())
+    }
+}
 
 struct StaticAsset {
     name: &'static str,
@@ -162,7 +195,7 @@ async fn ensure_page_vnode(
     db: &DatabaseConnection,
     store: &DynFilestore,
     html: &[u8],
-) -> anyhow::Result<(lariv_rs::plugins::filesystem::entities::VNode, bool)> {
+) -> anyhow::Result<(lariv_plugin_filesystem::entities::VNode, bool)> {
     let segments = ["website".into(), "pages".into()];
     let parent_id = node::ensure_directory_path(db, store, None, &segments)
         .await
@@ -239,10 +272,10 @@ async fn ensure_file_vnode(
     db: &DatabaseConnection,
     store: &DynFilestore,
     parent_id: Option<i64>,
-    parent: Option<&lariv_rs::plugins::filesystem::entities::VNode>,
+    parent: Option<&lariv_plugin_filesystem::entities::VNode>,
     name: &str,
     bytes: &[u8],
-) -> anyhow::Result<(lariv_rs::plugins::filesystem::entities::VNode, bool)> {
+) -> anyhow::Result<(lariv_plugin_filesystem::entities::VNode, bool)> {
     if let Some(existing) = node::find_child(db, parent_id, name, false).await? {
         if vnode_bytes_match(store, &existing, bytes).await? {
             return Ok((existing, false));
@@ -280,7 +313,7 @@ async fn ensure_file_vnode(
 
 async fn vnode_bytes_match(
     store: &DynFilestore,
-    existing: &lariv_rs::plugins::filesystem::entities::VNode,
+    existing: &lariv_plugin_filesystem::entities::VNode,
     bytes: &[u8],
 ) -> anyhow::Result<bool> {
     let path = existing.file_path.as_deref().unwrap_or("");

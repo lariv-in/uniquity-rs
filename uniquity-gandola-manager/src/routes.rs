@@ -16,14 +16,14 @@ pub struct GandolaAccess;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Hr;
 
-impl lariv_rs::plugins::users::role_registry::Role for Hr {
+impl lariv_plugin_users::role_registry::Role for Hr {
     const NAME: &'static str = "hr";
     const TITLE: &'static str = "HR";
     const DESCRIPTION: &'static str =
         "Accounting, Gandola Manager, the filesystem, and the assistant.";
 }
 
-lariv_rs::define_plugin_routes! {
+lariv_core::define_plugin_routes! {
     plugin: GandolaManagerTag;
     routes: [
         get GandolaDefaultRouteTag, "/gandola", handlers::gandolas::list, fragment(GandolaTableKey), authorize(GandolaAccess, [Hr]);

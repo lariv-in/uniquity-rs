@@ -1,5 +1,5 @@
-use lariv_rs::components::{attrs::escape_attr, label, text::icon};
-use lariv_rs::html_form::{FieldRender, FormCtx, FormWidget};
+use lariv_core::components::{attrs::escape_attr, label, text::icon};
+use lariv_core::html_form::{FieldRender, FormCtx, FormWidget};
 use maud::{Markup, html};
 
 const PO_LINES_ALPINE_METHODS: &str = r#"addLine() {

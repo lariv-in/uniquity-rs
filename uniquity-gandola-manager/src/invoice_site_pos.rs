@@ -3,22 +3,22 @@
 use std::collections::HashMap;
 
 use chrono::NaiveTime;
-use lariv_rs::db::trigram;
+use lariv_core::db::trigram;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
 
-use lariv_rs::plugins::finance_common::decimal::decimal_display;
-use lariv_rs::plugins::finance_invoices::entities::draft_invoice::{
+use lariv_plugin_finance_common::decimal::decimal_display;
+use lariv_plugin_finance_invoices::entities::draft_invoice::{
     self, Entity as DraftInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::entities::posted_invoice::{
+use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
-use lariv_rs::plugins::finance_invoices::logic::draft::DraftLinePending;
-use lariv_rs::plugins::finance_invoices::logic::{
+use lariv_plugin_finance_invoices::logic::draft::DraftLinePending;
+use lariv_plugin_finance_invoices::logic::{
     CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
 };
-use lariv_rs::plugins::finance_products::entities::product::{self, Entity as ProductEntity};
+use lariv_plugin_finance_products::entities::product::{self, Entity as ProductEntity};
 
 use crate::entities::purchase_order;
 use crate::entities::purchase_order_line::{self, Entity as PurchaseOrderLineEntity};
@@ -236,7 +236,9 @@ async fn invoice_one_purchase_order(
                 product_id,
                 rate: Some(decimal_display(line.rate)),
                 quantity: decimal_display(line.quantity),
+                variables: None,
                 tax_ids: None,
+                remarks: None,
             }),
             None => missing.push(line.item_code.clone()),
         }
@@ -272,6 +274,7 @@ async fn invoice_one_purchase_order(
             reference: Some(po.number.clone()),
             payment_reference: None,
             bank_account: None,
+            remarks: None,
             datetime,
             delivery_date: None,
             customer_id: po.customer_id,
@@ -427,7 +430,6 @@ fn action(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
 
     fn product(id: i64, name: &str, reference: Option<&str>) -> product::Model {
         product::Model {
@@ -438,9 +440,10 @@ mod tests {
             reference: reference.map(str::to_string),
             remarks: None,
             name: name.into(),
-            base_cost: Decimal::ZERO,
-            sales_price: Decimal::ONE,
             hsn_code: 0,
+            variables: "{}".into(),
+            base_price_formula: "decimal(\"0\")".into(),
+            sales_price_formula: "decimal(\"1\")".into(),
         }
     }
 

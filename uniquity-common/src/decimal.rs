@@ -88,7 +88,7 @@ pub fn decimal_display_withholding(d: Decimal, minor_unit: i32, symbol: &str) ->
 }
 
 pub fn parse_decimal(s: &str) -> Option<Decimal> {
-    let s = lariv_rs::html_form::preprocess_numeric_form_value(s);
+    let s = lariv_core::html_form::preprocess_numeric_form_value(s);
     if s.is_empty() {
         return None;
     }

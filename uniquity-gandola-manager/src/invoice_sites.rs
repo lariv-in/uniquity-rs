@@ -7,14 +7,14 @@ use maud::{Markup, html};
 use sea_orm::DatabaseConnection;
 use sea_orm::sea_query::{Expr, SimpleExpr};
 
-use lariv_rs::components::label;
-use lariv_rs::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
-use lariv_rs::plugins::finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
-use lariv_rs::plugins::finance_invoices::hub_filter_addon::{
+use lariv_core::components::label;
+use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
+use lariv_plugin_finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
+use lariv_plugin_finance_invoices::hub_filter_addon::{
     HubQueryParams, InvoiceHubFilterAddon,
 };
-use lariv_rs::plugins::finance_invoices::hub_table_addon::InvoiceHubTableAddon;
-use lariv_rs::plugins::finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
+use lariv_plugin_finance_invoices::hub_table_addon::InvoiceHubTableAddon;
+use lariv_plugin_finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
 
 use crate::forms::{
@@ -32,16 +32,16 @@ pub static INVOICE_SITES_ADDON: InvoiceSitesAddon = InvoiceSitesAddon;
 pub struct InvoiceSitesAddon;
 
 pub fn register() {
-    lariv_rs::plugins::finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
+    lariv_plugin_finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
         &INVOICE_SITES_ADDON,
     );
-    lariv_rs::plugins::finance_invoices::hub_table_addon::register_invoice_hub_table_addon(
+    lariv_plugin_finance_invoices::hub_table_addon::register_invoice_hub_table_addon(
         &INVOICE_SITES_ADDON,
     );
-    lariv_rs::plugins::finance_invoices::hub_filter_addon::register_invoice_hub_filter_addon(
+    lariv_plugin_finance_invoices::hub_filter_addon::register_invoice_hub_filter_addon(
         &INVOICE_SITES_ADDON,
     );
-    lariv_rs::plugins::finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
+    lariv_plugin_finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
         &INVOICE_SITES_ADDON,
     );
 }
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn sites_filter_covers_posted_and_settlement_rows() {
         let via =
-            lariv_rs::plugins::finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
+            lariv_plugin_finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
                 "paid_invoices",
             );
         let (sql, _) = predicate_sql("Sites=7", &via).expect("predicate");

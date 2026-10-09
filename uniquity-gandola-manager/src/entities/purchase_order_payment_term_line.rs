@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use lariv_rs::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
+use lariv_plugin_finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "purchase_order_payment_term_lines")]

@@ -2,13 +2,11 @@
 
 use std::sync::Arc;
 
-use lariv_rs::{
-    plugins::finance_invoices::logic::{
-        default_payment_term_lines_json, parse_payment_term_lines_json,
-    },
-    plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind},
-    rune_env::{NativeBinding, RuneEnvCapability, RuneEnvCtx, RuneEnvRegistrar},
+use lariv_core::rune_env::{NativeBinding, RuneEnvCapability, RuneEnvCtx, RuneEnvRegistrar};
+use lariv_plugin_finance_invoices::logic::{
+    default_payment_term_lines_json, parse_payment_term_lines_json,
 };
+use lariv_plugin_finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -75,7 +73,7 @@ fn find_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, 
     let site = block_on_async(async move {
         crate::invoice_site_pos::find_site(&db, parsed.lookup_pk(), parsed.lookup_text()).await
     })?;
-    lariv_rs::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&site)))
+    lariv_core::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&site)))
 }
 
 fn list_site_purchase_orders(
@@ -91,7 +89,7 @@ fn list_site_purchase_orders(
         let (_, pos) = crate::invoice_site_pos::list_site_purchase_orders(&db, site.id).await?;
         Ok::<_, String>((site, pos))
     })?;
-    lariv_rs::rune_env::json_to_rune(json!({
+    lariv_core::rune_env::json_to_rune(json!({
         "site": crate::invoice_site_pos::site_summary(&site),
         "purchase_orders": purchase_orders,
     }))
@@ -117,7 +115,7 @@ fn create_invoices_for_site(
         )
         .await
     })?;
-    lariv_rs::rune_env::json_to_rune(json!(result))
+    lariv_core::rune_env::json_to_rune(json!(result))
 }
 
 fn link_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
@@ -126,7 +124,7 @@ fn link_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune:
     let invoice_id = parsed.invoice_id_for("link_site_invoice")?;
     let db = ctx.db.clone();
     block_on_async(async move { crate::scope::link_site_invoice(&db, site_id, invoice_id).await })?;
-    lariv_rs::rune_env::json_to_rune(json!({
+    lariv_core::rune_env::json_to_rune(json!({
         "site_id": site_id,
         "invoice_id": invoice_id,
         "linked": true,
@@ -182,7 +180,7 @@ fn create_purchase_order(
         }))
     })?;
 
-    lariv_rs::rune_env::json_to_rune(result)
+    lariv_core::rune_env::json_to_rune(result)
 }
 
 fn update_purchase_order(
@@ -242,7 +240,7 @@ fn update_purchase_order(
             "file_id": saved.file_id,
         }))
     })?;
-    lariv_rs::rune_env::json_to_rune(result)
+    lariv_core::rune_env::json_to_rune(result)
 }
 
 fn unlink_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
@@ -253,7 +251,7 @@ fn unlink_site_invoice(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<run
     block_on_async(
         async move { crate::scope::unlink_site_invoice(&db, site_id, invoice_id).await },
     )?;
-    lariv_rs::rune_env::json_to_rune(json!({
+    lariv_core::rune_env::json_to_rune(json!({
         "site_id": site_id,
         "invoice_id": invoice_id,
         "unlinked": true,
@@ -271,7 +269,7 @@ fn create_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value
         crate::site_persist::persist_new_site(&db, &fields, &gandolas, &invoices, &purchase_orders)
             .await
     })?;
-    lariv_rs::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&saved)))
+    lariv_core::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&saved)))
 }
 
 fn update_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value, String> {
@@ -341,7 +339,7 @@ fn update_site(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Value
         )
         .await
     })?;
-    lariv_rs::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&saved)))
+    lariv_core::rune_env::json_to_rune(json!(crate::invoice_site_pos::site_summary(&saved)))
 }
 
 pub(crate) fn block_on_async<T, F>(fut: F) -> T
@@ -560,7 +558,7 @@ impl CreatePurchaseOrderArgs {
         let po_lines_json = serde_json::to_string(&lines).map_err(|e| e.to_string())?;
 
         let form = PurchaseOrderForm {
-            csrf: lariv_rs::html_form::CsrfToken::current(),
+            csrf: lariv_core::html_form::CsrfToken::current(),
             number: self.number,
             date: self.date,
             customer_id,
@@ -805,7 +803,7 @@ pub(crate) fn parse_object_args<T: for<'de> Deserialize<'de>>(
     let value = args
         .first()
         .ok_or_else(|| format!("{fn_name} requires an object argument"))?;
-    serde_json::from_value(lariv_rs::rune_env::rune_to_json(value)?)
+    serde_json::from_value(lariv_core::rune_env::rune_to_json(value)?)
         .map_err(|e| format!("invalid {fn_name} arguments: {e}"))
 }
 
@@ -814,7 +812,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    use lariv_rs::plugins::filesystem::storage::{DynFilestore, UnimplementedFilestore};
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
     use sea_orm::DatabaseConnection;
 
     fn test_env_ctx<'a>(

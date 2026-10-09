@@ -1,0 +1,27 @@
+# Local overlay for the lariv-rs git source.
+# scripts/lariv-source git moves this file aside so Cargo skips it.
+# Paths are relative to the project root (Cargo resolves .cargo config paths
+# two levels up from this file).
+
+[patch."https://github.com/lariv-in/lariv-rs.git"]
+lariv-rs = { path = "../../lariv-rs" }
+lariv-core = { path = "../../lariv-rs/lariv-core" }
+lariv-plugin-contacts = { path = "../../lariv-rs/plugins/contacts" }
+lariv-plugin-crm = { path = "../../lariv-rs/plugins/crm" }
+lariv-plugin-customer = { path = "../../lariv-rs/plugins/customer" }
+lariv-plugin-dashboard = { path = "../../lariv-rs/plugins/dashboard" }
+lariv-plugin-filesystem = { path = "../../lariv-rs/plugins/filesystem" }
+lariv-plugin-finance-accounts = { path = "../../lariv-rs/plugins/finance_accounts" }
+lariv-plugin-finance-common = { path = "../../lariv-rs/plugins/finance_common" }
+lariv-plugin-finance-creditnotes = { path = "../../lariv-rs/plugins/finance_creditnotes" }
+lariv-plugin-finance-customer = { path = "../../lariv-rs/plugins/finance_customer" }
+lariv-plugin-finance-indian = { path = "../../lariv-rs/plugins/finance_indian" }
+lariv-plugin-finance-invoices = { path = "../../lariv-rs/plugins/finance_invoices" }
+lariv-plugin-finance-products = { path = "../../lariv-rs/plugins/finance_products" }
+lariv-plugin-finance-taxes = { path = "../../lariv-rs/plugins/finance_taxes" }
+lariv-plugin-llm-assistant = { path = "../../lariv-rs/plugins/llm_assistant" }
+lariv-plugin-otp = { path = "../../lariv-rs/plugins/otp" }
+lariv-plugin-pwa = { path = "../../lariv-rs/plugins/pwa" }
+lariv-plugin-tasks = { path = "../../lariv-rs/plugins/tasks" }
+lariv-plugin-users = { path = "../../lariv-rs/plugins/users" }
+lariv-plugin-website = { path = "../../lariv-rs/plugins/website" }

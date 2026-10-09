@@ -1,17 +1,30 @@
 //! Compile smoke test for the Uniquity deployment plugin stack.
 
-#![recursion_limit = "512"]
+#![recursion_limit = "4096"]
 
 use std::path::PathBuf;
 
-use lariv_rs::app::{App, MountedApp};
-use lariv_rs::command::{BuildCli, CommandCapability, CommandTag};
-use lariv_rs::plugins::{
-    crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes, finance_customer,
-    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
-    users, website,
-};
-use lariv_rs::traits::get::GetByTag;
+use lariv_core::app::{App, MountedApp};
+use lariv_core::command::{BuildCli, CommandCapability, CommandTag};
+use lariv_core::traits::get::GetByTag;
+use lariv_plugin_contacts as contacts;
+use lariv_plugin_crm as crm;
+use lariv_plugin_customer as customer;
+use lariv_plugin_dashboard as dashboard;
+use lariv_plugin_filesystem as filesystem;
+use lariv_plugin_finance_accounts as finance_accounts;
+use lariv_plugin_finance_creditnotes as finance_creditnotes;
+use lariv_plugin_finance_customer as finance_customer;
+use lariv_plugin_finance_indian as finance_indian;
+use lariv_plugin_finance_invoices as finance_invoices;
+use lariv_plugin_finance_products as finance_products;
+use lariv_plugin_finance_taxes as finance_taxes;
+use lariv_plugin_llm_assistant as llm_assistant;
+use lariv_plugin_otp as otp;
+use lariv_plugin_pwa as pwa;
+use lariv_plugin_tasks as tasks;
+use lariv_plugin_users as users;
+use lariv_plugin_website as website;
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:"
 [users]
@@ -65,6 +78,8 @@ async fn uniquity_stack_mounts() {
                     let app = llm_assistant::install(app);
                     let app = finance_accounts::install(app);
                     let app = customer::install(app);
+                    let app = contacts::install(app);
+                    let app = tasks::install(app);
                     let app = crm::install(app);
                     let app = finance_customer::install(app);
                     let app = finance_creditnotes::install(app);

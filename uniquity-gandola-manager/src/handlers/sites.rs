@@ -11,12 +11,13 @@ use sea_orm::{
     sea_query::{Expr, NullOrdering, Order, Query as SeaQuery},
 };
 
-use lariv_rs::{
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+
+use lariv_core::{
     components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
-    plugins::users::{middleware::RequireAuth, state::AuthContext},
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -125,13 +126,13 @@ fn parse_date(s: &str) -> Result<Option<NaiveDate>, &'static str> {
     if s.is_empty() {
         return Ok(None);
     }
-    lariv_rs::datetime::parse_date(s)
+    lariv_core::datetime::parse_date(s)
         .map(Some)
         .ok_or("invalid date")
 }
 
 fn format_date(d: Option<NaiveDate>) -> String {
-    d.map(lariv_rs::datetime::format_date).unwrap_or_default()
+    d.map(lariv_core::datetime::format_date).unwrap_or_default()
 }
 
 async fn site_to_row(db: &sea_orm::DatabaseConnection, s: site::Model) -> SiteRow {

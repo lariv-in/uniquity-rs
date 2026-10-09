@@ -58,7 +58,7 @@ impl MigratorTrait for Migrator {
     }
 }
 
-lariv_rs::define_register_migrations! {
+lariv_core::define_register_migrations! {
     plugin: GandolaManagerTag;
     migrator: Migrator;
 }

@@ -3,7 +3,7 @@
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use sea_orm_migration::prelude::*;
 
-use lariv_rs::plugins::finance_invoices::logic::{
+use lariv_plugin_finance_invoices::logic::{
     default_payment_term_lines_json, parse_payment_term_lines_json, upsert_draft_payment_term_lines,
 };
 

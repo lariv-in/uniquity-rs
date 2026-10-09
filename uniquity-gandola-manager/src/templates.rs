@@ -1,7 +1,7 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
-use lariv_rs::{
+use lariv_core::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
         FieldText, FieldTextarea, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
@@ -19,11 +19,12 @@ use lariv_rs::{
     html_form::{CsrfToken, FormCtx, HtmlForm},
     http::ProvideRequestCaps,
     picker::{RenderPickerSelect, picker_create_button},
-    plugins::customer::routes::CustomerDetailRouteTag,
-    plugins::filesystem::routes::VNodeDetailRouteTag,
     template::{RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar},
     web::{modal_create_post_query, modal_edit_post_url},
 };
+
+use lariv_plugin_customer::routes::CustomerDetailRouteTag;
+use lariv_plugin_filesystem::routes::VNodeDetailRouteTag;
 
 use super::forms::{
     GandolaFilterForm, GandolaFilterFormField, GandolaForm, GandolaFormField,
@@ -77,7 +78,7 @@ fn scaffold_pane(
     sidebar: Markup,
     crumbs: Markup,
     body: Markup,
-) -> lariv_rs::components::AppLayoutHtml {
+) -> lariv_core::components::AppLayoutHtml {
     layout_sidebar(LayoutSidebar {
         sidebar,
         breadcrumbs: crumbs,
@@ -85,7 +86,7 @@ fn scaffold_pane(
     })
 }
 
-fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_rs::components::MainContentHtml {
+fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainContentHtml {
     layout_main(LayoutMain {
         breadcrumbs: crumbs,
         content: body,
@@ -413,7 +414,7 @@ fn relation_filter<K: SwapKey>(
     })
 }
 
-lariv_rs::define_register_items! {
+lariv_core::define_register_items! {
     plugin: GandolaManagerTag;
     capability: TemplateCapability;
     trait: TemplateRegistrar;
@@ -443,7 +444,7 @@ lariv_rs::define_register_items! {
     ]
 }
 
-lariv_rs::define_register_items! {
+lariv_core::define_register_items! {
     plugin: GandolaManagerTag;
     capability: SlotCapability;
     trait: SlotRegistrar;
@@ -628,14 +629,14 @@ impl GandolaListPage {
 }
 
 impl RenderAppPane for GandolaListPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             gandola_menu("gandolas"),
             list_crumbs("Gandolas"),
             self.render_table(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(list_crumbs("Gandolas"), self.render_table())
     }
 }
@@ -763,14 +764,14 @@ impl GandolaDetailPage {
 }
 
 impl RenderAppPane for GandolaDetailPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             self.menu(),
             gandola_crumbs(self.id, &self.name, None),
             self.body(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(gandola_crumbs(self.id, &self.name, None), self.body())
     }
 }
@@ -1280,14 +1281,14 @@ impl SiteListPage {
 }
 
 impl RenderAppPane for SiteListPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             gandola_menu("sites"),
             list_crumbs("Sites"),
             self.render_table(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(list_crumbs("Sites"), self.render_table())
     }
 }
@@ -1602,14 +1603,14 @@ impl SiteDetailPage {
 }
 
 impl RenderAppPane for SiteDetailPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             self.menu(),
             site_crumbs(self.id, &self.name, None),
             self.body(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(site_crumbs(self.id, &self.name, None), self.body())
     }
 }
@@ -2080,14 +2081,14 @@ impl GandolaPreferencesPage {
 }
 
 impl RenderAppPane for GandolaPreferencesPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             gandola_menu("settings"),
             list_crumbs("Settings"),
             self.body(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(list_crumbs("Settings"), self.body())
     }
 }
@@ -2312,14 +2313,14 @@ impl PurchaseOrderListPage {
 }
 
 impl RenderAppPane for PurchaseOrderListPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             gandola_menu("purchase_orders"),
             list_crumbs("Purchase Orders"),
             self.render_table(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(list_crumbs("Purchase Orders"), self.render_table())
     }
 }
@@ -2455,14 +2456,14 @@ impl PurchaseOrderDetailPage {
 }
 
 impl RenderAppPane for PurchaseOrderDetailPage {
-    fn render_pane(&self) -> lariv_rs::components::AppLayoutHtml {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         scaffold_pane(
             self.menu(),
             purchase_order_crumbs(self.id, &self.number, None),
             self.body(),
         )
     }
-    fn render_main(&self) -> lariv_rs::components::MainContentHtml {
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
         scaffold_main(
             purchase_order_crumbs(self.id, &self.number, None),
             self.body(),
@@ -2777,7 +2778,7 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             GandolaDeletePostRouteTag::new(self.id).url()
         };
-        modal(lariv_rs::components::Modal {
+        modal(lariv_core::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",

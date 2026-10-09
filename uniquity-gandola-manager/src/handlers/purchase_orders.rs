@@ -9,15 +9,14 @@ use sea_orm::{
     sea_query::{Expr, Order},
 };
 
-use lariv_rs::{
+use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
+use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+
+use lariv_core::{
     components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
-    plugins::{
-        finance_invoices::logic::default_payment_term_lines_json,
-        users::{middleware::RequireAuth, state::AuthContext},
-    },
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -84,7 +83,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn format_date(d: chrono::NaiveDate) -> String {
-    lariv_rs::datetime::format_date(d)
+    lariv_core::datetime::format_date(d)
 }
 
 async fn po_to_row(
@@ -190,9 +189,9 @@ fn clone_form(form: &PurchaseOrderForm) -> PurchaseOrderForm {
 
 fn empty_form() -> PurchaseOrderForm {
     PurchaseOrderForm {
-        csrf: lariv_rs::html_form::CsrfToken::current(),
+        csrf: lariv_core::html_form::CsrfToken::current(),
         number: String::new(),
-        date: lariv_rs::datetime::format_date(Utc::now().date_naive()),
+        date: lariv_core::datetime::format_date(Utc::now().date_naive()),
         customer_id: 0,
         site_id: 0,
         file_id: String::new(),

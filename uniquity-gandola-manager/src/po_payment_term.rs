@@ -5,16 +5,16 @@ use sea_orm::{
     QueryOrder,
 };
 
-use lariv_rs::components::label;
-use lariv_rs::html_form::{FieldRender, FormCtx, FormWidget};
-use lariv_rs::plugins::finance_common::decimal::{self, parse_decimal};
-use lariv_rs::plugins::finance_invoices::components::{
+use lariv_core::components::label;
+use lariv_core::html_form::{FieldRender, FormCtx, FormWidget};
+use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_plugin_finance_invoices::components::{
     InputPaymentTermLinesDraft, PaymentTermDateKindOption, input_payment_term_lines_draft,
 };
-use lariv_rs::plugins::finance_invoices::logic::{
+use lariv_plugin_finance_invoices::logic::{
     DraftPaymentTermLineInput, default_payment_term_lines_json, parse_due_date_for_term,
 };
-use lariv_rs::plugins::finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
+use lariv_plugin_finance_invoices::{PaymentTermAmountKind, PaymentTermDateKind};
 use maud::Markup;
 
 use crate::entities::purchase_order_payment_term::{
@@ -61,7 +61,7 @@ impl FormWidget for PurchaseOrderPaymentTermLinesDraft {
 fn relative_duration_fields(
     line: &DraftPaymentTermLineInput,
 ) -> Result<(Option<DateTime<Utc>>, Option<i64>), String> {
-    let nanos = lariv_rs::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
+    let nanos = lariv_core::duration::parse_duration(line.due_duration.as_deref().unwrap_or(""))
         .map_err(|e| e.to_string())?;
     Ok((None, Some(nanos)))
 }
@@ -72,7 +72,7 @@ fn validate_duration(raw: &str) -> Result<(), String> {
         return Err("duration is required for relative date".to_string());
     }
     let nanos =
-        lariv_rs::duration::parse_duration(dur).map_err(|e| format!("invalid duration: {e}"))?;
+        lariv_core::duration::parse_duration(dur).map_err(|e| format!("invalid duration: {e}"))?;
     if nanos <= 0 {
         return Err("duration must be positive".to_string());
     }
@@ -149,8 +149,8 @@ fn line_input_to_active(
     let (due_datetime, due_duration) = match line.date_kind {
         PaymentTermDateKind::Absolute => {
             let date = parse_due_date_for_term(line.due_date.as_deref().unwrap_or(""))?;
-            let dt = lariv_rs::datetime::parse_date_start_in_tz(
-                &lariv_rs::datetime::format_date(date),
+            let dt = lariv_core::datetime::parse_date_start_in_tz(
+                &lariv_core::datetime::format_date(date),
                 tz,
             )
             .ok_or_else(|| "invalid due date".to_string())?;
@@ -260,11 +260,11 @@ pub async fn payment_term_lines_form_json_for_po_term<C: ConnectionTrait>(
         .map(|l| {
             let due_date = l
                 .due_datetime
-                .map(|dt| lariv_rs::datetime::format_date_in_tz(dt, tz))
+                .map(|dt| lariv_core::datetime::format_date_in_tz(dt, tz))
                 .unwrap_or_default();
             let due_duration = l
                 .due_duration
-                .map(lariv_rs::duration::format_duration)
+                .map(lariv_core::duration::format_duration)
                 .unwrap_or_default();
             serde_json::json!({
                 "date_kind": l.date_kind,

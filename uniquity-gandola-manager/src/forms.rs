@@ -1,12 +1,12 @@
-use lariv_rs::html_form::{
+use lariv_core::html_form::{
     html_form,
     widgets::{Date, Password, Select, Text, Textarea},
 };
-use lariv_rs::plugins::customer::routes::CustomerFkSelectRouteTag;
-use lariv_rs::plugins::filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
-use lariv_rs::plugins::finance_invoices::forms::PaymentTermLinesDraft;
-use lariv_rs::plugins::finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
-use lariv_rs::plugins::finance_products::routes::ProductFkSelectRouteTag;
+use lariv_plugin_customer::routes::CustomerFkSelectRouteTag;
+use lariv_plugin_filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
+use lariv_plugin_finance_invoices::forms::PaymentTermLinesDraft;
+use lariv_plugin_finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
+use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
 use crate::po_line_editor::PurchaseOrderLinesDraft;
 use crate::po_payment_term::PurchaseOrderPaymentTermLinesDraft;

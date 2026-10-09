@@ -9,8 +9,8 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_rs::plugins::customer::customer_type::CustomerType;
-use lariv_rs::plugins::customer::entities::customer::{self, Entity as CustomerEntity};
+use lariv_plugin_customer::customer_type::CustomerType;
+use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 
 use crate::entities::gandola::{self, Entity as GandolaEntity};
 use crate::entities::gandola_site_link::{self, Entity as GandolaSiteLinkEntity};
@@ -314,7 +314,7 @@ async fn find_gandola_by_name(db: &DatabaseConnection, name: &str) -> Option<gan
     if name.is_empty() {
         return None;
     }
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         GandolaEntity::find()
             .filter(gandola::Column::Name.eq(name))
             .one(db)
@@ -438,7 +438,7 @@ fn parse_optional_date(s: &str) -> Option<NaiveDate> {
     if s.is_empty() {
         return None;
     }
-    lariv_rs::datetime::parse_date(s)
+    lariv_core::datetime::parse_date(s)
 }
 
 fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
@@ -461,7 +461,7 @@ pub async fn find_existing_site(
     customer_id: i64,
     name: &str,
 ) -> Option<site::Model> {
-    lariv_rs::web::opt_or_log(
+    lariv_core::web::opt_or_log(
         SiteEntity::find()
             .filter(site::Column::CustomerId.eq(customer_id))
             .filter(site::Column::Name.eq(name.trim()))

@@ -3,25 +3,21 @@
 //! Changing filesystem permissions stays with admin and superuser.
 //! Changing assistant skills stays with admin and superuser. Assistant preferences stay superuser-only.
 
-use lariv_rs::{
-    apps::{AppsCapability, AppsRegistrar},
-    plugins::{
-        customer::routes::{CustomerMutate, CustomerView},
-        filesystem::FILESYSTEM_APP_KEY,
-        finance_accounts::{
-            ACCOUNTING_APP_KEY,
-            routes::{FinanceAccountsMutate, FinanceAccountsView},
-        },
-        finance_creditnotes::routes::FinanceCreditNotesView,
-        finance_invoices::routes::{FinanceInvoicesMutate, FinanceInvoicesView},
-        finance_products::routes::{FinanceProductsMutate, FinanceProductsView},
-        finance_taxes::routes::{FinanceTaxesMutate, FinanceTaxesView},
-        llm_assistant::apps::{LLM_ASSISTANT_APP_KEY, allow_sidebar_role},
-        users::{
-            role_authorization::{RoleAuthorizationRegistrar, RoleAuthorizationRegistry},
-            role_registry::{Role, RoleRegistrar, RoleRegistry},
-        },
-    },
+use lariv_core::apps::{AppsCapability, AppsRegistrar};
+use lariv_plugin_customer::routes::{CustomerMutate, CustomerView};
+use lariv_plugin_filesystem::FILESYSTEM_APP_KEY;
+use lariv_plugin_finance_accounts::{
+    ACCOUNTING_APP_KEY,
+    routes::{FinanceAccountsMutate, FinanceAccountsView},
+};
+use lariv_plugin_finance_creditnotes::routes::FinanceCreditNotesView;
+use lariv_plugin_finance_invoices::routes::{FinanceInvoicesMutate, FinanceInvoicesView};
+use lariv_plugin_finance_products::routes::{FinanceProductsMutate, FinanceProductsView};
+use lariv_plugin_finance_taxes::routes::{FinanceTaxesMutate, FinanceTaxesView};
+use lariv_plugin_llm_assistant::apps::{LLM_ASSISTANT_APP_KEY, allow_sidebar_role};
+use lariv_plugin_users::{
+    role_authorization::{RoleAuthorizationRegistrar, RoleAuthorizationRegistry},
+    role_registry::{Role, RoleRegistrar, RoleRegistry},
 };
 
 use uniquity_gandola_manager::routes::Hr;
@@ -30,12 +26,12 @@ pub const HR_ROLE: &str = <Hr as Role>::NAME;
 
 pub struct HrRoleTag;
 
-lariv_rs::define_plugin_install! {
+lariv_core::define_plugin_install! {
     plugin: HrRoleTag;
     steps: [
         apps(AppsHook),
-        cap_hook(lariv_rs::plugins::users::role_authorization::RoleAuthorizationTag, lariv_rs::plugins::users::role_authorization::RoleAuthorizationCap, RoleHook),
-        cap_hook(lariv_rs::plugins::users::role_registry::RoleRegistryTag, lariv_rs::plugins::users::role_registry::RoleRegistryCap, CatalogHook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, RoleHook),
+        cap_hook(lariv_plugin_users::role_registry::RoleRegistryTag, lariv_plugin_users::role_registry::RoleRegistryCap, CatalogHook),
     ]
 }
 
@@ -104,16 +100,16 @@ impl RoleRegistrar for CatalogHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_rs::apps::{AppsCapability, AppsRegistrar};
-    use lariv_rs::plugins::filesystem::{
+    use lariv_core::apps::{AppsCapability, AppsRegistrar};
+    use lariv_plugin_filesystem::{
         apps::Hook as FilesystemAppsHook,
         routes::{FilesystemPermissions, RoleHook as FilesystemRoleHook},
     };
-    use lariv_rs::plugins::llm_assistant::{
+    use lariv_plugin_llm_assistant::{
         apps::Hook as LlmAppsHook,
         routes::{LlmPrefsAdmin, LlmSkillsMutate, RoleHook as LlmRoleHook},
     };
-    use lariv_rs::plugins::users::role_authorization::RoleAuthorizationRegistrar;
+    use lariv_plugin_users::role_authorization::RoleAuthorizationRegistrar;
 
     #[test]
     fn hr_can_open_filesystem_but_not_change_permissions() {
@@ -153,7 +149,7 @@ mod tests {
                 .iter()
                 .any(|tile| tile.key == LLM_ASSISTANT_APP_KEY)
         );
-        assert!(lariv_rs::plugins::llm_assistant::apps::sidebar_visible(
+        assert!(lariv_plugin_llm_assistant::apps::sidebar_visible(
             Some(HR_ROLE)
         ));
 
