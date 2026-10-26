@@ -3,7 +3,7 @@
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    contacts, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
+    contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
     finance_indian, finance_invoices, finance_products, finance_purchases, finance_services,
     finance_taxes, llm_assistant, otp, pwa, users, website,
 };
@@ -42,6 +42,8 @@ async fn main() -> anyhow::Result<()> {
     // Before CRM so `tasks` can copy `crm_tasks` before CRM drops those tables.
     // Tasks hooks the PWA service worker, so PWA is installed first.
     let app = pwa::install(app);
+    // Before invoices. Invoice migrations copy bill-to parties into `crm_customers`.
+    let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
