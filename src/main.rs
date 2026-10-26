@@ -9,7 +9,7 @@ use lariv_rs::plugins::{
 };
 use tracing_subscriber::EnvFilter;
 
-mod hr_role;
+mod accountant_role;
 mod invoice_line_quantity;
 mod website_seed;
 
@@ -55,8 +55,9 @@ async fn main() -> anyhow::Result<()> {
     let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
     let app = uniquity_gandola_manager::install(app);
-    // After finance and gandola so `hr` is appended to allowlists those plugins already registered.
-    let app = hr_role::install(app);
+    // After finance, customers, contacts, CRM, and gandola so `accountant` is appended to
+    // allowlists those plugins already registered.
+    let app = accountant_role::install(app);
     let app = otp::install(app);
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.

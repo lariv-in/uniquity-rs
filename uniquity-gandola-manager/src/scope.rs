@@ -60,7 +60,7 @@ pub fn is_superuser(auth: &AuthContext) -> bool {
     lariv_plugin_users::roles::Superuser::matches(&auth.role)
 }
 
-/// Gandola Manager allowlist (`hr`, plus any superuser): list, detail, create, edit, and delete.
+/// Gandola Manager allowlist (`accountant`, plus any superuser): list, detail, create, edit, and delete.
 pub fn can_manage(auth: &AuthContext) -> bool {
     lariv_plugin_users::role_authorization::principal_allowed(
         auth,
