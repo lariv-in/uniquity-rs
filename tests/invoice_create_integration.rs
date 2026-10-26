@@ -10,16 +10,8 @@ use chrono::Utc;
 use lariv_core::app::App;
 use lariv_core::db::DbTag;
 use lariv_core::http::into_axum_router;
-use lariv_plugin_contacts::entities::company as company_entity;
-use lariv_plugin_finance_invoices::entities::{
-    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
-    draft_invoice_line, draft_payment_term_line,
-};
-use lariv_plugin_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
-use lariv_plugin_finance_products::entities::product;
-use lariv_plugin_finance_products::preferences::set_product_tax_ids;
-use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_contacts as contacts;
+use lariv_plugin_contacts::entities::company as company_entity;
 use lariv_plugin_crm as crm;
 use lariv_plugin_customer as customer;
 use lariv_plugin_dashboard as dashboard;
@@ -28,8 +20,18 @@ use lariv_plugin_finance_accounts as finance_accounts;
 use lariv_plugin_finance_creditnotes as finance_creditnotes;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
+use lariv_plugin_finance_invoices::entities::{
+    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
+    draft_invoice_line, draft_payment_term_line,
+};
+use lariv_plugin_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_plugin_finance_products as finance_products;
+use lariv_plugin_finance_products::entities::product;
+use lariv_plugin_finance_products::preferences::set_product_tax_ids;
+use lariv_plugin_finance_purchases as finance_purchases;
+use lariv_plugin_finance_services as finance_services;
 use lariv_plugin_finance_taxes as finance_taxes;
+use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_llm_assistant as llm_assistant;
 use lariv_plugin_otp as otp;
 use lariv_plugin_pwa as pwa;
@@ -74,15 +76,17 @@ async fn create_draft_invoice_via_http() {
     let app = finance_accounts::install(app);
     let app = customer::install(app);
     let app = contacts::install(app);
+    let app = pwa::install(app);
     let app = tasks::install(app);
     let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
+    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
-    let app = pwa::install(app);
     let app = dashboard::install(app);
 
     let app = app.load_config(&path).await.expect("load_config");

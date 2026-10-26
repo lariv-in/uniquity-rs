@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use lariv_plugin_llm_assistant::hitl::{HitlCapability, HitlRegistrar};
 use lariv_core::rune_env::{NativeBinding, RuneEnvCtx};
+use lariv_plugin_llm_assistant::hitl::{HitlCapability, HitlRegistrar};
 use serde::Deserialize;
 use serde_json::json;
 

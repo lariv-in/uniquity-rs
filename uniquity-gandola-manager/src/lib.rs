@@ -23,6 +23,7 @@ pub mod po_persist;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
+pub mod site_invoice_filters;
 pub mod site_persist;
 pub mod site_status;
 pub mod state;

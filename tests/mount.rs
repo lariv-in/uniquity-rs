@@ -17,6 +17,8 @@ use lariv_plugin_finance_creditnotes as finance_creditnotes;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
 use lariv_plugin_finance_products as finance_products;
+use lariv_plugin_finance_purchases as finance_purchases;
+use lariv_plugin_finance_services as finance_services;
 use lariv_plugin_finance_taxes as finance_taxes;
 use lariv_plugin_llm_assistant as llm_assistant;
 use lariv_plugin_otp as otp;
@@ -78,16 +80,18 @@ async fn uniquity_stack_mounts() {
                     let app = finance_accounts::install(app);
                     let app = customer::install(app);
                     let app = contacts::install(app);
+                    let app = pwa::install(app);
                     let app = tasks::install(app);
                     let app = crm::install(app);
                     let app = finance_creditnotes::install(app);
                     let app = finance_taxes::install(app);
                     let app = finance_products::install(app);
+                    let app = finance_services::install(app);
                     let app = finance_invoices::install(app);
+                    let app = finance_purchases::install(app);
                     let app = finance_indian::install(app);
                     let app = uniquity_gandola_manager::install(app);
                     let app = otp::install(app);
-                    let app = pwa::install(app);
                     let app = dashboard::install(app);
                     let app = website::install(app);
 

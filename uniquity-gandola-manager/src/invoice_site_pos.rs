@@ -8,12 +8,11 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
 
 use lariv_plugin_finance_common::decimal::decimal_display;
-use lariv_plugin_finance_invoices::entities::draft_invoice::{
-    self, Entity as DraftInvoiceEntity,
-};
+use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
+use lariv_plugin_finance_invoices::logic::bill_to::ensure_customer_id;
 use lariv_plugin_finance_invoices::logic::draft::DraftLinePending;
 use lariv_plugin_finance_invoices::logic::{
     BillTo, CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
@@ -267,20 +266,26 @@ async fn invoice_one_purchase_order(
         return Ok(Outcome::Created(action(po, None, None)));
     }
 
+    let customer_id = ensure_customer_id(db, BillTo::new(false, None, Some(po.customer_id)))
+        .await
+        .map_err(|reason| action(po, None, Some(reason)))?;
+
     let draft = create_draft_invoice(
         db,
         CreateDraftInput {
             number: Some(po.number.clone()),
             reference: Some(po.number.clone()),
+            eway_bill_number: None,
             payment_reference: None,
             bank_account: None,
             remarks: None,
             datetime,
             delivery_date: None,
-            bill_to: BillTo::new(false, None, Some(po.customer_id)),
+            customer_id,
             payment_term_lines,
             header_tax_ids: Vec::new(),
             lines: pending,
+            service_lines: Vec::new(),
         },
         timezone,
     )

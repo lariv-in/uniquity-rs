@@ -3,11 +3,11 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{NaiveDate, Utc};
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     sea_query::{Expr, NullOrdering, Order, Query as SeaQuery},
 };
 
@@ -43,17 +43,20 @@ use crate::{
     },
     routes::{SiteDefaultRouteTag, SiteDetailRouteTag},
     scope::{
-        apply_name_filter_sites, apply_site_id_filter_sites, can_manage, customer_name,
-        find_site_scoped, gandola_items_for_site, gandola_items_from_ids, invoice_items_for_site,
-        invoice_items_from_ids, load_gandolas_for_site, opt_string, purchase_order_items_for_site,
-        purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
-        sync_site_invoices, sync_site_purchase_orders,
+        SiteInvoiceRow, apply_name_filter_sites, apply_site_id_filter_sites, can_manage,
+        customer_name, find_site_scoped, gandola_items_for_site, gandola_items_from_ids,
+        invoice_items_for_site, invoice_items_from_ids, load_gandolas_for_site, opt_string,
+        purchase_order_items_for_site, purchase_order_items_from_ids, related_invoices_for_site,
+        scope_sites, sync_site_gandolas, sync_site_invoices, sync_site_purchase_orders,
+    },
+    site_invoice_filters::{
+        SiteInvoiceFilterQuery, invoice_filters_reject_all, invoice_row_matches,
     },
     site_status::SiteStatus,
     state::GandolaManagerState,
     templates::{
         ConfirmDeletePage, RelatedInvoice, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
-        SiteFkSelectPage, SiteListPage, SiteRow, SiteSelectPage,
+        SiteFkSelectPage, SiteInvoiceFilterValues, SiteListPage, SiteRow, SiteSelectPage,
     },
 };
 
@@ -94,10 +97,8 @@ pub struct SiteDetailQuery {
     #[serde(default, rename = "po_page")]
     pub po_page: QueryPage,
 
-    #[serde(default, rename = "InvoiceNumber")]
-    pub invoice_number: Option<String>,
-    #[serde(default, rename = "InvoiceStatus")]
-    pub invoice_status: Option<String>,
+    #[serde(flatten)]
+    pub invoice_filters: SiteInvoiceFilterQuery,
     #[serde(default, rename = "inv_sort")]
     pub invoice_sort: Option<String>,
     #[serde(default, rename = "inv_page")]
@@ -260,40 +261,116 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
+fn sort_dir(sort: &str, key: &str) -> Option<bool> {
+    if sort.eq_ignore_ascii_case(&format!("{key} DESC")) {
+        Some(true)
+    } else if sort.eq_ignore_ascii_case(&format!("{key} ASC")) || sort.eq_ignore_ascii_case(key) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn cmp_ord<T: Ord>(a: &T, b: &T, desc: bool) -> std::cmp::Ordering {
+    if desc { b.cmp(a) } else { a.cmp(b) }
+}
+
+async fn site_invoice_filter_values(
+    db: &DatabaseConnection,
+    filters: &SiteInvoiceFilterQuery,
+) -> SiteInvoiceFilterValues {
+    SiteInvoiceFilterValues {
+        id: filters.text(&filters.id),
+        number: filters.text(&filters.number),
+        status: filters.text(&filters.status),
+        customer: filters.text(&filters.customer),
+        open_balance_min: filters.text(&filters.open_balance_min),
+        open_balance_max: filters.text(&filters.open_balance_max),
+        datetime_from: filters.text(&filters.datetime_from),
+        datetime_to: filters.text(&filters.datetime_to),
+        delivery_date_from: filters.text(&filters.delivery_date_from),
+        delivery_date_to: filters.text(&filters.delivery_date_to),
+        untaxed_min: filters.text(&filters.untaxed_min),
+        untaxed_max: filters.text(&filters.untaxed_max),
+        total_min: filters.text(&filters.total_min),
+        total_max: filters.text(&filters.total_max),
+        tax_min: filters.text(&filters.tax_min),
+        tax_max: filters.text(&filters.tax_max),
+        product_id: filters.text(&filters.product_id),
+        product_display: invoice_product_display(db, &filters.product_id).await,
+        product_count_min: filters.text(&filters.product_count_min),
+        product_count_max: filters.text(&filters.product_count_max),
+        final_due_from: filters.text(&filters.final_due_from),
+        final_due_to: filters.text(&filters.final_due_to),
+    }
+}
+
+async fn invoice_product_display(db: &DatabaseConnection, raw: &Option<String>) -> String {
+    let Some(id) = raw
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|id| *id > 0)
+    else {
+        return String::new();
+    };
+    lariv_plugin_finance_products::entities::product::Entity::find_by_id(id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|product| product.name)
+        .unwrap_or_default()
+}
+
 fn query_site_invoices(
-    mut rows: Vec<(i64, String, String, String, String, DateTime<Utc>)>,
-    number: Option<&str>,
-    status: Option<&str>,
+    mut rows: Vec<SiteInvoiceRow>,
+    filters: &SiteInvoiceFilterQuery,
+    tz: &str,
     sort: &str,
     page: u32,
     page_size: u32,
 ) -> ObjectList<RelatedInvoice> {
-    let number = number.unwrap_or("").trim().to_lowercase();
-    let status = status.unwrap_or("").trim();
-    rows.retain(|row| {
-        (number.is_empty() || row.1.to_lowercase().contains(&number))
-            && (status.is_empty() || row.4.eq_ignore_ascii_case(status))
-    });
+    if invoice_filters_reject_all(filters, tz) {
+        rows.clear();
+    } else {
+        rows.retain(|row| invoice_row_matches(row, filters, tz));
+    }
     let sort = if sort.trim().is_empty() {
         "Date DESC"
     } else {
         sort.trim()
     };
     rows.sort_by(|a, b| {
-        let ord = if sort.eq_ignore_ascii_case("Number DESC") {
-            b.1.cmp(&a.1)
-        } else if sort.eq_ignore_ascii_case("Number ASC") || sort.eq_ignore_ascii_case("Number") {
-            a.1.cmp(&b.1)
-        } else if sort.eq_ignore_ascii_case("Status DESC") {
-            b.4.cmp(&a.4)
-        } else if sort.eq_ignore_ascii_case("Status ASC") || sort.eq_ignore_ascii_case("Status") {
-            a.4.cmp(&b.4)
+        let ord = if let Some(desc) = sort_dir(sort, "ID") {
+            cmp_ord(&a.display_id, &b.display_id, desc)
+        } else if let Some(desc) = sort_dir(sort, "Number") {
+            cmp_ord(&a.number, &b.number, desc)
+        } else if let Some(desc) = sort_dir(sort, "Status") {
+            cmp_ord(&a.status, &b.status, desc)
+        } else if let Some(desc) = sort_dir(sort, "Customer") {
+            cmp_ord(&a.customer, &b.customer, desc)
+        } else if let Some(desc) = sort_dir(sort, "OpenBalance") {
+            cmp_ord(&a.open_balance_amount, &b.open_balance_amount, desc)
+        } else if let Some(desc) = sort_dir(sort, "DeliveryDate") {
+            cmp_ord(&a.delivery_on, &b.delivery_on, desc)
+        } else if let Some(desc) = sort_dir(sort, "UntaxedAmount") {
+            cmp_ord(&a.untaxed, &b.untaxed, desc)
+        } else if let Some(desc) = sort_dir(sort, "TotalAmount") {
+            cmp_ord(&a.total, &b.total, desc)
+        } else if let Some(desc) = sort_dir(sort, "TaxLevied") {
+            cmp_ord(&a.tax, &b.tax, desc)
+        } else if let Some(desc) = sort_dir(sort, "ProductCount") {
+            cmp_ord(&a.product_count_n, &b.product_count_n, desc)
+        } else if let Some(desc) = sort_dir(sort, "FinalDueDate") {
+            cmp_ord(&a.final_due, &b.final_due, desc)
         } else if sort.eq_ignore_ascii_case("Date ASC") || sort.eq_ignore_ascii_case("Date") {
-            a.5.cmp(&b.5)
+            cmp_ord(&a.sort_datetime, &b.sort_datetime, false)
         } else {
-            b.5.cmp(&a.5)
+            cmp_ord(&a.sort_datetime, &b.sort_datetime, true)
         };
-        ord.then(b.0.cmp(&a.0))
+        ord.then(b.draft_id.cmp(&a.draft_id))
     });
     let total = rows.len() as u64;
     let start = (page.saturating_sub(1) as usize).saturating_mul(page_size as usize);
@@ -301,12 +378,20 @@ fn query_site_invoices(
         .into_iter()
         .skip(start)
         .take(page_size as usize)
-        .map(|(id, name, href, date, status, _)| RelatedInvoice {
-            id,
-            name,
-            href,
-            date,
-            status,
+        .map(|row| RelatedInvoice {
+            id: row.display_id,
+            name: row.number,
+            href: row.href,
+            date: row.date,
+            status: row.status,
+            customer: row.customer,
+            open_balance: row.open_balance,
+            delivery_date: row.delivery_date,
+            untaxed_amount: row.untaxed_amount,
+            total_amount: row.total_amount,
+            tax_levied: row.tax_levied,
+            product_count: row.product_count,
+            final_due_date: row.final_due_date,
         })
         .collect();
     ObjectList::from_page(items, page, page_size, total)
@@ -350,12 +435,13 @@ pub async fn detail(
         query_purchase_orders(&state.db, &po_query, &ctx, q.page_size.get(), Some(s.id)).await;
     let invoices = query_site_invoices(
         related_invoices_for_site(&state.db, s.id, &ctx.timezone).await,
-        q.invoice_number.as_deref(),
-        q.invoice_status.as_deref(),
+        &q.invoice_filters,
+        &ctx.timezone,
         q.invoice_sort.as_deref().unwrap_or(""),
         q.invoice_page.get(),
         q.page_size.get(),
     );
+    let invoice_filters = site_invoice_filter_values(&state.db, &q.invoice_filters).await;
     let page = SiteDetailPage {
         id: s.id,
         name: s.name,
@@ -375,8 +461,7 @@ pub async fn detail(
         po_filter_number: q.po_number.clone().unwrap_or_default(),
         po_sort: q.po_sort.clone().unwrap_or_default(),
         invoices,
-        invoice_filter_number: q.invoice_number.clone().unwrap_or_default(),
-        invoice_filter_status: q.invoice_status.clone().unwrap_or_default(),
+        invoice_filters,
         invoice_sort: q.invoice_sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),

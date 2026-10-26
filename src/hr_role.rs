@@ -13,6 +13,8 @@ use lariv_plugin_finance_accounts::{
 use lariv_plugin_finance_creditnotes::routes::FinanceCreditNotesView;
 use lariv_plugin_finance_invoices::routes::{FinanceInvoicesMutate, FinanceInvoicesView};
 use lariv_plugin_finance_products::routes::{FinanceProductsMutate, FinanceProductsView};
+use lariv_plugin_finance_purchases::routes::{FinancePurchasesMutate, FinancePurchasesView};
+use lariv_plugin_finance_services::routes::{FinanceServicesMutate, FinanceServicesView};
 use lariv_plugin_finance_taxes::routes::{FinanceTaxesMutate, FinanceTaxesView};
 use lariv_plugin_llm_assistant::apps::{LLM_ASSISTANT_APP_KEY, allow_sidebar_role};
 use lariv_plugin_users::{
@@ -70,6 +72,10 @@ impl RoleAuthorizationRegistrar for RoleHook {
             .patch::<FinanceInvoicesMutate>(allow_hr)
             .patch::<FinanceProductsView>(allow_hr)
             .patch::<FinanceProductsMutate>(allow_hr)
+            .patch::<FinanceServicesView>(allow_hr)
+            .patch::<FinanceServicesMutate>(allow_hr)
+            .patch::<FinancePurchasesView>(allow_hr)
+            .patch::<FinancePurchasesMutate>(allow_hr)
             .patch::<FinanceTaxesView>(allow_hr)
             .patch::<FinanceTaxesMutate>(allow_hr)
             .patch::<FinanceCreditNotesView>(allow_hr)
@@ -149,9 +155,9 @@ mod tests {
                 .iter()
                 .any(|tile| tile.key == LLM_ASSISTANT_APP_KEY)
         );
-        assert!(lariv_plugin_llm_assistant::apps::sidebar_visible(
-            Some(HR_ROLE)
-        ));
+        assert!(lariv_plugin_llm_assistant::apps::sidebar_visible(Some(
+            HR_ROLE
+        )));
 
         let registry = LlmRoleHook.register_roles(RoleAuthorizationRegistry::new());
         let registry = RoleHook.register_roles(registry);

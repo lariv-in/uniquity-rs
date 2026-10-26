@@ -1,5 +1,5 @@
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use lariv_core::{
     components::{
@@ -386,6 +386,88 @@ fn keyed_pagination<K: SwapKey>(
     })
 }
 
+const SITE_INVOICE_FILTER_PANEL: &str = "card w-[28rem] max-w-[90vw] max-h-[70vh] overflow-y-auto my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
+
+fn site_invoice_filter(
+    path_and_query: &str,
+    filters: &SiteInvoiceFilterValues,
+    page_size: u32,
+) -> Markup {
+    let status_choices = choice_pairs(SiteInvoiceFilterForm::status_choices());
+    table_button_filter(TableButtonFilter {
+        panel: form(
+            &CsrfToken::current(),
+            FormOpts {
+                classes: "@container",
+                attrs: form_hx_get_url::<SiteInvoicesTableKey>(path_and_query),
+                inputs: html! {
+                    (with_list_filter_common(
+                        SiteInvoiceFilterForm::render_inputs(
+                            &FormCtx::form::<SiteInvoiceFilterForm>(CsrfToken::current())
+                                .value(SiteInvoiceFilterFormField::Id, &filters.id)
+                                .value(SiteInvoiceFilterFormField::Number, &filters.number)
+                                .value(SiteInvoiceFilterFormField::Status, &filters.status)
+                                .choices(SiteInvoiceFilterFormField::Status, &status_choices)
+                                .value(SiteInvoiceFilterFormField::Customer, &filters.customer)
+                                .value(
+                                    SiteInvoiceFilterFormField::OpenBalanceMin,
+                                    &filters.open_balance_min,
+                                )
+                                .value(
+                                    SiteInvoiceFilterFormField::OpenBalanceMax,
+                                    &filters.open_balance_max,
+                                )
+                                .value(SiteInvoiceFilterFormField::DatetimeFrom, &filters.datetime_from)
+                                .value(SiteInvoiceFilterFormField::DatetimeTo, &filters.datetime_to)
+                                .value(
+                                    SiteInvoiceFilterFormField::DeliveryDateFrom,
+                                    &filters.delivery_date_from,
+                                )
+                                .value(
+                                    SiteInvoiceFilterFormField::DeliveryDateTo,
+                                    &filters.delivery_date_to,
+                                )
+                                .value(SiteInvoiceFilterFormField::UntaxedMin, &filters.untaxed_min)
+                                .value(SiteInvoiceFilterFormField::UntaxedMax, &filters.untaxed_max)
+                                .value(SiteInvoiceFilterFormField::TotalMin, &filters.total_min)
+                                .value(SiteInvoiceFilterFormField::TotalMax, &filters.total_max)
+                                .value(SiteInvoiceFilterFormField::TaxMin, &filters.tax_min)
+                                .value(SiteInvoiceFilterFormField::TaxMax, &filters.tax_max)
+                                .value(SiteInvoiceFilterFormField::ProductId, &filters.product_id)
+                                .display(
+                                    SiteInvoiceFilterFormField::ProductId,
+                                    &filters.product_display,
+                                )
+                                .value(
+                                    SiteInvoiceFilterFormField::ProductCountMin,
+                                    &filters.product_count_min,
+                                )
+                                .value(
+                                    SiteInvoiceFilterFormField::ProductCountMax,
+                                    &filters.product_count_max,
+                                )
+                                .value(SiteInvoiceFilterFormField::FinalDueFrom, &filters.final_due_from)
+                                .value(SiteInvoiceFilterFormField::FinalDueTo, &filters.final_due_to),
+                        ),
+                        page_size,
+                    ))
+                    input type="hidden" name="inv_page" value="1" {}
+                },
+                actions: html! {
+                    (container_row("flex gap-2", html! {
+                        (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                        (PreEscaped(
+                            r#"<button type="button" class="btn btn-ghost" onclick="const form=this.closest('form'); form.querySelectorAll('[x-data]').forEach(el => { const data = window.Alpine && Alpine.$data(el); if (data && typeof data.clear === 'function') data.clear(); }); form.querySelectorAll('input:not([type=hidden]):not([name=page_size]),select:not([name=page_size]),textarea:not([name=page_size])').forEach(el => { el.value = ''; });">Clear</button>"#,
+                        ))
+                    }))
+                },
+                ..Default::default()
+            },
+        ),
+        content_classes: SITE_INVOICE_FILTER_PANEL.into(),
+    })
+}
+
 fn relation_filter<K: SwapKey>(
     path_and_query: &str,
     page_key: &str,
@@ -467,6 +549,14 @@ pub struct RelatedInvoice {
     pub href: String,
     pub date: String,
     pub status: String,
+    pub customer: String,
+    pub open_balance: String,
+    pub delivery_date: String,
+    pub untaxed_amount: String,
+    pub total_amount: String,
+    pub tax_levied: String,
+    pub product_count: String,
+    pub final_due_date: String,
 }
 
 #[derive(Clone)]
@@ -549,6 +639,8 @@ fn gandola_table_rows(items: &[GandolaRow]) -> Vec<TableRow> {
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             }
         })
         .collect()
@@ -923,6 +1015,8 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
                     value: &g.name,
                     classes: "",
                 })],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -1210,6 +1304,8 @@ fn site_table_rows(sites: &[SiteRow], attrs: impl Fn(&SiteRow) -> HtmlAttrs) -> 
         .map(|site| TableRow {
             attrs: attrs(site),
             cells: site_cells(site),
+            key: String::new(),
+            children: Vec::new(),
         })
         .collect()
 }
@@ -1305,6 +1401,32 @@ impl RenderTemplate for SiteListPage {
     }
 }
 
+#[derive(Clone, Generic, Default)]
+pub struct SiteInvoiceFilterValues {
+    pub id: String,
+    pub number: String,
+    pub status: String,
+    pub customer: String,
+    pub open_balance_min: String,
+    pub open_balance_max: String,
+    pub datetime_from: String,
+    pub datetime_to: String,
+    pub delivery_date_from: String,
+    pub delivery_date_to: String,
+    pub untaxed_min: String,
+    pub untaxed_max: String,
+    pub total_min: String,
+    pub total_max: String,
+    pub tax_min: String,
+    pub tax_max: String,
+    pub product_id: String,
+    pub product_display: String,
+    pub product_count_min: String,
+    pub product_count_max: String,
+    pub final_due_from: String,
+    pub final_due_to: String,
+}
+
 #[derive(Generic)]
 pub struct SiteDetailPage {
     pub id: i64,
@@ -1325,8 +1447,7 @@ pub struct SiteDetailPage {
     pub po_filter_number: String,
     pub po_sort: String,
     pub invoices: ObjectList<RelatedInvoice>,
-    pub invoice_filter_number: String,
-    pub invoice_filter_status: String,
+    pub invoice_filters: SiteInvoiceFilterValues,
     pub invoice_sort: String,
     pub path_and_query: String,
     pub page_size: u32,
@@ -1447,93 +1568,83 @@ impl SiteDetailPage {
     }
 
     pub fn render_invoices_table(&self) -> Markup {
-        let (number_sort, number_label) = keyed_col_sort(
-            &self.path_and_query,
-            "inv_sort",
-            "inv_page",
-            "Number",
-            "Number",
-            &self.invoice_sort,
-            false,
-        );
-        let (date_sort, date_label) = keyed_col_sort(
-            &self.path_and_query,
-            "inv_sort",
-            "inv_page",
-            "Date",
-            "Date",
-            &self.invoice_sort,
-            true,
-        );
-        let (status_sort, status_label) = keyed_col_sort(
-            &self.path_and_query,
-            "inv_sort",
-            "inv_page",
-            "Status",
-            "Status",
-            &self.invoice_sort,
-            false,
-        );
-        let headers = [
-            TableColumnHeader {
-                key: "Number",
-                label: &number_label,
-                sort_url: Some(&number_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Date",
-                label: &date_label,
-                sort_url: Some(&date_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Status",
-                label: &status_label,
-                sort_url: Some(&status_sort),
-                push_url: true,
-            },
+        // Same columns as the invoice hub, plus Status because this list mixes lifecycle states.
+        let columns: [(&str, &str, bool); 12] = [
+            ("ID", "ID", false),
+            ("Number", "Number", false),
+            ("Status", "Status", false),
+            ("Customer", "Customer", false),
+            ("OpenBalance", "Open balance", false),
+            ("Date", "Date", true),
+            ("DeliveryDate", "Delivery date", false),
+            ("UntaxedAmount", "Untaxed amount", false),
+            ("TotalAmount", "Total amount", false),
+            ("TaxLevied", "Tax levied", false),
+            ("ProductCount", "Number of products", false),
+            ("FinalDueDate", "Final due date", false),
         ];
+        let sorts: Vec<(String, String)> = columns
+            .iter()
+            .map(|(key, label, default_desc)| {
+                keyed_col_sort(
+                    &self.path_and_query,
+                    "inv_sort",
+                    "inv_page",
+                    key,
+                    label,
+                    &self.invoice_sort,
+                    *default_desc,
+                )
+            })
+            .collect();
+        let headers: Vec<TableColumnHeader> = sorts
+            .iter()
+            .zip(columns)
+            .map(|((sort_url, label), (key, _, _))| TableColumnHeader {
+                key,
+                label,
+                sort_url: Some(sort_url),
+                push_url: true,
+            })
+            .collect();
         let rows: Vec<TableRow> = self
             .invoices
             .items
             .iter()
-            .map(|inv| TableRow {
-                attrs: row_attr_navigate(&inv.href),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &inv.name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &inv.date,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &inv.status,
-                        classes: "",
-                    }),
-                ],
+            .map(|inv| {
+                let id = inv.id.to_string();
+                let values: [(&str, bool); 12] = [
+                    (&id, true),
+                    (&inv.name, false),
+                    (&inv.status, false),
+                    (&inv.customer, false),
+                    (&inv.open_balance, true),
+                    (&inv.date, false),
+                    (&inv.delivery_date, false),
+                    (&inv.untaxed_amount, true),
+                    (&inv.total_amount, true),
+                    (&inv.tax_levied, true),
+                    (&inv.product_count, true),
+                    (&inv.final_due_date, false),
+                ];
+                TableRow {
+                    attrs: row_attr_navigate(&inv.href),
+                    cells: values
+                        .into_iter()
+                        .map(|(value, numeric)| {
+                            field_text(FieldText {
+                                value,
+                                classes: if numeric { "text-end tabular-nums" } else { "" },
+                            })
+                        })
+                        .collect(),
+                    key: String::new(),
+                    children: Vec::new(),
+                }
             })
             .collect();
-        let status_choices = choice_pairs(SiteInvoiceFilterForm::status_choices());
-        let actions = relation_filter::<SiteInvoicesTableKey>(
-            &self.path_and_query,
-            "inv_page",
-            SiteInvoiceFilterForm::render_inputs(
-                &FormCtx::form::<SiteInvoiceFilterForm>(CsrfToken::current())
-                    .value(
-                        SiteInvoiceFilterFormField::Number,
-                        &self.invoice_filter_number,
-                    )
-                    .value(
-                        SiteInvoiceFilterFormField::Status,
-                        &self.invoice_filter_status,
-                    )
-                    .choices(SiteInvoiceFilterFormField::Status, &status_choices),
-            ),
-            self.page_size,
-        );
+        let actions =
+            site_invoice_filter(&self.path_and_query, &self.invoice_filters, self.page_size);
         let pagination = keyed_pagination::<SiteInvoicesTableKey>(
             &self.path_and_query,
             "inv_page",
@@ -1929,6 +2040,8 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
                     }),
                     status_badge(&s.status, &s.status_label),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {
@@ -2220,6 +2333,8 @@ fn purchase_order_table_rows(items: &[PurchaseOrderRow]) -> Vec<TableRow> {
                     classes: "",
                 }),
             ],
+            key: String::new(),
+            children: Vec::new(),
         })
         .collect()
 }
@@ -2687,6 +2802,8 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
                         classes: "",
                     }),
                 ],
+                key: String::new(),
+                children: Vec::new(),
             })
             .collect();
         let mut actions = html! {

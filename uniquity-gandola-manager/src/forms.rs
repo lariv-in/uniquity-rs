@@ -1,6 +1,6 @@
 use lariv_core::html_form::{
     html_form,
-    widgets::{Date, Password, Select, Text, Textarea},
+    widgets::{Date, Datetime, Decimal, Number, Password, Select, Text, Textarea},
 };
 use lariv_plugin_contacts::routes::CompanyFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
@@ -131,13 +131,84 @@ pub struct InvoiceHubSitesFilterForm {
     pub sites: String,
 }
 
+/// Column filters for invoices on a site. Field order matches the table.
+/// `InvoiceNumber` avoids the purchase-order `Number` filter on the same page.
 #[html_form]
 pub struct SiteInvoiceFilterForm {
-    #[form(label = "Number", widget = Text, name = "InvoiceNumber")]
+    #[form(label = "ID", widget = Text, placeholder = "Contains")]
+    pub id: String,
+
+    #[form(
+        label = "Number",
+        widget = Text,
+        name = "InvoiceNumber",
+        placeholder = "Contains"
+    )]
     pub number: String,
 
     #[form(label = "Status", widget = Select, name = "InvoiceStatus")]
     pub status: String,
+
+    #[form(label = "Customer", widget = Text, placeholder = "Contains")]
+    pub customer: String,
+
+    #[form(label = "Open balance min", widget = Decimal, row = "open_balance")]
+    pub open_balance_min: String,
+
+    #[form(label = "Open balance max", widget = Decimal, row = "open_balance")]
+    pub open_balance_max: String,
+
+    #[form(label = "Date from", widget = Datetime, row = "datetime")]
+    pub datetime_from: String,
+
+    #[form(label = "Date to", widget = Datetime, row = "datetime")]
+    pub datetime_to: String,
+
+    #[form(label = "Delivery date from", widget = Date, row = "delivery")]
+    pub delivery_date_from: String,
+
+    #[form(label = "Delivery date to", widget = Date, row = "delivery")]
+    pub delivery_date_to: String,
+
+    #[form(label = "Untaxed amount min", widget = Decimal, row = "untaxed")]
+    pub untaxed_min: String,
+
+    #[form(label = "Untaxed amount max", widget = Decimal, row = "untaxed")]
+    pub untaxed_max: String,
+
+    #[form(label = "Total amount min", widget = Decimal, row = "total")]
+    pub total_min: String,
+
+    #[form(label = "Total amount max", widget = Decimal, row = "total")]
+    pub total_max: String,
+
+    #[form(label = "Tax levied min", widget = Decimal, row = "tax")]
+    pub tax_min: String,
+
+    #[form(label = "Tax levied max", widget = Decimal, row = "tax")]
+    pub tax_max: String,
+
+    #[form(
+        label = "Product",
+        widget = ForeignKey,
+        route = ProductFkSelectRouteTag,
+        swap_key = "site-invoice-filter-product",
+        display = "site_invoice_product",
+        placeholder = "Select product…"
+    )]
+    pub product_id: String,
+
+    #[form(label = "Number of products min", widget = Number, row = "products")]
+    pub product_count_min: String,
+
+    #[form(label = "Number of products max", widget = Number, row = "products")]
+    pub product_count_max: String,
+
+    #[form(label = "Final due date from", widget = Date, row = "due")]
+    pub final_due_from: String,
+
+    #[form(label = "Final due date to", widget = Date, row = "due")]
+    pub final_due_to: String,
 }
 
 impl SiteInvoiceFilterForm {

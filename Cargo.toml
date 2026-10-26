@@ -14,25 +14,27 @@ edition = "2024"
 [workspace.dependencies]
 # Git pin for lariv. Local core work: scripts/lariv-source local
 # Move this rev everywhere at once: scripts/lariv-source pin <40-char commit>
-lariv-core = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-contacts = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-crm = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-customer = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-dashboard = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-filesystem = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-accounts = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-common = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-creditnotes = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-indian = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-invoices = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-products = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-finance-taxes = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-llm-assistant = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-otp = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-pwa = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-tasks = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-users = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
-lariv-plugin-website = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c" }
+lariv-core = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-contacts = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-crm = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-customer = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-dashboard = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-filesystem = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-accounts = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-common = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-creditnotes = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-indian = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-invoices = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-products = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-purchases = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-services = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-finance-taxes = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-llm-assistant = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-otp = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-pwa = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-tasks = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-users = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
+lariv-plugin-website = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3" }
 frunk = { version = "0.5.0", features = ["serde", "std"] }
 frunk_core = "0.5.0"
 tokio = { version = "1", features = ["full"] }
@@ -58,12 +60,7 @@ serde_json = "1"
 maud = { version = "0.27", features = ["axum"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 rust_decimal = { version = "1", features = ["serde-with-str", "maths"] }
-reqwest = { version = "0.12", features = ["json", "blocking"] }
 thiserror = "2"
-minijinja = { version = "2", features = ["serde"] }
-num2words = "1"
-sha2 = "0.10"
-hex = "0.4"
 typst = "0.15.1"
 typst-pdf = "0.15.1"
 typst-kit = { version = "0.15.1", default-features = false, features = [
@@ -75,7 +72,6 @@ typst-kit = { version = "0.15.1", default-features = false, features = [
 typst-syntax = "0.15.1"
 comemo = "0.5.1"
 
-uniquity-common = { path = "uniquity-common" }
 uniquity-gandola-manager = { path = "uniquity-gandola-manager" }
 
 [package]
@@ -88,7 +84,7 @@ name = "uniquity-ventures-rs"
 path = "src/main.rs"
 
 [dependencies]
-lariv-rs = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c7b37ffaa7ac3fca3d493533730f599c25c43f2c", default-features = false, features = [
+lariv-rs = { version = "0.1.0", git = "https://github.com/lariv-in/lariv-rs.git", rev = "c775a8558d816421799caee154d9193563a9ecc3", default-features = false, features = [
 	"plugin-users",
 	"plugin-dashboard",
 	"plugin-filesystem",
@@ -108,6 +104,8 @@ lariv-plugin-finance-accounts = { workspace = true }
 lariv-plugin-finance-creditnotes = { workspace = true }
 lariv-plugin-finance-invoices = { workspace = true }
 lariv-plugin-finance-products = { workspace = true }
+lariv-plugin-finance-purchases = { workspace = true }
+lariv-plugin-finance-services = { workspace = true }
 lariv-plugin-finance-taxes = { workspace = true }
 lariv-plugin-llm-assistant = { workspace = true }
 lariv-plugin-users = { workspace = true }
@@ -145,6 +143,8 @@ lariv-plugin-finance-creditnotes = { workspace = true }
 lariv-plugin-finance-indian = { workspace = true }
 lariv-plugin-finance-invoices = { workspace = true }
 lariv-plugin-finance-products = { workspace = true }
+lariv-plugin-finance-purchases = { workspace = true }
+lariv-plugin-finance-services = { workspace = true }
 lariv-plugin-finance-taxes = { workspace = true }
 lariv-plugin-llm-assistant = { workspace = true }
 lariv-plugin-otp = { workspace = true }
@@ -156,7 +156,6 @@ frunk = { workspace = true }
 
 [profile.dev]
 debug = 0
-codegen-backend = "cranelift"
 
 [profile.release]
 lto = "thin"

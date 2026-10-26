@@ -10,9 +10,7 @@ use sea_orm::sea_query::{Expr, SimpleExpr};
 use lariv_core::components::label;
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
 use lariv_plugin_finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
-use lariv_plugin_finance_invoices::hub_filter_addon::{
-    HubQueryParams, InvoiceHubFilterAddon,
-};
+use lariv_plugin_finance_invoices::hub_filter_addon::{HubQueryParams, InvoiceHubFilterAddon};
 use lariv_plugin_finance_invoices::hub_table_addon::InvoiceHubTableAddon;
 use lariv_plugin_finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
@@ -283,10 +281,9 @@ mod tests {
 
     #[test]
     fn sites_filter_covers_posted_and_settlement_rows() {
-        let via =
-            lariv_plugin_finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
-                "paid_invoices",
-            );
+        let via = lariv_plugin_finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
+            "paid_invoices",
+        );
         let (sql, _) = predicate_sql("Sites=7", &via).expect("predicate");
         assert!(sql.contains("paid_invoices.posted_invoice_id"));
         let (posted, _) =

@@ -3,9 +3,9 @@
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_indian, finance_invoices, finance_products, finance_taxes,
-    llm_assistant, otp, pwa, tasks, users, website,
+    contacts, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
+    finance_indian, finance_invoices, finance_products, finance_purchases, finance_services,
+    finance_taxes, llm_assistant, otp, pwa, users, website,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -40,13 +40,17 @@ async fn main() -> anyhow::Result<()> {
     // Before CRM so contacts tables exist for lead foreign keys.
     let app = contacts::install(app);
     // Before CRM so `tasks` can copy `crm_tasks` before CRM drops those tables.
-    let app = tasks::install(app);
-    let app = crm::install(app);
+    // Tasks hooks the PWA service worker, so PWA is installed first.
+    let app = pwa::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
+    // Before invoices so service lines can point at the services catalog.
+    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = invoice_line_quantity::install(app);
+    // After products and services. Purchase migrations copy rows from those catalogs.
+    let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
     let app = uniquity_gandola_manager::install(app);
     // After finance and gandola so `hr` is appended to allowlists those plugins already registered.
@@ -55,7 +59,6 @@ async fn main() -> anyhow::Result<()> {
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.
     let app = website::install(app);
-    let app = pwa::install(app);
     let app = website_seed::install(app);
 
     let app = app.load_config("config.toml").await?;

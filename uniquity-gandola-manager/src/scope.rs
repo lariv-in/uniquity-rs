@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, NaiveDate, Utc};
+use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, Statement, sea_query::Expr,
 };
 
 use lariv_core::components::ManyToManyItem;
@@ -12,22 +13,33 @@ use lariv_plugin_contacts::entities::CompanyEntity;
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_plugin_filesystem::routes::VNodeFileSelectInRouteTag;
 use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
+use lariv_plugin_finance_accounts::scope::{
+    CurrencyFormat, load_default_currency_format, load_journal_currency_format,
+};
 use lariv_plugin_finance_invoices::entities::cancelled_invoice::{
     self, Entity as CancelledInvoiceEntity,
 };
-use lariv_plugin_finance_invoices::entities::draft_invoice::{
-    self, Entity as DraftInvoiceEntity,
+use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
+use lariv_plugin_finance_invoices::entities::draft_invoice_goods_line::{
+    self, Entity as DraftInvoiceGoodsLineEntity,
 };
-use lariv_plugin_finance_invoices::entities::paid_invoice::{
-    self, Entity as PaidInvoiceEntity,
-};
+use lariv_plugin_finance_invoices::entities::paid_invoice::{self, Entity as PaidInvoiceEntity};
 use lariv_plugin_finance_invoices::entities::partially_paid_invoice::{
     self, Entity as PartiallyPaidInvoiceEntity,
 };
+use lariv_plugin_finance_invoices::entities::payment::Entity as PaymentEntity;
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
-use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
+use lariv_plugin_finance_invoices::entities::posted_invoice_goods_line::{
+    self, Entity as PostedInvoiceGoodsLineEntity,
+};
+use lariv_plugin_finance_invoices::logic::bill_to::{PartyLabels, load_bill_to};
+use lariv_plugin_finance_invoices::logic::{
+    InvoiceDateFormats, InvoiceListMetrics, cancelled_invoice_list_metrics,
+    default_payment_term_lines_json, draft_invoice_list_metrics, load_invoice_date_formats,
+    posted_invoice_list_metrics, posted_invoice_open_balance,
+};
 use lariv_plugin_finance_invoices::routes::{
     CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
     PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
@@ -229,9 +241,7 @@ pub async fn effective_purchase_order_files_directory_id(
 }
 
 async fn default_purchase_order_files_directory_id(db: &DatabaseConnection) -> Option<i64> {
-    match lariv_plugin_filesystem::node::get_by_path(db, DEFAULT_PURCHASE_ORDER_FILES_PATH)
-        .await
-    {
+    match lariv_plugin_filesystem::node::get_by_path(db, DEFAULT_PURCHASE_ORDER_FILES_PATH).await {
         Ok((Some(node), _)) if node.is_directory => return Some(node.id),
         Ok((Some(node), _)) => {
             tracing::warn!(
@@ -533,32 +543,202 @@ fn invoice_group_key(d: &draft_invoice::Model, display_number: &str) -> String {
     format!("id:{}", d.id)
 }
 
-fn invoice_status_rank(status: &str) -> u8 {
-    match status {
-        "Paid" => 5,
-        "Partial" => 4,
-        "Posted" => 3,
-        "Draft" => 2,
-        "Cancelled" => 1,
-        _ => 0,
+/// One linked invoice on a site detail page, with the columns shown on the invoice hub.
+pub struct SiteInvoiceRow {
+    pub display_id: i64,
+    pub draft_id: i64,
+    pub number: String,
+    pub href: String,
+    pub status: String,
+    pub customer: String,
+    pub open_balance: String,
+    pub open_balance_amount: Option<Decimal>,
+    pub date: String,
+    pub sort_datetime: Option<DateTime<Utc>>,
+    pub delivery_date: String,
+    pub delivery_on: Option<NaiveDate>,
+    pub untaxed_amount: String,
+    pub untaxed: Decimal,
+    pub total_amount: String,
+    pub total: Decimal,
+    pub tax_levied: String,
+    pub tax: Decimal,
+    pub product_count: String,
+    pub product_count_n: u32,
+    pub product_ids: Vec<i64>,
+    pub final_due_date: String,
+    pub final_due: Option<NaiveDate>,
+}
+
+struct InvoiceAmountCells {
+    untaxed_amount: String,
+    untaxed: Decimal,
+    total_amount: String,
+    total: Decimal,
+    tax_levied: String,
+    tax: Decimal,
+    product_count: String,
+    product_count_n: u32,
+    final_due_date: String,
+    final_due: Option<NaiveDate>,
+}
+
+fn invoice_amount_cells(
+    metrics: &InvoiceListMetrics,
+    fmt: &CurrencyFormat,
+    dates: &InvoiceDateFormats,
+) -> InvoiceAmountCells {
+    InvoiceAmountCells {
+        untaxed_amount: fmt.display(metrics.untaxed),
+        untaxed: metrics.untaxed,
+        total_amount: fmt.display(metrics.total),
+        total: metrics.total,
+        tax_levied: fmt.display(metrics.tax_levied),
+        tax: metrics.tax_levied,
+        product_count: metrics.product_count.to_string(),
+        product_count_n: metrics.product_count,
+        final_due_date: dates.calendar_or_dash(metrics.final_due),
+        final_due: metrics.final_due,
     }
 }
 
-/// Resolve the furthest lifecycle state for a linked draft invoice.
-async fn invoice_status_and_href(
-    db: &DatabaseConnection,
+fn site_invoice_row(
+    display_id: i64,
     draft_id: i64,
-) -> (String, String, Option<String>) {
-    let Ok(Some(posted)) = PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
+    number: String,
+    href: String,
+    status: &str,
+    customer: String,
+    open_balance: String,
+    open_balance_amount: Option<Decimal>,
+    date: String,
+    sort_datetime: Option<DateTime<Utc>>,
+    delivery_date: String,
+    delivery_on: Option<NaiveDate>,
+    product_ids: Vec<i64>,
+    amounts: InvoiceAmountCells,
+) -> SiteInvoiceRow {
+    SiteInvoiceRow {
+        display_id,
+        draft_id,
+        number,
+        href,
+        status: status.to_string(),
+        customer,
+        open_balance,
+        open_balance_amount,
+        date,
+        sort_datetime,
+        delivery_date,
+        delivery_on,
+        untaxed_amount: amounts.untaxed_amount,
+        untaxed: amounts.untaxed,
+        total_amount: amounts.total_amount,
+        total: amounts.total,
+        tax_levied: amounts.tax_levied,
+        tax: amounts.tax,
+        product_count: amounts.product_count,
+        product_count_n: amounts.product_count_n,
+        product_ids,
+        final_due_date: amounts.final_due_date,
+        final_due: amounts.final_due,
+    }
+}
+
+async fn draft_product_ids(db: &DatabaseConnection, draft_id: i64) -> Vec<i64> {
+    DraftInvoiceGoodsLineEntity::find()
+        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|line| line.product_id)
+        .collect()
+}
+
+async fn posted_product_ids(db: &DatabaseConnection, posted_id: i64) -> Vec<i64> {
+    PostedInvoiceGoodsLineEntity::find()
+        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|line| line.product_id)
+        .collect()
+}
+
+async fn cancelled_product_ids(db: &DatabaseConnection, cancelled_id: i64) -> Vec<i64> {
+    db.query_all_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT product_id FROM cancelled_invoice_goods_lines WHERE cancelled_invoice_id = $1",
+        [cancelled_id.into()],
+    ))
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .filter_map(|row| row.try_get("", "product_id").ok())
+    .collect()
+}
+
+async fn party_name(db: &DatabaseConnection, customer_id: i64) -> String {
+    PartyLabels::one(db, load_bill_to(db, customer_id).await).await
+}
+
+async fn payment_datetime(
+    db: &DatabaseConnection,
+    payment_id: i64,
+    tz: &str,
+    dates: &InvoiceDateFormats,
+) -> (String, Option<DateTime<Utc>>) {
+    let Ok(Some(payment)) = PaymentEntity::find_by_id(payment_id).one(db).await else {
+        return ("—".into(), None);
+    };
+    (dates.datetime(payment.datetime, tz), Some(payment.datetime))
+}
+
+/// Furthest lifecycle state for a linked draft, with hub list columns filled in.
+async fn resolve_site_invoice(
+    db: &DatabaseConnection,
+    draft: &draft_invoice::Model,
+    tz: &str,
+    dates: &InvoiceDateFormats,
+    default_currency: &CurrencyFormat,
+) -> (SiteInvoiceRow, u8) {
+    let posted = PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::DraftInvoiceId.eq(draft.id))
         .one(db)
         .await
-    else {
+        .ok()
+        .flatten();
+    let Some(posted) = posted else {
+        let metrics = draft_invoice_list_metrics(db, draft.id, tz).await;
+        let customer = party_name(db, draft.customer_id).await;
         return (
-            "Draft".into(),
-            DraftInvoiceDetailRouteTag::new(draft_id).url(),
-            None,
+            site_invoice_row(
+                draft.id,
+                draft.id,
+                invoice_label(draft.id, &draft.number),
+                DraftInvoiceDetailRouteTag::new(draft.id).url(),
+                "Draft",
+                customer,
+                String::new(),
+                None,
+                dates.datetime(draft.datetime, tz),
+                Some(draft.datetime),
+                dates.calendar_or_dash(draft.delivery_date),
+                draft.delivery_date,
+                draft_product_ids(db, draft.id).await,
+                invoice_amount_cells(&metrics, default_currency, dates),
+            ),
+            2,
         );
+    };
+
+    let currency = load_journal_currency_format(db, posted.journal_id).await;
+    let number = if posted.number.trim().is_empty() {
+        invoice_label(draft.id, &draft.number)
+    } else {
+        posted.number.clone()
     };
 
     if let Ok(Some(cancelled)) = CancelledInvoiceEntity::find()
@@ -566,21 +746,67 @@ async fn invoice_status_and_href(
         .one(db)
         .await
     {
+        let metrics = cancelled_invoice_list_metrics(db, cancelled.id).await;
+        let currency = load_journal_currency_format(db, cancelled.journal_id).await;
+        let customer = party_name(db, cancelled.customer_id).await;
+        let number = if cancelled.number.trim().is_empty() {
+            number
+        } else {
+            cancelled.number.clone()
+        };
         return (
-            "Cancelled".into(),
-            CancelledInvoiceDetailRouteTag::new(cancelled.id).url(),
-            Some(cancelled.number),
+            site_invoice_row(
+                cancelled.id,
+                draft.id,
+                number,
+                CancelledInvoiceDetailRouteTag::new(cancelled.id).url(),
+                "Cancelled",
+                customer,
+                String::new(),
+                None,
+                dates.datetime(cancelled.datetime, tz),
+                Some(cancelled.datetime),
+                dates.calendar_or_dash(cancelled.delivery_date),
+                cancelled.delivery_date,
+                cancelled_product_ids(db, cancelled.id).await,
+                invoice_amount_cells(&metrics, &currency, dates),
+            ),
+            1,
         );
     }
+
+    let metrics = posted_invoice_list_metrics(db, posted.id).await;
+    let product_ids = posted_product_ids(db, posted.id).await;
+    let open = posted_invoice_open_balance(db, posted.id)
+        .await
+        .unwrap_or(Decimal::ZERO);
+    let customer = party_name(db, posted.customer_id).await;
+    let open_balance = currency.display(open);
+
     if let Ok(Some(paid)) = PaidInvoiceEntity::find()
         .filter(paid_invoice::Column::PostedInvoiceId.eq(posted.id))
         .one(db)
         .await
     {
+        let (date, sort_datetime) = payment_datetime(db, paid.payment_id, tz, dates).await;
         return (
-            "Paid".into(),
-            PaidInvoiceDetailRouteTag::new(paid.id).url(),
-            Some(posted.number),
+            site_invoice_row(
+                paid.id,
+                draft.id,
+                number,
+                PaidInvoiceDetailRouteTag::new(paid.id).url(),
+                "Paid",
+                customer,
+                open_balance,
+                Some(open),
+                date,
+                sort_datetime,
+                dates.calendar_or_dash(posted.delivery_date),
+                posted.delivery_date,
+                product_ids.clone(),
+                invoice_amount_cells(&metrics, &currency, dates),
+            ),
+            5,
         );
     }
     if let Ok(Some(partial)) = PartiallyPaidInvoiceEntity::find()
@@ -588,16 +814,45 @@ async fn invoice_status_and_href(
         .one(db)
         .await
     {
+        let (date, sort_datetime) = payment_datetime(db, partial.payment_id, tz, dates).await;
         return (
-            "Partial".into(),
-            PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
-            Some(posted.number),
+            site_invoice_row(
+                partial.id,
+                draft.id,
+                number,
+                PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
+                "Partial",
+                customer,
+                open_balance,
+                Some(open),
+                date,
+                sort_datetime,
+                dates.calendar_or_dash(posted.delivery_date),
+                posted.delivery_date,
+                product_ids.clone(),
+                invoice_amount_cells(&metrics, &currency, dates),
+            ),
+            4,
         );
     }
     (
-        "Posted".into(),
-        PostedInvoiceDetailRouteTag::new(posted.id).url(),
-        Some(posted.number),
+        site_invoice_row(
+            posted.id,
+            draft.id,
+            number,
+            PostedInvoiceDetailRouteTag::new(posted.id).url(),
+            "Posted",
+            customer,
+            open_balance,
+            Some(open),
+            dates.datetime(posted.datetime, tz),
+            Some(posted.datetime),
+            dates.calendar_or_dash(posted.delivery_date),
+            posted.delivery_date,
+            product_ids,
+            invoice_amount_cells(&metrics, &currency, dates),
+        ),
+        3,
     )
 }
 
@@ -624,58 +879,30 @@ pub async fn related_invoices_for_site(
     db: &DatabaseConnection,
     site_id: i64,
     tz: &str,
-) -> Vec<(
-    i64,
-    String,
-    String,
-    String,
-    String,
-    chrono::DateTime<chrono::Utc>,
-)> {
+) -> Vec<SiteInvoiceRow> {
     let mut drafts = load_invoices_for_site(db, site_id).await;
     drafts.sort_by_key(|a| std::cmp::Reverse(a.id));
+    let dates = load_invoice_date_formats(db).await;
+    let default_currency = load_default_currency_format(db).await;
 
     // One row per logical invoice: prefer the furthest lifecycle state (e.g. Posted over Draft).
-    let mut best: HashMap<
-        String,
-        (
-            i64,
-            String,
-            String,
-            String,
-            String,
-            u8,
-            chrono::DateTime<chrono::Utc>,
-        ),
-    > = HashMap::new();
+    let mut best: HashMap<String, (SiteInvoiceRow, u8)> = HashMap::new();
     for d in drafts {
-        let (status, href, posted_number) = invoice_status_and_href(db, d.id).await;
-        let name = match posted_number
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            Some(n) => n.to_string(),
-            None => invoice_label(d.id, &d.number),
-        };
-        let key = invoice_group_key(&d, &name);
-        let rank = invoice_status_rank(&status);
-        let date = lariv_core::datetime::format_date_in_tz(d.datetime, tz);
-        let row = (d.id, name, href, date, status, rank, d.datetime);
+        let (row, rank) = resolve_site_invoice(db, &d, tz, &dates, &default_currency).await;
+        let key = invoice_group_key(&d, &row.number);
         match best.get(&key) {
-            Some((existing_id, _, _, _, _, existing_rank, _))
-                if *existing_rank > rank || (*existing_rank == rank && *existing_id >= d.id) => {}
+            Some((existing, existing_rank))
+                if *existing_rank > rank
+                    || (*existing_rank == rank && existing.draft_id >= d.id) => {}
             _ => {
-                best.insert(key, row);
+                best.insert(key, (row, rank));
             }
         }
     }
 
-    let mut out: Vec<_> = best.into_values().collect();
-    out.sort_by_key(|a| std::cmp::Reverse(a.0));
-    out.into_iter()
-        .map(|(id, name, href, date, status, _, dt)| (id, name, href, date, status, dt))
-        .collect()
+    let mut out: Vec<_> = best.into_values().map(|(row, _)| row).collect();
+    out.sort_by_key(|row| std::cmp::Reverse(row.draft_id));
+    out
 }
 
 pub async fn load_purchase_orders_for_site(
