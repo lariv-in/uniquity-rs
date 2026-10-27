@@ -1,4 +1,4 @@
-//! Sites many-to-many on draft invoices (deployment-specific).
+//! Sites many-to-many on draft and posted invoices (deployment-specific).
 
 use std::collections::HashMap;
 
@@ -12,6 +12,7 @@ use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
 use lariv_plugin_finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
 use lariv_plugin_finance_invoices::hub_filter_addon::{HubQueryParams, InvoiceHubFilterAddon};
 use lariv_plugin_finance_invoices::hub_table_addon::InvoiceHubTableAddon;
+use lariv_plugin_finance_invoices::invoice_addon_key::InvoiceAddonKey;
 use lariv_plugin_finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
 
@@ -21,8 +22,9 @@ use crate::forms::{
 };
 use crate::routes::SiteDetailRouteTag;
 use crate::scope::{
-    load_sites_for_invoice, site_items_for_invoice, site_items_from_ids, site_name,
-    site_names_for_invoices, sync_invoice_sites,
+    copy_sites_draft_to_posted, copy_sites_posted_to_draft, load_sites_for_draft_invoice,
+    load_sites_for_posted_invoice, site_items_for_invoice, site_items_from_ids, site_name,
+    site_names_for_draft_invoices, site_names_for_posted_invoices, sync_invoice_sites,
 };
 
 pub static INVOICE_SITES_ADDON: InvoiceSitesAddon = InvoiceSitesAddon;
@@ -76,7 +78,7 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
     }
 
     async fn render_detail(&self, db: &DatabaseConnection, draft_id: i64) -> Markup {
-        let sites = load_sites_for_invoice(db, draft_id).await;
+        let sites = load_sites_for_draft_invoice(db, draft_id).await;
         if sites.is_empty() {
             return Markup::default();
         }
@@ -107,6 +109,24 @@ impl DraftInvoiceFormAddon for InvoiceSitesAddon {
             Err(_) => false,
         }
     }
+
+    async fn on_posted(
+        &self,
+        db: &sea_orm::DatabaseTransaction,
+        draft_id: i64,
+        posted_id: i64,
+    ) -> Result<(), String> {
+        copy_sites_draft_to_posted(db, draft_id, posted_id).await
+    }
+
+    async fn on_new_draft_from_posted(
+        &self,
+        db: &sea_orm::DatabaseTransaction,
+        posted_id: i64,
+        new_draft_id: i64,
+    ) -> Result<(), String> {
+        copy_sites_posted_to_draft(db, posted_id, new_draft_id).await
+    }
 }
 
 #[async_trait]
@@ -126,9 +146,30 @@ impl InvoiceHubTableAddon for InvoiceSitesAddon {
     async fn cell_values(
         &self,
         db: &DatabaseConnection,
-        draft_invoice_ids: &[i64],
-    ) -> HashMap<i64, String> {
-        site_names_for_invoices(db, draft_invoice_ids).await
+        keys: &[InvoiceAddonKey],
+    ) -> HashMap<InvoiceAddonKey, String> {
+        let mut out = HashMap::new();
+        let draft_ids: Vec<i64> = keys
+            .iter()
+            .filter_map(|k| match k {
+                InvoiceAddonKey::Draft(id) => Some(*id),
+                InvoiceAddonKey::Posted(_) => None,
+            })
+            .collect();
+        let posted_ids: Vec<i64> = keys
+            .iter()
+            .filter_map(|k| match k {
+                InvoiceAddonKey::Posted(id) => Some(*id),
+                InvoiceAddonKey::Draft(_) => None,
+            })
+            .collect();
+        for (id, name) in site_names_for_draft_invoices(db, &draft_ids).await {
+            out.insert(InvoiceAddonKey::Draft(id), name);
+        }
+        for (id, name) in site_names_for_posted_invoices(db, &posted_ids).await {
+            out.insert(InvoiceAddonKey::Posted(id), name);
+        }
+        out
     }
 }
 
@@ -151,11 +192,11 @@ impl InvoiceHubFilterAddon for InvoiceSitesAddon {
     fn sql_predicate(
         &self,
         params: &HubQueryParams<'_>,
-        draft_invoice_id_sql: &str,
+        invoice_id_sql: &str,
     ) -> Option<SimpleExpr> {
         let raw = params.get("Sites")?;
         match raw.parse::<i64>() {
-            Ok(site_id) if site_id > 0 => Some(sites_linked_to(draft_invoice_id_sql, site_id)),
+            Ok(site_id) if site_id > 0 => Some(sites_linked_to(invoice_id_sql, site_id)),
             Ok(_) => None,
             Err(_) => Some(Expr::cust("FALSE")),
         }
@@ -170,30 +211,31 @@ fn render_site_filter(site_id: &str, display: &str) -> Markup {
     )
 }
 
-/// Core hub passes one of a few trusted draft-id expressions. Reject anything else
+/// Core hub passes one of a few trusted invoice-id expressions. Reject anything else
 /// before it is interpolated into SQL.
-fn draft_id_sql_is_safe(sql: &str) -> bool {
-    if sql == "draft_invoices.id" || sql == "posted_invoices.draft_invoice_id" {
-        return true;
-    }
-    let Some(rest) =
-        sql.strip_prefix("(SELECT pi.draft_invoice_id FROM posted_invoices pi WHERE pi.id = ")
-    else {
-        return false;
-    };
-    let Some(table) = rest.strip_suffix(".posted_invoice_id)") else {
-        return false;
-    };
-    !table.is_empty() && table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+fn invoice_id_sql_is_safe(sql: &str) -> bool {
+    matches!(
+        sql,
+        "draft_invoices.id"
+            | "posted_invoices.id"
+            | "cancelled_invoices.posted_invoice_id"
+            | "paid_invoices.posted_invoice_id"
+            | "partially_paid_invoices.posted_invoice_id"
+    )
 }
 
-fn sites_linked_to(draft_invoice_id_sql: &str, site_id: i64) -> SimpleExpr {
-    if !draft_id_sql_is_safe(draft_invoice_id_sql) {
+fn sites_linked_to(invoice_id_sql: &str, site_id: i64) -> SimpleExpr {
+    if !invoice_id_sql_is_safe(invoice_id_sql) {
         return Expr::cust("FALSE");
     }
+    let link_col = if invoice_id_sql == "draft_invoices.id" {
+        "draft_invoice_id"
+    } else {
+        "posted_invoice_id"
+    };
     Expr::cust_with_values(
         format!(
-            "EXISTS (SELECT 1 FROM site_invoices si WHERE si.draft_invoice_id = ({draft_invoice_id_sql}) AND si.site_id = $1)"
+            "EXISTS (SELECT 1 FROM site_invoices si WHERE si.{link_col} = ({invoice_id_sql}) AND si.site_id = $1)"
         ),
         [site_id],
     )
@@ -208,9 +250,12 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
     async fn extra_context(
         &self,
         db: &DatabaseConnection,
-        draft_invoice_id: i64,
+        key: InvoiceAddonKey,
     ) -> Result<Value, String> {
-        let sites = load_sites_for_invoice(db, draft_invoice_id).await;
+        let sites = match key {
+            InvoiceAddonKey::Draft(id) => load_sites_for_draft_invoice(db, id).await,
+            InvoiceAddonKey::Posted(id) => load_sites_for_posted_invoice(db, id).await,
+        };
         Ok(json!({
             "Sites": sites
                 .into_iter()
@@ -245,8 +290,8 @@ mod tests {
     use super::*;
     use sea_orm::sea_query::{PostgresQueryBuilder, Query, Value};
 
-    fn predicate_sql(query: &str, draft_sql: &str) -> Option<(String, Vec<Value>)> {
-        let expr = InvoiceSitesAddon.sql_predicate(&HubQueryParams::new(query), draft_sql)?;
+    fn predicate_sql(query: &str, invoice_sql: &str) -> Option<(String, Vec<Value>)> {
+        let expr = InvoiceSitesAddon.sql_predicate(&HubQueryParams::new(query), invoice_sql)?;
         let (sql, values) = Query::select()
             .expr(expr)
             .to_owned()
@@ -267,6 +312,7 @@ mod tests {
         let (sql, values) = predicate_sql("Sites=42", "draft_invoices.id").expect("predicate");
         assert!(sql.contains("site_invoices"));
         assert!(sql.contains("draft_invoices.id"));
+        assert!(sql.contains("si.draft_invoice_id"));
         assert!(sql.contains("si.site_id = $1"));
         assert!(!sql.contains("42"));
         assert_eq!(values, vec![Value::BigInt(Some(42))]);
@@ -281,14 +327,12 @@ mod tests {
 
     #[test]
     fn sites_filter_covers_posted_and_settlement_rows() {
-        let via = lariv_plugin_finance_invoices::hub_filter_addon::draft_invoice_id_sql_via_posted(
-            "paid_invoices",
-        );
-        let (sql, _) = predicate_sql("Sites=7", &via).expect("predicate");
+        let (sql, _) = predicate_sql("Sites=7", "paid_invoices.posted_invoice_id").expect("paid");
         assert!(sql.contains("paid_invoices.posted_invoice_id"));
-        let (posted, _) =
-            predicate_sql("Sites=7", "posted_invoices.draft_invoice_id").expect("posted");
-        assert!(posted.contains("posted_invoices.draft_invoice_id"));
+        assert!(sql.contains("si.posted_invoice_id"));
+        let (posted, _) = predicate_sql("Sites=7", "posted_invoices.id").expect("posted");
+        assert!(posted.contains("posted_invoices.id"));
+        assert!(posted.contains("si.posted_invoice_id"));
     }
 
     #[test]

@@ -352,7 +352,7 @@ async fn existing_invoice_id(db: &DatabaseConnection, number: &str) -> Result<Op
         .await
         .map_err(|e| e.to_string())?
     {
-        return Ok(Some(posted.draft_invoice_id));
+        return Ok(Some(posted.id));
     }
     Ok(None)
 }

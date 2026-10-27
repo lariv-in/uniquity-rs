@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -455,17 +454,38 @@ pub async fn load_invoices_for_site(
     db: &DatabaseConnection,
     site_id: i64,
 ) -> Vec<draft_invoice::Model> {
-    SiteEntity::find_by_id(site_id)
-        .find_with_related(DraftInvoiceEntity)
+    let draft_ids: Vec<i64> = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::DraftInvoiceId.is_not_null())
         .all(db)
         .await
         .unwrap_or_default()
         .into_iter()
-        .flat_map(|(_, invoices)| invoices)
+        .filter_map(|link| link.draft_invoice_id)
+        .collect();
+    if draft_ids.is_empty() {
+        return Vec::new();
+    }
+    DraftInvoiceEntity::find()
+        .filter(draft_invoice::Column::Id.is_in(draft_ids))
+        .all(db)
+        .await
+        .unwrap_or_default()
+}
+
+async fn load_posted_ids_for_site(db: &DatabaseConnection, site_id: i64) -> Vec<i64> {
+    SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::PostedInvoiceId.is_not_null())
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|link| link.posted_invoice_id)
         .collect()
 }
 
-pub async fn load_sites_for_invoice(
+pub async fn load_sites_for_draft_invoice(
     db: &DatabaseConnection,
     draft_invoice_id: i64,
 ) -> Vec<site::Model> {
@@ -480,8 +500,31 @@ pub async fn load_sites_for_invoice(
         .collect()
 }
 
-/// Comma-separated site names keyed by draft invoice id (names sorted).
-pub async fn site_names_for_invoices(
+pub async fn load_sites_for_posted_invoice(
+    db: &DatabaseConnection,
+    posted_invoice_id: i64,
+) -> Vec<site::Model> {
+    SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::PostedInvoiceId.eq(posted_invoice_id))
+        .find_also_related(SiteEntity)
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(_, site)| site)
+        .collect()
+}
+
+/// Alias kept for draft-form call sites.
+pub async fn load_sites_for_invoice(
+    db: &DatabaseConnection,
+    draft_invoice_id: i64,
+) -> Vec<site::Model> {
+    load_sites_for_draft_invoice(db, draft_invoice_id).await
+}
+
+/// Comma-separated site names keyed by draft or posted invoice id (names sorted).
+pub async fn site_names_for_draft_invoices(
     db: &DatabaseConnection,
     draft_invoice_ids: &[i64],
 ) -> std::collections::HashMap<i64, String> {
@@ -497,16 +540,50 @@ pub async fn site_names_for_invoices(
         .await
         .unwrap_or_default();
 
-    let mut names_by_draft: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut names_by_id: HashMap<i64, Vec<String>> = HashMap::new();
     for (link, site) in links {
+        let Some(draft_id) = link.draft_invoice_id else {
+            continue;
+        };
         if let Some(site) = site {
-            names_by_draft
-                .entry(link.draft_invoice_id)
-                .or_default()
-                .push(site.name);
+            names_by_id.entry(draft_id).or_default().push(site.name);
         }
     }
-    names_by_draft
+    names_by_id
+        .into_iter()
+        .map(|(id, mut names)| {
+            names.sort();
+            (id, names.join(", "))
+        })
+        .collect()
+}
+
+pub async fn site_names_for_posted_invoices(
+    db: &DatabaseConnection,
+    posted_invoice_ids: &[i64],
+) -> std::collections::HashMap<i64, String> {
+    use std::collections::HashMap;
+
+    if posted_invoice_ids.is_empty() {
+        return HashMap::new();
+    }
+    let links = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::PostedInvoiceId.is_in(posted_invoice_ids.to_vec()))
+        .find_also_related(SiteEntity)
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    let mut names_by_id: HashMap<i64, Vec<String>> = HashMap::new();
+    for (link, site) in links {
+        let Some(posted_id) = link.posted_invoice_id else {
+            continue;
+        };
+        if let Some(site) = site {
+            names_by_id.entry(posted_id).or_default().push(site.name);
+        }
+    }
+    names_by_id
         .into_iter()
         .map(|(id, mut names)| {
             names.sort();
@@ -520,27 +597,6 @@ fn invoice_label(id: i64, number: &Option<String>) -> String {
         Some(n) => n.to_string(),
         None => format!("#{id}"),
     }
-}
-
-/// Group key for collapsing draft/posted (and replacement drafts) of one logical invoice.
-fn invoice_group_key(d: &draft_invoice::Model, display_number: &str) -> String {
-    if let Some(n) = Some(display_number.trim()).filter(|s| !s.is_empty())
-        && !n.starts_with('#')
-    {
-        return n.to_ascii_lowercase();
-    }
-    if let Some(n) = d.number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        return n.to_ascii_lowercase();
-    }
-    if let Some(r) = d
-        .reference
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return r.to_ascii_lowercase();
-    }
-    format!("id:{}", d.id)
 }
 
 /// One linked invoice on a site detail page, with the columns shown on the invoice hub.
@@ -652,7 +708,7 @@ async fn draft_product_ids(db: &DatabaseConnection, draft_id: i64) -> Vec<i64> {
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|line| line.product_id)
+        .filter_map(|line| line.product_id)
         .collect()
 }
 
@@ -663,20 +719,21 @@ async fn posted_product_ids(db: &DatabaseConnection, posted_id: i64) -> Vec<i64>
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|line| line.product_id)
+        .filter_map(|line| line.product_id)
         .collect()
 }
 
 async fn cancelled_product_ids(db: &DatabaseConnection, cancelled_id: i64) -> Vec<i64> {
     db.query_all_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "SELECT product_id FROM cancelled_invoice_goods_lines WHERE cancelled_invoice_id = $1",
+        "SELECT product_id FROM cancelled_invoice_goods_lines \
+         WHERE cancelled_invoice_id = $1 AND product_id IS NOT NULL",
         [cancelled_id.into()],
     ))
     .await
     .unwrap_or_default()
     .into_iter()
-    .filter_map(|row| row.try_get("", "product_id").ok())
+    .filter_map(|row| row.try_get::<Option<i64>>("", "product_id").ok().flatten())
     .collect()
 }
 
@@ -696,50 +753,51 @@ async fn payment_datetime(
     (dates.datetime(payment.datetime, tz), Some(payment.datetime))
 }
 
-/// Furthest lifecycle state for a linked draft, with hub list columns filled in.
-async fn resolve_site_invoice(
+/// Draft-linked site invoice row (drafts are deleted on post).
+async fn resolve_draft_site_invoice(
     db: &DatabaseConnection,
     draft: &draft_invoice::Model,
     tz: &str,
     dates: &InvoiceDateFormats,
     default_currency: &CurrencyFormat,
 ) -> (SiteInvoiceRow, u8) {
-    let posted = PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::DraftInvoiceId.eq(draft.id))
-        .one(db)
-        .await
-        .ok()
-        .flatten();
-    let Some(posted) = posted else {
-        let metrics = draft_invoice_list_metrics(db, draft.id, tz).await;
-        let customer = party_name(db, draft.customer_id).await;
-        return (
-            site_invoice_row(
-                draft.id,
-                draft.id,
-                invoice_label(draft.id, &draft.number),
-                DraftInvoiceDetailRouteTag::new(draft.id).url(),
-                "Draft",
-                customer,
-                String::new(),
-                None,
-                dates.datetime(draft.datetime, tz),
-                Some(draft.datetime),
-                dates.calendar_or_dash(draft.delivery_date),
-                draft.delivery_date,
-                draft_product_ids(db, draft.id).await,
-                invoice_amount_cells(&metrics, default_currency, dates),
-            ),
-            2,
-        );
-    };
+    let metrics = draft_invoice_list_metrics(db, draft.id, tz).await;
+    let customer = party_name(db, draft.customer_id).await;
+    (
+        site_invoice_row(
+            draft.id,
+            draft.id,
+            invoice_label(draft.id, &draft.number),
+            DraftInvoiceDetailRouteTag::new(draft.id).url(),
+            "Draft",
+            customer,
+            String::new(),
+            None,
+            dates.datetime(draft.datetime, tz),
+            Some(draft.datetime),
+            dates.calendar_or_dash(draft.delivery_date),
+            draft.delivery_date,
+            draft_product_ids(db, draft.id).await,
+            invoice_amount_cells(&metrics, default_currency, dates),
+        ),
+        2,
+    )
+}
 
+/// Posted-linked site invoice row with furthest lifecycle state.
+async fn resolve_posted_site_invoice(
+    db: &DatabaseConnection,
+    posted: &posted_invoice::Model,
+    tz: &str,
+    dates: &InvoiceDateFormats,
+) -> (SiteInvoiceRow, u8) {
     let currency = load_journal_currency_format(db, posted.journal_id).await;
     let number = if posted.number.trim().is_empty() {
-        invoice_label(draft.id, &draft.number)
+        format!("#{}", posted.id)
     } else {
         posted.number.clone()
     };
+    let sort_id = posted.id;
 
     if let Ok(Some(cancelled)) = CancelledInvoiceEntity::find()
         .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted.id))
@@ -757,7 +815,7 @@ async fn resolve_site_invoice(
         return (
             site_invoice_row(
                 cancelled.id,
-                draft.id,
+                sort_id,
                 number,
                 CancelledInvoiceDetailRouteTag::new(cancelled.id).url(),
                 "Cancelled",
@@ -792,7 +850,7 @@ async fn resolve_site_invoice(
         return (
             site_invoice_row(
                 paid.id,
-                draft.id,
+                sort_id,
                 number,
                 PaidInvoiceDetailRouteTag::new(paid.id).url(),
                 "Paid",
@@ -818,7 +876,7 @@ async fn resolve_site_invoice(
         return (
             site_invoice_row(
                 partial.id,
-                draft.id,
+                sort_id,
                 number,
                 PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
                 "Partial",
@@ -838,7 +896,7 @@ async fn resolve_site_invoice(
     (
         site_invoice_row(
             posted.id,
-            draft.id,
+            sort_id,
             number,
             PostedInvoiceDetailRouteTag::new(posted.id).url(),
             "Posted",
@@ -880,27 +938,30 @@ pub async fn related_invoices_for_site(
     site_id: i64,
     tz: &str,
 ) -> Vec<SiteInvoiceRow> {
-    let mut drafts = load_invoices_for_site(db, site_id).await;
-    drafts.sort_by_key(|a| std::cmp::Reverse(a.id));
     let dates = load_invoice_date_formats(db).await;
     let default_currency = load_default_currency_format(db).await;
+    let mut out = Vec::new();
 
-    // One row per logical invoice: prefer the furthest lifecycle state (e.g. Posted over Draft).
-    let mut best: HashMap<String, (SiteInvoiceRow, u8)> = HashMap::new();
+    let mut drafts = load_invoices_for_site(db, site_id).await;
+    drafts.sort_by_key(|a| std::cmp::Reverse(a.id));
     for d in drafts {
-        let (row, rank) = resolve_site_invoice(db, &d, tz, &dates, &default_currency).await;
-        let key = invoice_group_key(&d, &row.number);
-        match best.get(&key) {
-            Some((existing, existing_rank))
-                if *existing_rank > rank
-                    || (*existing_rank == rank && existing.draft_id >= d.id) => {}
-            _ => {
-                best.insert(key, (row, rank));
-            }
+        let (row, _) = resolve_draft_site_invoice(db, &d, tz, &dates, &default_currency).await;
+        out.push(row);
+    }
+
+    let posted_ids = load_posted_ids_for_site(db, site_id).await;
+    if !posted_ids.is_empty() {
+        let posted_models = PostedInvoiceEntity::find()
+            .filter(posted_invoice::Column::Id.is_in(posted_ids))
+            .all(db)
+            .await
+            .unwrap_or_default();
+        for posted in posted_models {
+            let (row, _) = resolve_posted_site_invoice(db, &posted, tz, &dates).await;
+            out.push(row);
         }
     }
 
-    let mut out: Vec<_> = best.into_values().map(|(row, _)| row).collect();
     out.sort_by_key(|row| std::cmp::Reverse(row.draft_id));
     out
 }
@@ -1022,6 +1083,7 @@ pub async fn sync_site_invoices<C: ConnectionTrait>(
 ) -> Result<(), String> {
     SiteInvoiceLinkEntity::delete_many()
         .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::DraftInvoiceId.is_not_null())
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -1032,7 +1094,9 @@ pub async fn sync_site_invoices<C: ConnectionTrait>(
         }
         site_invoice_link::ActiveModel {
             site_id: Set(site_id),
-            draft_invoice_id: Set(draft_invoice_id),
+            draft_invoice_id: Set(Some(draft_invoice_id)),
+            posted_invoice_id: Set(None),
+            ..Default::default()
         }
         .insert(db)
         .await
@@ -1061,7 +1125,39 @@ pub async fn link_site_invoice<C: ConnectionTrait>(
     }
     site_invoice_link::ActiveModel {
         site_id: Set(site_id),
-        draft_invoice_id: Set(draft_invoice_id),
+        draft_invoice_id: Set(Some(draft_invoice_id)),
+        posted_invoice_id: Set(None),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Link a posted invoice to a site without removing the site's other invoice links.
+pub async fn link_site_posted_invoice<C: ConnectionTrait>(
+    db: &C,
+    site_id: i64,
+    posted_invoice_id: i64,
+) -> Result<(), String> {
+    if site_id <= 0 || posted_invoice_id <= 0 {
+        return Err("site_id and posted_invoice_id are required".into());
+    }
+    let exists = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::SiteId.eq(site_id))
+        .filter(site_invoice_link::Column::PostedInvoiceId.eq(posted_invoice_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if exists.is_some() {
+        return Ok(());
+    }
+    site_invoice_link::ActiveModel {
+        site_id: Set(site_id),
+        draft_invoice_id: Set(None),
+        posted_invoice_id: Set(Some(posted_invoice_id)),
+        ..Default::default()
     }
     .insert(db)
     .await
@@ -1109,7 +1205,59 @@ pub async fn sync_invoice_sites<C: ConnectionTrait>(
         }
         site_invoice_link::ActiveModel {
             site_id: Set(site_id),
-            draft_invoice_id: Set(draft_invoice_id),
+            draft_invoice_id: Set(Some(draft_invoice_id)),
+            posted_invoice_id: Set(None),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Copy draft site links onto a newly posted invoice (before the draft is deleted).
+pub async fn copy_sites_draft_to_posted<C: ConnectionTrait>(
+    db: &C,
+    draft_invoice_id: i64,
+    posted_invoice_id: i64,
+) -> Result<(), String> {
+    let links = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::DraftInvoiceId.eq(draft_invoice_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    for link in links {
+        site_invoice_link::ActiveModel {
+            site_id: Set(link.site_id),
+            draft_invoice_id: Set(None),
+            posted_invoice_id: Set(Some(posted_invoice_id)),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Copy posted site links onto a new draft created from a posted invoice.
+pub async fn copy_sites_posted_to_draft<C: ConnectionTrait>(
+    db: &C,
+    posted_invoice_id: i64,
+    new_draft_id: i64,
+) -> Result<(), String> {
+    let links = SiteInvoiceLinkEntity::find()
+        .filter(site_invoice_link::Column::PostedInvoiceId.eq(posted_invoice_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    for link in links {
+        site_invoice_link::ActiveModel {
+            site_id: Set(link.site_id),
+            draft_invoice_id: Set(Some(new_draft_id)),
+            posted_invoice_id: Set(None),
+            ..Default::default()
         }
         .insert(db)
         .await
