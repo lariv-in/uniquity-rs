@@ -4,8 +4,8 @@
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_indian, finance_invoices, finance_products, finance_purchases, finance_services,
-    finance_taxes, llm_assistant, otp, pwa, users, website,
+    finance_indian, finance_invoices, finance_products, finance_purchases, finance_taxes,
+    llm_assistant, otp, pwa, users, website,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -46,12 +46,11 @@ async fn main() -> anyhow::Result<()> {
     let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
+    // Services live in the unified product catalog (`product_kind = Services`).
     let app = finance_products::install(app);
-    // Before invoices so service lines can point at the services catalog.
-    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = invoice_line_quantity::install(app);
-    // After products and services. Purchase migrations copy rows from those catalogs.
+    // After products. Purchase migrations copy rows from the unified catalog.
     let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
     let app = uniquity_gandola_manager::install(app);

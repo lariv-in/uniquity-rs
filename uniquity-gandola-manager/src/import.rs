@@ -140,11 +140,19 @@ async fn find_customer_by_name(db: &DatabaseConnection, name: &str) -> Option<co
     None
 }
 
+async fn customer_id_for_company(
+    db: &DatabaseConnection,
+    company: &company::Model,
+) -> Result<i64, String> {
+    lariv_plugin_customer::logic::create_for_party(db, company.id, 0).await
+}
+
+/// Create a company (if needed) and return the matching `customers` row id.
 pub async fn create_customer(
     db: &DatabaseConnection,
     name: &str,
     gstin: &str,
-) -> Result<company::Model, String> {
+) -> Result<i64, String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("customer name is required".into());
@@ -158,21 +166,23 @@ pub async fn create_customer(
         updated_at: Set(Some(now)),
         ..Default::default()
     };
-    model.insert(db).await.map_err(|e| e.to_string())
+    let company = model.insert(db).await.map_err(|e| e.to_string())?;
+    customer_id_for_company(db, &company).await
 }
 
+/// Resolve a company by GSTIN/name (optionally creating it) and return the `customers` id.
 pub async fn resolve_customer(
     db: &DatabaseConnection,
     name: &str,
     gstin: &str,
     create_missing: bool,
     dry_run: bool,
-) -> Result<company::Model, String> {
+) -> Result<i64, String> {
     if let Some(c) = find_customer_by_gstin(db, gstin).await {
-        return Ok(c);
+        return customer_id_for_company(db, &c).await;
     }
     if let Some(c) = find_customer_by_name(db, name).await {
-        return Ok(c);
+        return customer_id_for_company(db, &c).await;
     }
     if !create_missing {
         return Err(format!(
@@ -210,10 +220,10 @@ async fn resolve_or_create_customer_logged(
     dry_run: bool,
 ) -> Result<Option<i64>, String> {
     if let Some(c) = find_customer_by_gstin(db, &row.gstin).await {
-        return Ok(Some(c.id));
+        return Ok(Some(customer_id_for_company(db, &c).await?));
     }
     if let Some(c) = find_customer_by_name(db, &row.customer_name).await {
-        return Ok(Some(c.id));
+        return Ok(Some(customer_id_for_company(db, &c).await?));
     }
     if !create_missing {
         return Err(format!(
@@ -228,12 +238,12 @@ async fn resolve_or_create_customer_logged(
         );
         return Ok(None);
     }
-    let created = create_customer(db, &row.customer_name, &row.gstin).await?;
+    let customer_id = create_customer(db, &row.customer_name, &row.gstin).await?;
     eprintln!(
         "created customer id={} map_id={} name={}",
-        created.id, row.legacy_customer_id, created.name
+        customer_id, row.legacy_customer_id, row.customer_name
     );
-    Ok(Some(created.id))
+    Ok(Some(customer_id))
 }
 
 pub async fn resolve_import_gandola_id(

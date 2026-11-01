@@ -23,7 +23,7 @@ use lariv_core::{
     web::{modal_create_post_query, modal_edit_post_url},
 };
 
-use lariv_plugin_contacts::routes::CompanyDetailRouteTag;
+use lariv_plugin_customer::templates::CustomerListPage;
 use lariv_plugin_filesystem::routes::VNodeDetailRouteTag;
 
 use super::forms::{
@@ -31,7 +31,7 @@ use super::forms::{
     GandolaPreferencesForm, GandolaPreferencesFormField, PurchaseOrderFilterForm,
     PurchaseOrderFilterFormField, PurchaseOrderForm, PurchaseOrderFormField, SiteFilterForm,
     SiteFilterFormField, SiteForm, SiteFormField, SiteInvoiceFilterForm,
-    SiteInvoiceFilterFormField,
+    SiteInvoiceFilterFormField, SiteInvoiceSelectFilterForm, SiteInvoiceSelectFilterFormField,
 };
 use super::keys::{
     GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
@@ -39,19 +39,19 @@ use super::keys::{
     PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey, PurchaseOrderSelectModalKey,
     PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteCreateModalKey, SiteDeleteModalKey,
     SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey,
-    SiteInvoicesTableKey, SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey,
-    SiteTableKey,
+    SiteInvoiceSelectModalKey, SiteInvoiceSelectTableKey, SiteInvoicesTableKey,
+    SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
 };
 use super::routes::{
-    GandolaCreatePostRouteTag, GandolaDefaultRouteTag, GandolaDeleteGetRouteTag,
-    GandolaDeletePostRouteTag, GandolaDetailRouteTag, GandolaEditGetRouteTag,
-    GandolaEditPostRouteTag, GandolaPreferencesPostRouteTag, GandolaPreferencesRouteTag,
-    GandolaSelectRouteTag, PurchaseOrderCreatePostRouteTag, PurchaseOrderDefaultRouteTag,
-    PurchaseOrderDeleteGetRouteTag, PurchaseOrderDeletePostRouteTag, PurchaseOrderDetailRouteTag,
-    PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag, PurchaseOrderSelectRouteTag,
-    SiteCreatePostRouteTag, SiteDefaultRouteTag, SiteDeleteGetRouteTag, SiteDeletePostRouteTag,
-    SiteDetailRouteTag, SiteEditGetRouteTag, SiteEditPostRouteTag, SiteFkSelectRouteTag,
-    SiteSelectRouteTag,
+    CustomerListRouteTag, GandolaCreatePostRouteTag, GandolaDefaultRouteTag,
+    GandolaDeleteGetRouteTag, GandolaDeletePostRouteTag, GandolaDetailRouteTag,
+    GandolaEditGetRouteTag, GandolaEditPostRouteTag, GandolaPreferencesPostRouteTag,
+    GandolaPreferencesRouteTag, GandolaSelectRouteTag, PurchaseOrderCreatePostRouteTag,
+    PurchaseOrderDefaultRouteTag, PurchaseOrderDeleteGetRouteTag, PurchaseOrderDeletePostRouteTag,
+    PurchaseOrderDetailRouteTag, PurchaseOrderEditGetRouteTag, PurchaseOrderEditPostRouteTag,
+    PurchaseOrderSelectRouteTag, SiteCreatePostRouteTag, SiteDefaultRouteTag,
+    SiteDeleteGetRouteTag, SiteDeletePostRouteTag, SiteDetailRouteTag, SiteEditGetRouteTag,
+    SiteEditPostRouteTag, SiteFkSelectRouteTag, SiteInvoiceSelectRouteTag, SiteSelectRouteTag,
 };
 use super::site_status::SiteStatus;
 
@@ -121,6 +121,12 @@ fn gandola_menu(active: &str) -> Markup {
                 title: "Purchase Orders",
                 url: &PurchaseOrderDefaultRouteTag.url(),
                 active: active == "purchase_orders",
+                ..Default::default()
+            }))
+            (sidebar_menu_item_pane(SidebarMenuItem {
+                title: "Customers",
+                url: &CustomerListRouteTag.url(),
+                active: active == "customers",
                 ..Default::default()
             }))
             (sidebar_menu_item_pane(SidebarMenuItem {
@@ -516,12 +522,14 @@ lariv_core::define_register_items! {
         SiteCreateModalIdx: SiteCreateModalPageTag => SiteCreateModalPage,
         SiteSelectIdx: SiteSelectPageTag => SiteSelectPage,
         SiteFkSelectIdx: SiteFkSelectPageTag => SiteFkSelectPage,
+        SiteInvoiceSelectIdx: SiteInvoiceSelectPageTag => SiteInvoiceSelectPage,
         PreferencesIdx: GandolaPreferencesPageTag => GandolaPreferencesPage,
         PurchaseOrderListIdx: PurchaseOrderListPageTag => PurchaseOrderListPage,
         PurchaseOrderDetailIdx: PurchaseOrderDetailPageTag => PurchaseOrderDetailPage,
         PurchaseOrderEditModalIdx: PurchaseOrderEditModalPageTag => PurchaseOrderEditModalPage,
         PurchaseOrderCreateModalIdx: PurchaseOrderCreateModalPageTag => PurchaseOrderCreateModalPage,
         PurchaseOrderSelectIdx: PurchaseOrderSelectPageTag => PurchaseOrderSelectPage,
+        CustomersListIdx: CustomersListPageTag => CustomersListPage,
         ConfirmDeleteIdx: GandolaConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }
@@ -1434,6 +1442,7 @@ pub struct SiteDetailPage {
     pub site_id: String,
     pub customer_id: i64,
     pub customer_name: String,
+    pub customer_href: String,
     pub status_label: String,
     pub status: String,
     pub start_date: String,
@@ -1662,7 +1671,6 @@ impl SiteDetailPage {
     }
 
     fn body(&self) -> Markup {
-        let customer_url = CompanyDetailRouteTag::new(self.customer_id).url();
         let actions = if self.can_edit {
             html! {
                 (button_modal_form(ButtonModalForm {
@@ -1687,7 +1695,11 @@ impl SiteDetailPage {
                     }))
                     (label("Site ID", field_text(FieldText { value: &self.site_id, classes: "" })))
                     (label("Customer", html! {
-                        a class="link" href=(customer_url) { (self.customer_name) }
+                        @if self.customer_href.is_empty() {
+                            (self.customer_name)
+                        } @else {
+                            a class="link" href=(self.customer_href) { (self.customer_name) }
+                        }
                     }))
                     (label("Status", status_badge(&self.status, &self.status_label)))
                     (label("Start Date", field_text(FieldText { value: &self.start_date, classes: "" })))
@@ -2106,6 +2118,142 @@ impl RenderTemplate for SiteFkSelectPage {
     }
 }
 
+#[derive(Clone)]
+pub struct SiteInvoiceSelectRow {
+    pub key: String,
+    pub number: String,
+    pub datetime: String,
+    pub status: String,
+    pub customer_name: String,
+}
+
+#[derive(Generic)]
+pub struct SiteInvoiceSelectPage {
+    pub invoices: ObjectList<SiteInvoiceSelectRow>,
+    pub filter_number: String,
+    pub filter_status: String,
+    pub path_and_query: String,
+    pub target_input: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey>
+    for SiteInvoiceSelectPage
+{
+    fn render_table(&self) -> Markup {
+        let target = if self.target_input.is_empty() {
+            "Invoices"
+        } else {
+            self.target_input.as_str()
+        };
+        let status_choices = choice_pairs(SiteInvoiceSelectFilterForm::status_choices());
+        let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: "Number",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: "Date",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Status",
+                label: "Status",
+                sort_url: None,
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Customer",
+                label: "Customer",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .invoices
+            .items
+            .iter()
+            .map(|inv| TableRow {
+                attrs: row_attr_select_multi(target, &inv.key, &inv.number),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &inv.number,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.status,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.customer_name,
+                        classes: "",
+                    }),
+                ],
+                key: String::new(),
+                children: Vec::new(),
+            })
+            .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_get_picker_route::<
+                        SiteInvoiceSelectTableKey,
+                        SiteInvoiceSelectModalKey,
+                        SiteInvoiceSelectRouteTag,
+                    >(SiteInvoiceSelectRouteTag),
+                    inputs: html! {
+                        (with_list_filter_common(
+                            SiteInvoiceSelectFilterForm::render_inputs(
+                                &FormCtx::form::<SiteInvoiceSelectFilterForm>(CsrfToken::current())
+                                    .value(SiteInvoiceSelectFilterFormField::Number, &self.filter_number)
+                                    .value(SiteInvoiceSelectFilterFormField::Status, &self.filter_status)
+                                    .choices(SiteInvoiceSelectFilterFormField::Status, &status_choices),
+                            ),
+                            self.page_size,
+                        ))
+                        input type="hidden" name="target_input" value=(self.target_input) {}
+                    },
+                    actions: html! {
+                        (container_row("flex gap-2", html! {
+                            (button_submit(ButtonSubmit { label: "Apply", ..Default::default() }))
+                            (button_clear(ButtonClear { label: "Clear", ..Default::default() }))
+                        }))
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_pagination::<SiteInvoiceSelectTableKey>(
+            &self.path_and_query,
+            self.invoices.number,
+            self.invoices.num_pages,
+        );
+        data_table_list_refresh::<SiteInvoiceSelectTableKey>(
+            "Select invoices",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+        )
+    }
+}
+
+impl RenderTemplate for SiteInvoiceSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
 #[derive(Generic)]
 pub struct GandolaPreferencesPage {
     pub gandola_product_id: String,
@@ -2452,6 +2600,47 @@ impl RenderTemplate for PurchaseOrderListPage {
     }
 }
 
+/// Gandola Manager chrome around the customer plugin list table.
+pub struct CustomersListPage {
+    pub inner: CustomerListPage,
+}
+
+impl CustomersListPage {
+    pub fn render_table(&self) -> Markup {
+        self.inner.render_table::<CustomerListRouteTag>()
+    }
+
+    fn body(&self) -> Markup {
+        self.render_table()
+    }
+}
+
+impl RenderAppPane for CustomersListPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        scaffold_pane(
+            gandola_menu("customers"),
+            list_crumbs("Customers"),
+            self.body(),
+        )
+    }
+
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        scaffold_main(list_crumbs("Customers"), self.body())
+    }
+}
+
+impl RenderTemplate for CustomersListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Customers",
+            chrome,
+            gandola_menu("customers"),
+            list_crumbs("Customers"),
+            self.body(),
+        )
+    }
+}
+
 #[derive(Generic)]
 pub struct PurchaseOrderDetailPage {
     pub id: i64,
@@ -2459,6 +2648,7 @@ pub struct PurchaseOrderDetailPage {
     pub date: String,
     pub customer_id: i64,
     pub customer_name: String,
+    pub customer_href: String,
     pub site_id: i64,
     pub site_name: String,
     pub file_id: Option<i64>,
@@ -2471,7 +2661,6 @@ pub struct PurchaseOrderDetailPage {
 
 impl PurchaseOrderDetailPage {
     fn body(&self) -> Markup {
-        let customer_url = CompanyDetailRouteTag::new(self.customer_id).url();
         let site_url = SiteDetailRouteTag::new(self.site_id).url();
         let actions = if self.can_edit {
             html! {
@@ -2497,7 +2686,11 @@ impl PurchaseOrderDetailPage {
                     }))
                     (label("Date", field_text(FieldText { value: &self.date, classes: "" })))
                     (label("Customer", html! {
-                        a class="link" href=(customer_url) { (self.customer_name) }
+                        @if self.customer_href.is_empty() {
+                            (self.customer_name)
+                        } @else {
+                            a class="link" href=(self.customer_href) { (self.customer_name) }
+                        }
                     }))
                     (label("Site", html! {
                         a class="link" href=(site_url) { (self.site_name) }

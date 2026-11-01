@@ -1,5 +1,6 @@
-//! Deployment role `accountant`: Accounting, Gandola Manager, customers, contacts, CRM,
+//! Deployment role `accountant`: Accounting, Gandola Manager, contacts, CRM,
 //! the filesystem, and the assistant.
+//! Customers live under Accounting and Gandola Manager (no separate customers app).
 //! `accountant` can open the filesystem and the assistant chat.
 //! Changing filesystem permissions stays with admin and superuser.
 //! Changing assistant skills stays with admin and superuser. Assistant preferences stay superuser-only.
@@ -7,7 +8,7 @@
 use lariv_core::apps::{AppsCapability, AppsRegistrar};
 use lariv_plugin_contacts::routes::{ContactsMutate, ContactsView};
 use lariv_plugin_crm::routes::{CrmMutate, CrmView};
-use lariv_plugin_customer::routes::{CustomerMutate, CustomerView};
+use lariv_plugin_customer::routes::CustomerMutate;
 use lariv_plugin_filesystem::FILESYSTEM_APP_KEY;
 use lariv_plugin_finance_accounts::{
     ACCOUNTING_APP_KEY,
@@ -17,7 +18,6 @@ use lariv_plugin_finance_creditnotes::routes::FinanceCreditNotesView;
 use lariv_plugin_finance_invoices::routes::{FinanceInvoicesMutate, FinanceInvoicesView};
 use lariv_plugin_finance_products::routes::{FinanceProductsMutate, FinanceProductsView};
 use lariv_plugin_finance_purchases::routes::{FinancePurchasesMutate, FinancePurchasesView};
-use lariv_plugin_finance_services::routes::{FinanceServicesMutate, FinanceServicesView};
 use lariv_plugin_finance_taxes::routes::{FinanceTaxesMutate, FinanceTaxesView};
 use lariv_plugin_llm_assistant::apps::{LLM_ASSISTANT_APP_KEY, allow_sidebar_role};
 use lariv_plugin_users::{
@@ -31,7 +31,6 @@ pub const ACCOUNTANT_ROLE: &str = <Accountant as Role>::NAME;
 
 const CONTACTS_APP_KEY: &str = "p_contacts";
 const CRM_APP_KEY: &str = "p_crm";
-const CUSTOMERS_APP_KEY: &str = "p_customer";
 
 pub struct AccountantRoleTag;
 
@@ -53,7 +52,6 @@ pub struct AppsHook;
 impl AppsRegistrar for AppsHook {
     fn register_apps(self, apps: AppsCapability) -> AppsCapability {
         let apps = allow_accountant_app(apps, ACCOUNTING_APP_KEY);
-        let apps = allow_accountant_app(apps, CUSTOMERS_APP_KEY);
         let apps = allow_accountant_app(apps, CONTACTS_APP_KEY);
         let apps = allow_accountant_app(apps, CRM_APP_KEY);
         let apps = allow_accountant_app(apps, FILESYSTEM_APP_KEY);
@@ -85,14 +83,11 @@ impl RoleAuthorizationRegistrar for RoleHook {
             .patch::<FinanceInvoicesMutate>(allow_accountant)
             .patch::<FinanceProductsView>(allow_accountant)
             .patch::<FinanceProductsMutate>(allow_accountant)
-            .patch::<FinanceServicesView>(allow_accountant)
-            .patch::<FinanceServicesMutate>(allow_accountant)
             .patch::<FinancePurchasesView>(allow_accountant)
             .patch::<FinancePurchasesMutate>(allow_accountant)
             .patch::<FinanceTaxesView>(allow_accountant)
             .patch::<FinanceTaxesMutate>(allow_accountant)
             .patch::<FinanceCreditNotesView>(allow_accountant)
-            .patch::<CustomerView>(allow_accountant)
             .patch::<CustomerMutate>(allow_accountant)
             .patch::<ContactsView>(allow_accountant)
             .patch::<ContactsMutate>(allow_accountant)
@@ -125,7 +120,6 @@ mod tests {
     use super::*;
     use lariv_core::apps::{AppsCapability, AppsRegistrar};
     use lariv_plugin_contacts::apps::Hook as ContactsAppsHook;
-    use lariv_plugin_customer::apps::Hook as CustomerAppsHook;
     use lariv_plugin_filesystem::{
         apps::Hook as FilesystemAppsHook,
         routes::{FilesystemPermissions, RoleHook as FilesystemRoleHook},
@@ -189,17 +183,16 @@ mod tests {
     }
 
     #[test]
-    fn accountant_can_open_customers_contacts_and_crm() {
+    fn accountant_can_open_contacts_and_crm_and_mutate_customers() {
         use lariv_plugin_contacts::routes::RoleHook as ContactsRoleHook;
         use lariv_plugin_crm::apps::Hook as CrmAppsHook;
         use lariv_plugin_crm::routes::RoleHook as CrmRoleHook;
         use lariv_plugin_customer::routes::RoleHook as CustomerRoleHook;
 
-        let apps = CustomerAppsHook.register_apps(AppsCapability::new());
-        let apps = ContactsAppsHook.register_apps(apps);
+        let apps = ContactsAppsHook.register_apps(AppsCapability::new());
         let apps = CrmAppsHook.register_apps(apps);
         let apps = AppsHook.register_apps(apps);
-        for key in [CUSTOMERS_APP_KEY, CONTACTS_APP_KEY, CRM_APP_KEY] {
+        for key in [CONTACTS_APP_KEY, CRM_APP_KEY] {
             let tile = apps
                 .apps()
                 .iter()
@@ -218,7 +211,6 @@ mod tests {
         let registry = CrmRoleHook.register_roles(registry);
         let registry = RoleHook.register_roles(registry);
         for roles in [
-            registry.roles::<CustomerView>(),
             registry.roles::<CustomerMutate>(),
             registry.roles::<ContactsView>(),
             registry.roles::<ContactsMutate>(),

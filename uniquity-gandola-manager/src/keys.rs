@@ -27,3 +27,6 @@ lariv_core::swap_key!(PurchaseOrderEditModalKey, "gandola-po-edit-modal");
 lariv_core::swap_key!(PurchaseOrderDeleteModalKey, "gandola-po-delete-modal");
 lariv_core::swap_key!(PurchaseOrderSelectTableKey, "gandola-po-selection-table");
 lariv_core::swap_key!(PurchaseOrderSelectModalKey, "gandola-po-selection-modal");
+
+lariv_core::swap_key!(SiteInvoiceSelectTableKey, "gandola-site-invoice-selection-table");
+lariv_core::swap_key!(SiteInvoiceSelectModalKey, "gandola-site-invoice-selection-modal");

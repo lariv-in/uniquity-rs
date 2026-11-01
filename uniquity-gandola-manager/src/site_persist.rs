@@ -9,7 +9,10 @@ use crate::entities::{
     purchase_order::{self, Entity as PurchaseOrderEntity},
     site::{self, Entity as SiteEntity},
 };
-use crate::scope::{opt_string, sync_site_gandolas, sync_site_invoices, sync_site_purchase_orders};
+use crate::scope::{
+    draft_invoice_form_keys, opt_string, sync_site_gandolas, sync_site_invoices,
+    sync_site_purchase_orders,
+};
 use crate::site_status::SiteStatus;
 
 #[derive(Debug, Clone)]
@@ -85,7 +88,8 @@ async fn sync_related(
         sync_site_gandolas(db, site_id, ids).await?;
     }
     if let Some(ids) = invoices {
-        sync_site_invoices(db, site_id, ids).await?;
+        let keys = draft_invoice_form_keys(ids);
+        sync_site_invoices(db, site_id, &keys).await?;
     }
     if let Some(ids) = purchase_orders {
         sync_site_purchase_orders(db, site_id, customer_id, ids).await?;

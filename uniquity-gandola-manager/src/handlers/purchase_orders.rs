@@ -35,9 +35,9 @@ use crate::{
     po_lines::{default_po_lines_json, load_po_line_displays},
     routes::PurchaseOrderDetailRouteTag,
     scope::{
-        apply_number_filter_purchase_orders, can_manage, customer_name, find_purchase_order_scoped,
-        parse_optional_i64, purchase_order_file_select_url_from_prefs, scope_purchase_orders,
-        site_name, vnode_name,
+        apply_number_filter_purchase_orders, can_manage, customer_href, customer_name,
+        find_purchase_order_scoped, parse_optional_i64, purchase_order_file_select_url_from_prefs,
+        scope_purchase_orders, site_name, vnode_name,
     },
     state::GandolaManagerState,
     templates::{
@@ -51,7 +51,11 @@ fn list_url() -> String {
     crate::routes::PurchaseOrderDefaultRouteTag.url()
 }
 
-const CUSTOMER_NAME_SORT_EXPR: &str = "COALESCE((SELECT name FROM crm_companies WHERE crm_companies.id = purchase_orders.customer_id), '')";
+const CUSTOMER_NAME_SORT_EXPR: &str = "COALESCE((SELECT CASE WHEN customers.is_individual THEN \
+    (SELECT name FROM crm_contacts WHERE crm_contacts.id = customers.individual_id) \
+    ELSE \
+    (SELECT name FROM crm_companies WHERE crm_companies.id = customers.company_id) \
+  END FROM customers WHERE customers.id = purchase_orders.customer_id), '')";
 const SITE_NAME_SORT_EXPR: &str =
     "COALESCE((SELECT name FROM sites WHERE sites.id = purchase_orders.site_id), '')";
 
@@ -248,6 +252,7 @@ pub async fn detail(
         date: format_date(po.date),
         customer_id: po.customer_id,
         customer_name: customer_name(&state.db, po.customer_id).await,
+        customer_href: customer_href(&state.db, po.customer_id).await,
         site_id: po.site_id,
         site_name: site_name(&state.db, po.site_id).await,
         file_id: po.file_id,

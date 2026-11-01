@@ -8,7 +8,8 @@ use sea_orm::{
 };
 
 use lariv_core::components::ManyToManyItem;
-use lariv_plugin_contacts::entities::CompanyEntity;
+use lariv_plugin_customer::entities::CustomerEntity;
+use lariv_plugin_customer::logic as customer_logic;
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 use lariv_plugin_filesystem::routes::VNodeFileSelectInRouteTag;
 use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
@@ -19,8 +20,8 @@ use lariv_plugin_finance_invoices::entities::cancelled_invoice::{
     self, Entity as CancelledInvoiceEntity,
 };
 use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
-use lariv_plugin_finance_invoices::entities::draft_invoice_goods_line::{
-    self, Entity as DraftInvoiceGoodsLineEntity,
+use lariv_plugin_finance_invoices::entities::draft_invoice_line::{
+    self, Entity as DraftInvoiceLineEntity,
 };
 use lariv_plugin_finance_invoices::entities::paid_invoice::{self, Entity as PaidInvoiceEntity};
 use lariv_plugin_finance_invoices::entities::partially_paid_invoice::{
@@ -30,8 +31,8 @@ use lariv_plugin_finance_invoices::entities::payment::Entity as PaymentEntity;
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
-use lariv_plugin_finance_invoices::entities::posted_invoice_goods_line::{
-    self, Entity as PostedInvoiceGoodsLineEntity,
+use lariv_plugin_finance_invoices::entities::posted_invoice_line::{
+    self, Entity as PostedInvoiceLineEntity,
 };
 use lariv_plugin_finance_invoices::logic::bill_to::{PartyLabels, load_bill_to};
 use lariv_plugin_finance_invoices::logic::{
@@ -592,7 +593,7 @@ pub async fn site_names_for_posted_invoices(
         .collect()
 }
 
-fn invoice_label(id: i64, number: &Option<String>) -> String {
+pub(crate) fn invoice_label(id: i64, number: &Option<String>) -> String {
     match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(n) => n.to_string(),
         None => format!("#{id}"),
@@ -702,19 +703,20 @@ fn site_invoice_row(
 }
 
 async fn draft_product_ids(db: &DatabaseConnection, draft_id: i64) -> Vec<i64> {
-    DraftInvoiceGoodsLineEntity::find()
-        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
+    DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
         .all(db)
         .await
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|line| line.product_id)
+        .map(|line| line.product_id)
+        .filter(|id| *id != 0)
         .collect()
 }
 
 async fn posted_product_ids(db: &DatabaseConnection, posted_id: i64) -> Vec<i64> {
-    PostedInvoiceGoodsLineEntity::find()
-        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
+    PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
         .all(db)
         .await
         .unwrap_or_default()
@@ -726,7 +728,7 @@ async fn posted_product_ids(db: &DatabaseConnection, posted_id: i64) -> Vec<i64>
 async fn cancelled_product_ids(db: &DatabaseConnection, cancelled_id: i64) -> Vec<i64> {
     db.query_all_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "SELECT product_id FROM cancelled_invoice_goods_lines \
+        "SELECT product_id FROM cancelled_invoice_lines \
          WHERE cancelled_invoice_id = $1 AND product_id IS NOT NULL",
         [cancelled_id.into()],
     ))
@@ -914,12 +916,94 @@ async fn resolve_posted_site_invoice(
     )
 }
 
+/// Form / chip key for a site↔invoice link. Drafts use a bare id (matches the
+/// finance draft multi-select); posted use `p:{id}` so ids never collide.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SiteInvoiceKey {
+    Draft(i64),
+    Posted(i64),
+}
+
+impl SiteInvoiceKey {
+    pub fn encode(self) -> String {
+        match self {
+            Self::Draft(id) => id.to_string(),
+            Self::Posted(id) => format!("p:{id}"),
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        if let Some(rest) = raw.strip_prefix("p:") {
+            return rest
+                .parse::<i64>()
+                .ok()
+                .filter(|&id| id > 0)
+                .map(Self::Posted);
+        }
+        if let Some(rest) = raw.strip_prefix("d:") {
+            return rest
+                .parse::<i64>()
+                .ok()
+                .filter(|&id| id > 0)
+                .map(Self::Draft);
+        }
+        raw.parse::<i64>()
+            .ok()
+            .filter(|&id| id > 0)
+            .map(Self::Draft)
+    }
+}
+
+pub fn draft_invoice_form_keys(ids: &[i64]) -> Vec<String> {
+    ids.iter()
+        .copied()
+        .filter(|&id| id > 0)
+        .map(|id| SiteInvoiceKey::Draft(id).encode())
+        .collect()
+}
+
+pub(crate) fn posted_invoice_label(id: i64, number: &str) -> String {
+    let trimmed = number.trim();
+    if trimmed.is_empty() {
+        format!("#{id}")
+    } else {
+        trimmed.to_string()
+    }
+}
+
 pub async fn invoice_items_for_site(db: &DatabaseConnection, site_id: i64) -> Vec<ManyToManyItem> {
-    load_invoices_for_site(db, site_id)
+    let mut items: Vec<ManyToManyItem> = load_invoices_for_site(db, site_id)
         .await
         .into_iter()
-        .map(|d| ManyToManyItem::new(d.id.to_string(), invoice_label(d.id, &d.number)))
-        .collect()
+        .map(|d| {
+            ManyToManyItem::new(
+                SiteInvoiceKey::Draft(d.id).encode(),
+                invoice_label(d.id, &d.number),
+            )
+        })
+        .collect();
+    let posted_ids = load_posted_ids_for_site(db, site_id).await;
+    if posted_ids.is_empty() {
+        return items;
+    }
+    let posted_models = PostedInvoiceEntity::find()
+        .filter(posted_invoice::Column::Id.is_in(posted_ids.clone()))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    for &id in &posted_ids {
+        if let Some(posted) = posted_models.iter().find(|p| p.id == id) {
+            items.push(ManyToManyItem::new(
+                SiteInvoiceKey::Posted(posted.id).encode(),
+                posted_invoice_label(posted.id, &posted.number),
+            ));
+        }
+    }
+    items
 }
 
 pub async fn site_items_for_invoice(
@@ -1057,45 +1141,114 @@ pub async fn sync_site_purchase_orders<C: ConnectionTrait>(
     Ok(())
 }
 
-pub async fn invoice_items_from_ids(db: &DatabaseConnection, ids: &[i64]) -> Vec<ManyToManyItem> {
-    if ids.is_empty() {
+pub async fn invoice_items_from_keys(
+    db: &DatabaseConnection,
+    keys: &[String],
+) -> Vec<ManyToManyItem> {
+    if keys.is_empty() {
         return Vec::new();
     }
-    let models = DraftInvoiceEntity::find()
-        .filter(draft_invoice::Column::Id.is_in(ids.to_vec()))
-        .all(db)
-        .await
-        .unwrap_or_default();
-    ids.iter()
-        .filter_map(|id| {
-            models
-                .iter()
-                .find(|d| d.id == *id)
-                .map(|d| ManyToManyItem::new(d.id.to_string(), invoice_label(d.id, &d.number)))
+    let parsed: Vec<(usize, SiteInvoiceKey)> = keys
+        .iter()
+        .enumerate()
+        .filter_map(|(i, raw)| SiteInvoiceKey::parse(raw).map(|k| (i, k)))
+        .collect();
+    let draft_ids: Vec<i64> = parsed
+        .iter()
+        .filter_map(|(_, k)| match k {
+            SiteInvoiceKey::Draft(id) => Some(*id),
+            SiteInvoiceKey::Posted(_) => None,
         })
-        .collect()
+        .collect();
+    let posted_ids: Vec<i64> = parsed
+        .iter()
+        .filter_map(|(_, k)| match k {
+            SiteInvoiceKey::Posted(id) => Some(*id),
+            SiteInvoiceKey::Draft(_) => None,
+        })
+        .collect();
+    let drafts = if draft_ids.is_empty() {
+        Vec::new()
+    } else {
+        DraftInvoiceEntity::find()
+            .filter(draft_invoice::Column::Id.is_in(draft_ids))
+            .all(db)
+            .await
+            .unwrap_or_default()
+    };
+    let posted = if posted_ids.is_empty() {
+        Vec::new()
+    } else {
+        PostedInvoiceEntity::find()
+            .filter(posted_invoice::Column::Id.is_in(posted_ids))
+            .all(db)
+            .await
+            .unwrap_or_default()
+    };
+    let mut out = Vec::with_capacity(parsed.len());
+    for (_, key) in parsed {
+        match key {
+            SiteInvoiceKey::Draft(id) => {
+                if let Some(d) = drafts.iter().find(|d| d.id == id) {
+                    out.push(ManyToManyItem::new(
+                        key.encode(),
+                        invoice_label(d.id, &d.number),
+                    ));
+                }
+            }
+            SiteInvoiceKey::Posted(id) => {
+                if let Some(p) = posted.iter().find(|p| p.id == id) {
+                    out.push(ManyToManyItem::new(
+                        key.encode(),
+                        posted_invoice_label(p.id, &p.number),
+                    ));
+                }
+            }
+        }
+    }
+    out
 }
 
+/// Replace all invoice links for a site. Keys are bare draft ids or `p:{posted_id}`.
 pub async fn sync_site_invoices<C: ConnectionTrait>(
     db: &C,
     site_id: i64,
-    draft_invoice_ids: &[i64],
+    keys: &[String],
 ) -> Result<(), String> {
+    let mut draft_ids = std::collections::BTreeSet::new();
+    let mut posted_ids = std::collections::BTreeSet::new();
+    for raw in keys {
+        match SiteInvoiceKey::parse(raw) {
+            Some(SiteInvoiceKey::Draft(id)) => {
+                draft_ids.insert(id);
+            }
+            Some(SiteInvoiceKey::Posted(id)) => {
+                posted_ids.insert(id);
+            }
+            None => {}
+        }
+    }
     SiteInvoiceLinkEntity::delete_many()
         .filter(site_invoice_link::Column::SiteId.eq(site_id))
-        .filter(site_invoice_link::Column::DraftInvoiceId.is_not_null())
         .exec(db)
         .await
         .map_err(|e| e.to_string())?;
-    let mut seen = std::collections::BTreeSet::new();
-    for &draft_invoice_id in draft_invoice_ids {
-        if draft_invoice_id <= 0 || !seen.insert(draft_invoice_id) {
-            continue;
-        }
+    for draft_invoice_id in draft_ids {
         site_invoice_link::ActiveModel {
             site_id: Set(site_id),
             draft_invoice_id: Set(Some(draft_invoice_id)),
             posted_invoice_id: Set(None),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    for posted_invoice_id in posted_ids {
+        site_invoice_link::ActiveModel {
+            site_id: Set(site_id),
+            draft_invoice_id: Set(None),
+            posted_invoice_id: Set(Some(posted_invoice_id)),
             ..Default::default()
         }
         .insert(db)
@@ -1313,12 +1466,24 @@ pub async fn customer_name(db: &DatabaseConnection, customer_id: i64) -> String 
     if customer_id <= 0 {
         return String::new();
     }
+    let name = customer_logic::display_name(db, customer_id).await;
+    if name.is_empty() {
+        format!("#{customer_id}")
+    } else {
+        name
+    }
+}
+
+pub async fn customer_href(db: &DatabaseConnection, customer_id: i64) -> String {
+    if customer_id <= 0 {
+        return String::new();
+    }
     lariv_core::web::opt_or_log(
-        CompanyEntity::find_by_id(customer_id).one(db).await,
+        CustomerEntity::find_by_id(customer_id).one(db).await,
         "find by id",
     )
-    .map(|c| c.name)
-    .unwrap_or_else(|| format!("#{customer_id}"))
+    .map(|row| customer_logic::detail_href(&row))
+    .unwrap_or_default()
 }
 
 pub async fn product_name(db: &DatabaseConnection, product_id: Option<i64>) -> String {
@@ -1384,7 +1549,10 @@ pub fn opt_string(s: String) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_PURCHASE_ORDER_FILES_PATH, purchase_order_file_select_url};
+    use super::{
+        DEFAULT_PURCHASE_ORDER_FILES_PATH, SiteInvoiceKey, draft_invoice_form_keys,
+        purchase_order_file_select_url,
+    };
 
     #[test]
     fn default_purchase_order_directory_path() {
@@ -1402,5 +1570,28 @@ mod tests {
         assert!(purchase_order_file_select_url(None).is_empty());
         assert!(purchase_order_file_select_url(Some(0)).is_empty());
         assert!(purchase_order_file_select_url(Some(-1)).is_empty());
+    }
+
+    #[test]
+    fn site_invoice_keys_encode_and_parse() {
+        assert_eq!(SiteInvoiceKey::Draft(12).encode(), "12");
+        assert_eq!(SiteInvoiceKey::Posted(12).encode(), "p:12");
+        assert_eq!(SiteInvoiceKey::parse("12"), Some(SiteInvoiceKey::Draft(12)));
+        assert_eq!(
+            SiteInvoiceKey::parse("d:12"),
+            Some(SiteInvoiceKey::Draft(12))
+        );
+        assert_eq!(
+            SiteInvoiceKey::parse("p:34"),
+            Some(SiteInvoiceKey::Posted(34))
+        );
+        assert_eq!(SiteInvoiceKey::parse(""), None);
+        assert_eq!(SiteInvoiceKey::parse("0"), None);
+        assert_eq!(SiteInvoiceKey::parse("p:0"), None);
+        assert_eq!(SiteInvoiceKey::parse("nope"), None);
+        assert_eq!(
+            draft_invoice_form_keys(&[0, 7, 7, -1]),
+            vec!["7".to_string(), "7".to_string()]
+        );
     }
 }

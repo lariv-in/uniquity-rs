@@ -8,9 +8,18 @@ use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
     sea_query::{Expr, NullOrdering, Order, Query as SeaQuery},
 };
 
+use lariv_plugin_finance_invoices::entities::draft_invoice::{
+    self, Entity as DraftInvoiceEntity,
+};
+use lariv_plugin_finance_invoices::entities::posted_invoice::{
+    self, Entity as PostedInvoiceEntity,
+};
+use lariv_plugin_finance_invoices::logic::bill_to::{self, PartyLabels};
+use lariv_plugin_finance_invoices::logic::load_invoice_date_formats;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_core::{
@@ -38,16 +47,19 @@ use crate::{
     },
     keys::{
         SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
-        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoicesTableKey,
-        SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoiceSelectModalKey,
+        SiteInvoiceSelectTableKey, SiteInvoicesTableKey, SitePurchaseOrdersTableKey,
+        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
     routes::{SiteDefaultRouteTag, SiteDetailRouteTag},
     scope::{
-        SiteInvoiceRow, apply_name_filter_sites, apply_site_id_filter_sites, can_manage,
-        customer_name, find_site_scoped, gandola_items_for_site, gandola_items_from_ids,
-        invoice_items_for_site, invoice_items_from_ids, load_gandolas_for_site, opt_string,
-        purchase_order_items_for_site, purchase_order_items_from_ids, related_invoices_for_site,
-        scope_sites, sync_site_gandolas, sync_site_invoices, sync_site_purchase_orders,
+        SiteInvoiceKey, SiteInvoiceRow, apply_name_filter_sites, apply_site_id_filter_sites,
+        can_manage, customer_href, customer_name, find_site_scoped, gandola_items_for_site,
+        gandola_items_from_ids,
+        invoice_items_for_site, invoice_items_from_keys, invoice_label, load_gandolas_for_site,
+        opt_string, posted_invoice_label, purchase_order_items_for_site,
+        purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
+        sync_site_invoices, sync_site_purchase_orders,
     },
     site_invoice_filters::{
         SiteInvoiceFilterQuery, invoice_filters_reject_all, invoice_row_matches,
@@ -56,7 +68,8 @@ use crate::{
     state::GandolaManagerState,
     templates::{
         ConfirmDeletePage, RelatedInvoice, SiteCreateModalPage, SiteDetailPage, SiteEditModalPage,
-        SiteFkSelectPage, SiteInvoiceFilterValues, SiteListPage, SiteRow, SiteSelectPage,
+        SiteFkSelectPage, SiteInvoiceFilterValues, SiteInvoiceSelectPage, SiteInvoiceSelectRow,
+        SiteListPage, SiteRow, SiteSelectPage,
     },
 };
 
@@ -112,6 +125,20 @@ pub struct SiteDetailQuery {
 pub struct SiteSelectQuery {
     #[serde(flatten)]
     pub filter: SiteListQuery,
+    #[serde(default)]
+    pub target_input: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SiteInvoiceSelectQuery {
+    #[serde(default, rename = "Number", alias = "number")]
+    pub number: Option<String>,
+    #[serde(default, rename = "Status", alias = "status")]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
     #[serde(default)]
     pub target_input: Option<String>,
 }
@@ -448,6 +475,7 @@ pub async fn detail(
         site_id: s.site_id.unwrap_or_default(),
         customer_id: s.customer_id,
         customer_name: customer_name(&state.db, s.customer_id).await,
+        customer_href: customer_href(&state.db, s.customer_id).await,
         status_label: s.status.label().to_string(),
         status: s.status.as_str().to_string(),
         start_date: format_date(s.start_date),
@@ -584,7 +612,7 @@ pub async fn create_post(
         return Redirect::to(&list_url()).into_response();
     }
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
-    let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
+    let invoices = invoice_items_from_keys(&state.db, &form.invoices).await;
     let purchase_orders = purchase_order_items_from_ids(&state.db, &form.purchase_orders).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
@@ -781,7 +809,7 @@ pub async fn edit_post(
         return Redirect::to(&list_url()).into_response();
     };
     let gandolas = gandola_items_from_ids(&state.db, &form.gandolas).await;
-    let invoices = invoice_items_from_ids(&state.db, &form.invoices).await;
+    let invoices = invoice_items_from_keys(&state.db, &form.invoices).await;
     let purchase_orders = purchase_order_items_from_ids(&state.db, &form.purchase_orders).await;
     let parsed = match parse_site_form(&form) {
         Ok(p) => p,
@@ -959,6 +987,170 @@ pub async fn select(
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select::<SiteSelectTableKey, SiteSelectModalKey, _>(&htmx, &page)
+}
+
+fn invoice_number_filter(number: Option<&str>) -> Option<&str> {
+    number.map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn include_draft_posted(status: Option<&str>) -> (bool, bool) {
+    match status.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) if s.eq_ignore_ascii_case("Draft") => (true, false),
+        Some(s) if s.eq_ignore_ascii_case("Posted") => (false, true),
+        _ => (true, true),
+    }
+}
+
+async fn draft_select_rows(
+    db: &DatabaseConnection,
+    tz: &str,
+    number: Option<&str>,
+    offset: u64,
+    limit: u64,
+) -> Vec<SiteInvoiceSelectRow> {
+    let dates = load_invoice_date_formats(db).await;
+    let mut query = DraftInvoiceEntity::find().order_by_desc(draft_invoice::Column::Id);
+    if let Some(n) = number {
+        query = query.filter(draft_invoice::Column::Number.contains(n));
+    }
+    let models = query
+        .offset(offset)
+        .limit(limit)
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
+    let parties = bill_to::parties_in_order(db, &customer_ids).await;
+    let customers = PartyLabels::load(db, &parties).await;
+    models
+        .into_iter()
+        .zip(parties)
+        .map(|(d, party)| {
+            let key = SiteInvoiceKey::Draft(d.id);
+            let number = invoice_label(d.id, &d.number);
+            SiteInvoiceSelectRow {
+                key: key.encode(),
+                number,
+                datetime: dates.datetime(d.datetime, tz),
+                status: "Draft".into(),
+                customer_name: customers.name(party),
+            }
+        })
+        .collect()
+}
+
+async fn posted_select_rows(
+    db: &DatabaseConnection,
+    tz: &str,
+    number: Option<&str>,
+    offset: u64,
+    limit: u64,
+) -> Vec<SiteInvoiceSelectRow> {
+    let dates = load_invoice_date_formats(db).await;
+    let mut query = PostedInvoiceEntity::find().order_by_desc(posted_invoice::Column::Id);
+    if let Some(n) = number {
+        query = query.filter(posted_invoice::Column::Number.contains(n));
+    }
+    let models = query
+        .offset(offset)
+        .limit(limit)
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let customer_ids: Vec<i64> = models.iter().map(|p| p.customer_id).collect();
+    let parties = bill_to::parties_in_order(db, &customer_ids).await;
+    let customers = PartyLabels::load(db, &parties).await;
+    models
+        .into_iter()
+        .zip(parties)
+        .map(|(p, party)| {
+            let key = SiteInvoiceKey::Posted(p.id);
+            let number = posted_invoice_label(p.id, &p.number);
+            SiteInvoiceSelectRow {
+                key: key.encode(),
+                number,
+                datetime: dates.datetime(p.datetime, tz),
+                status: "Posted".into(),
+                customer_name: customers.name(party),
+            }
+        })
+        .collect()
+}
+
+async fn count_drafts(db: &DatabaseConnection, number: Option<&str>) -> u64 {
+    let mut query = DraftInvoiceEntity::find();
+    if let Some(n) = number {
+        query = query.filter(draft_invoice::Column::Number.contains(n));
+    }
+    query.count(db).await.unwrap_or(0)
+}
+
+async fn count_posted(db: &DatabaseConnection, number: Option<&str>) -> u64 {
+    let mut query = PostedInvoiceEntity::find();
+    if let Some(n) = number {
+        query = query.filter(posted_invoice::Column::Number.contains(n));
+    }
+    query.count(db).await.unwrap_or(0)
+}
+
+pub(crate) async fn query_site_invoice_select(
+    db: &DatabaseConnection,
+    tz: &str,
+    q: &SiteInvoiceSelectQuery,
+) -> ObjectList<SiteInvoiceSelectRow> {
+    let number = invoice_number_filter(q.number.as_deref());
+    let (want_draft, want_posted) = include_draft_posted(q.status.as_deref());
+    let page = q.page.get();
+    let page_size = q.page_size.get();
+    let offset = u64::from(page.saturating_sub(1).saturating_mul(page_size));
+    let limit = u64::from(page_size);
+
+    if want_draft && !want_posted {
+        let total = count_drafts(db, number).await;
+        let items = draft_select_rows(db, tz, number, offset, limit).await;
+        return ObjectList::from_page(items, page, page_size, total);
+    }
+    if want_posted && !want_draft {
+        let total = count_posted(db, number).await;
+        let items = posted_select_rows(db, tz, number, offset, limit).await;
+        return ObjectList::from_page(items, page, page_size, total);
+    }
+
+    let draft_total = count_drafts(db, number).await;
+    let posted_total = count_posted(db, number).await;
+    let total = draft_total.saturating_add(posted_total);
+    let mut items = Vec::new();
+    if offset < draft_total {
+        let draft_take = limit.min(draft_total.saturating_sub(offset));
+        items.extend(draft_select_rows(db, tz, number, offset, draft_take).await);
+        let remaining = limit.saturating_sub(draft_take);
+        if remaining > 0 {
+            items.extend(posted_select_rows(db, tz, number, 0, remaining).await);
+        }
+    } else {
+        let posted_offset = offset.saturating_sub(draft_total);
+        items.extend(posted_select_rows(db, tz, number, posted_offset, limit).await);
+    }
+    ObjectList::from_page(items, page, page_size, total)
+}
+
+pub async fn select_invoices(
+    Cap(state): Cap<GandolaManagerState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<SiteInvoiceSelectQuery>,
+) -> maud::Markup {
+    let invoices = query_site_invoice_select(&state.db, &ctx.timezone, &q).await;
+    let page = SiteInvoiceSelectPage {
+        invoices,
+        filter_number: q.number.clone().unwrap_or_default(),
+        filter_status: q.status.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        target_input: q.target_input.clone().unwrap_or_else(|| "Invoices".into()),
+        page_size: q.page_size.get(),
+    };
+    respond_picker_select::<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey, _>(&htmx, &page)
 }
 
 pub async fn fk_select(

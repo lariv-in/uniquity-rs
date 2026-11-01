@@ -1,8 +1,8 @@
 use super::keys::{
     GandolaCreateModalKey, GandolaSelectModalKey, GandolaSelectTableKey,
     PurchaseOrderCreateModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
-    SiteCreateModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteSelectModalKey,
-    SiteSelectTableKey,
+    SiteCreateModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteInvoiceSelectModalKey,
+    SiteInvoiceSelectTableKey, SiteSelectModalKey, SiteSelectTableKey,
 };
 use super::routes::{
     GandolaCreateGetRouteTag, GandolaCreatePostRouteTag, PurchaseOrderCreateGetRouteTag,
@@ -33,3 +33,4 @@ lariv_core::impl_create_modal!(
     "gandola_manager.PurchaseOrderCreateForm"
 );
 lariv_core::impl_picker_modal!(PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey);
+lariv_core::impl_picker_modal!(SiteInvoiceSelectModalKey, SiteInvoiceSelectTableKey);

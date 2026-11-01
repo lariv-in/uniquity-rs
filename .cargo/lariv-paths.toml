@@ -6,6 +6,7 @@
 [patch."https://github.com/lariv-in/lariv-rs.git"]
 lariv-rs = { path = "../../lariv-rs" }
 lariv-core = { path = "../../lariv-rs/lariv-core" }
+lariv-formula = { path = "../../lariv-rs/lariv-formula" }
 lariv-plugin-contacts = { path = "../../lariv-rs/plugins/contacts" }
 lariv-plugin-crm = { path = "../../lariv-rs/plugins/crm" }
 lariv-plugin-customer = { path = "../../lariv-rs/plugins/customer" }
@@ -18,7 +19,6 @@ lariv-plugin-finance-indian = { path = "../../lariv-rs/plugins/finance_indian" }
 lariv-plugin-finance-invoices = { path = "../../lariv-rs/plugins/finance_invoices" }
 lariv-plugin-finance-products = { path = "../../lariv-rs/plugins/finance_products" }
 lariv-plugin-finance-purchases = { path = "../../lariv-rs/plugins/finance_purchases" }
-lariv-plugin-finance-services = { path = "../../lariv-rs/plugins/finance_services" }
 lariv-plugin-finance-taxes = { path = "../../lariv-rs/plugins/finance_taxes" }
 lariv-plugin-llm-assistant = { path = "../../lariv-rs/plugins/llm_assistant" }
 lariv-plugin-otp = { path = "../../lariv-rs/plugins/otp" }

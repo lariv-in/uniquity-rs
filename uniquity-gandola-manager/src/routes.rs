@@ -1,11 +1,13 @@
+use lariv_plugin_customer::keys::CustomerTableKey;
+
 use super::{
     handlers,
     keys::{
         GandolaDeleteModalKey, GandolaSelectModalKey, GandolaSelectTableKey, GandolaSitesTableKey,
         GandolaTableKey, PurchaseOrderDeleteModalKey, PurchaseOrderSelectModalKey,
         PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteDeleteModalKey,
-        SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey, SiteSelectModalKey,
-        SiteSelectTableKey, SiteTableKey,
+        SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoiceSelectModalKey,
+        SiteInvoiceSelectTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
     },
 };
 
@@ -20,7 +22,7 @@ impl lariv_plugin_users::role_registry::Role for Accountant {
     const NAME: &'static str = "accountant";
     const TITLE: &'static str = "Accountant";
     const DESCRIPTION: &'static str =
-        "Accounting, Gandola Manager, customers, contacts, CRM, the filesystem, and the assistant.";
+        "Accounting, Gandola Manager, contacts, CRM, the filesystem, and the assistant.";
 }
 
 lariv_core::define_plugin_routes! {
@@ -46,6 +48,7 @@ lariv_core::define_plugin_routes! {
         post SiteDeletePostRouteTag, "/gandola/sites/s/{id}/delete", bare handlers::sites::delete_post, fragment(SiteDeleteModalKey), authorize(GandolaAccess, [Accountant]);
         get SiteSelectRouteTag, "/gandola/sites/pick", handlers::sites::select, multi_select(SiteSelectTableKey, SiteSelectModalKey), authorize(GandolaAccess, [Accountant]);
         get SiteFkSelectRouteTag, "/gandola/sites/pick-site", handlers::sites::fk_select, fk_select(SiteFkSelectTableKey, SiteFkSelectModalKey), authorize(GandolaAccess, [Accountant]);
+        get SiteInvoiceSelectRouteTag, "/gandola/sites/invoices/pick", handlers::sites::select_invoices, multi_select(SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey), authorize(GandolaAccess, [Accountant]);
 
         get GandolaPreferencesRouteTag, "/gandola/preferences", handlers::preferences::get, authorize(GandolaAccess, [Accountant]);
         post GandolaPreferencesPostRouteTag, "/gandola/preferences", handlers::preferences::post, authorize(GandolaAccess, [Accountant]);
@@ -59,5 +62,7 @@ lariv_core::define_plugin_routes! {
         get PurchaseOrderDeleteGetRouteTag, "/gandola/purchase-orders/po/{id}/delete", handlers::purchase_orders::delete_get, modal, authorize(GandolaAccess, [Accountant]);
         post PurchaseOrderDeletePostRouteTag, "/gandola/purchase-orders/po/{id}/delete", bare handlers::purchase_orders::delete_post, fragment(PurchaseOrderDeleteModalKey), authorize(GandolaAccess, [Accountant]);
         get PurchaseOrderSelectRouteTag, "/gandola/purchase-orders/pick", handlers::purchase_orders::select, multi_select(PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey), authorize(GandolaAccess, [Accountant]);
+
+        get CustomerListRouteTag, "/gandola/customers", handlers::customers::list, fragment(CustomerTableKey), authorize(GandolaAccess, [Accountant]);
     ]
 }

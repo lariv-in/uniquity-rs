@@ -1,3 +1,4 @@
+pub mod customers;
 pub mod gandolas;
 pub mod preferences;
 pub mod purchase_orders;

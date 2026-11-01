@@ -26,10 +26,9 @@ use lariv_plugin_finance_invoices::entities::{
 };
 use lariv_plugin_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_plugin_finance_products as finance_products;
-use lariv_plugin_finance_products::entities::product;
+use lariv_plugin_finance_products::entities::product::{self, ProductKind};
 use lariv_plugin_finance_products::preferences::set_product_tax_ids;
 use lariv_plugin_finance_purchases as finance_purchases;
-use lariv_plugin_finance_services as finance_services;
 use lariv_plugin_finance_taxes as finance_taxes;
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_llm_assistant as llm_assistant;
@@ -82,7 +81,6 @@ async fn create_draft_invoice_via_http() {
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
-    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
@@ -122,12 +120,10 @@ async fn create_draft_invoice_via_http() {
 
     let prod = product::ActiveModel {
         name: Set("Test Product".into()),
-        product_type: Set(product::ProductType::Goods),
-        reference: Set(Some("REF-001".into())),
+        product_kind: Set(ProductKind::Goods),
         variables: Set("{}".into()),
-        base_price_formula: Set("decimal(\"40\")".into()),
         sales_price_formula: Set("decimal(\"100\")".into()),
-        hsn_code: Set(1234),
+        hsn_code: Set(Some(1234)),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
         ..Default::default()

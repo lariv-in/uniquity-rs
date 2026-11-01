@@ -12,10 +12,10 @@ use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as Dra
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
-use lariv_plugin_finance_invoices::logic::bill_to::ensure_customer_id;
+use lariv_plugin_finance_invoices::logic::bill_to::require_customer_id;
 use lariv_plugin_finance_invoices::logic::draft::DraftLinePending;
 use lariv_plugin_finance_invoices::logic::{
-    BillTo, CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
+    CreateDraftInput, create_draft_invoice, parse_payment_term_lines_json,
 };
 use lariv_plugin_finance_products::entities::product::{self, Entity as ProductEntity};
 
@@ -266,7 +266,7 @@ async fn invoice_one_purchase_order(
         return Ok(Outcome::Created(action(po, None, None)));
     }
 
-    let customer_id = ensure_customer_id(db, BillTo::new(false, None, Some(po.customer_id)))
+    let customer_id = require_customer_id(db, po.customer_id)
         .await
         .map_err(|reason| action(po, None, Some(reason)))?;
 
@@ -285,7 +285,6 @@ async fn invoice_one_purchase_order(
             payment_term_lines,
             header_tax_ids: Vec::new(),
             lines: pending,
-            service_lines: Vec::new(),
         },
         timezone,
     )
@@ -358,7 +357,6 @@ async fn existing_invoice_id(db: &DatabaseConnection, number: &str) -> Result<Op
 }
 
 struct ProductIndex {
-    by_reference: HashMap<String, i64>,
     by_name: HashMap<String, i64>,
 }
 
@@ -368,10 +366,7 @@ impl ProductIndex {
         if key.is_empty() {
             return None;
         }
-        self.by_reference
-            .get(&key)
-            .or_else(|| self.by_name.get(&key))
-            .copied()
+        self.by_name.get(&key).copied()
     }
 }
 
@@ -384,26 +379,14 @@ async fn load_product_index(db: &DatabaseConnection) -> Result<ProductIndex, Str
 }
 
 fn index_products(products: Vec<product::Model>) -> ProductIndex {
-    let mut by_reference = HashMap::new();
     let mut by_name = HashMap::new();
     for product in products {
-        if let Some(reference) = product
-            .reference
-            .as_deref()
-            .map(normalize_key)
-            .filter(|s| !s.is_empty())
-        {
-            by_reference.entry(reference).or_insert(product.id);
-        }
         let name = normalize_key(&product.name);
         if !name.is_empty() {
             by_name.entry(name).or_insert(product.id);
         }
     }
-    ProductIndex {
-        by_reference,
-        by_name,
-    }
+    ProductIndex { by_name }
 }
 
 fn normalize_key(s: &str) -> String {
@@ -436,37 +419,32 @@ fn action(
 mod tests {
     use super::*;
 
-    fn product(id: i64, name: &str, reference: Option<&str>) -> product::Model {
+    fn product(id: i64, name: &str) -> product::Model {
         product::Model {
             id,
             created_at: None,
             updated_at: None,
-            product_type: product::ProductType::Goods,
-            reference: reference.map(str::to_string),
+            product_kind: product::ProductKind::Goods,
             remarks: None,
             name: name.into(),
-            hsn_code: 0,
+            hsn_code: None,
+            sac_code: None,
             variables: "{}".into(),
-            base_price_formula: "decimal(\"0\")".into(),
             sales_price_formula: "decimal(\"1\")".into(),
         }
     }
 
     #[test]
-    fn maps_item_code_to_product_reference() {
-        let index = index_products(vec![
-            product(1, "Gandola", Some("GND-1")),
-            product(2, "TPI Panel", Some("TPI")),
-        ]);
+    fn maps_item_code_to_product_name() {
+        let index = index_products(vec![product(1, "GND-1"), product(2, "TPI Panel")]);
         assert_eq!(index.resolve("gnd-1"), Some(1));
-        assert_eq!(index.resolve("TPI"), Some(2));
         assert_eq!(index.resolve("tpi panel"), Some(2));
         assert_eq!(index.resolve("missing"), None);
     }
 
     #[test]
-    fn prefers_reference_over_name() {
-        let index = index_products(vec![product(1, "Bolt", Some("A1")), product(2, "A1", None)]);
+    fn keeps_first_product_when_names_collide() {
+        let index = index_products(vec![product(1, "A1"), product(2, "A1")]);
         assert_eq!(index.resolve("A1"), Some(1));
     }
 }

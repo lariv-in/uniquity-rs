@@ -2,17 +2,17 @@ use lariv_core::html_form::{
     html_form,
     widgets::{Date, Datetime, Decimal, Number, Password, Select, Text, Textarea},
 };
-use lariv_plugin_contacts::routes::CompanyFkSelectRouteTag;
+use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::{VNodeFileSelectRouteTag, VNodeSelectRouteTag};
 use lariv_plugin_finance_invoices::forms::PaymentTermLinesDraft;
-use lariv_plugin_finance_invoices::routes::DraftInvoiceMultiSelectRouteTag;
 use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
 use crate::po_line_editor::PurchaseOrderLinesDraft;
 use crate::po_payment_term::PurchaseOrderPaymentTermLinesDraft;
 
 use super::routes::{
-    GandolaSelectRouteTag, PurchaseOrderSelectRouteTag, SiteFkSelectRouteTag, SiteSelectRouteTag,
+    GandolaSelectRouteTag, PurchaseOrderSelectRouteTag, SiteFkSelectRouteTag,
+    SiteInvoiceSelectRouteTag, SiteSelectRouteTag,
 };
 use super::site_status::SiteStatus;
 
@@ -49,7 +49,7 @@ pub struct SiteForm {
         label = "Customer",
         required,
         widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
+        route = CustomerFkSelectRouteTag,
         swap_key = "gandola-site-customer",
         display = "customer",
         placeholder = "Select customer…"
@@ -83,11 +83,12 @@ pub struct SiteForm {
     #[form(
         label = "Invoices",
         widget = ManyToMany,
-        route = DraftInvoiceMultiSelectRouteTag,
+        route = SiteInvoiceSelectRouteTag,
         swap_key = "site-invoices",
         placeholder = "Select invoices…"
     )]
-    pub invoices: Vec<i64>,
+    /// Draft invoice ids as bare numbers; posted links as `p:{id}` (see scope helpers).
+    pub invoices: Vec<String>,
 
     #[form(
         label = "Purchase Orders",
@@ -233,6 +234,22 @@ pub struct SiteFilterForm {
     pub site_id: String,
 }
 
+/// Filters for the site-form invoice multi-select (draft + posted).
+#[html_form]
+pub struct SiteInvoiceSelectFilterForm {
+    #[form(label = "Number", widget = Text)]
+    pub number: String,
+
+    #[form(label = "Status", widget = Select)]
+    pub status: String,
+}
+
+impl SiteInvoiceSelectFilterForm {
+    pub fn status_choices() -> &'static [(&'static str, &'static str)] {
+        &[("", "Any"), ("Draft", "Draft"), ("Posted", "Posted")]
+    }
+}
+
 #[html_form]
 pub struct GandolaPreferencesForm {
     #[form(
@@ -297,7 +314,7 @@ pub struct PurchaseOrderForm {
         label = "Customer",
         required,
         widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
+        route = CustomerFkSelectRouteTag,
         swap_key = "gandola-po-customer",
         display = "customer",
         placeholder = "Select customer…"
