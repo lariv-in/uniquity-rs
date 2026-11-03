@@ -27,7 +27,6 @@ use lariv_plugin_finance_invoices::entities::paid_invoice::{self, Entity as Paid
 use lariv_plugin_finance_invoices::entities::partially_paid_invoice::{
     self, Entity as PartiallyPaidInvoiceEntity,
 };
-use lariv_plugin_finance_invoices::entities::payment::Entity as PaymentEntity;
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
@@ -44,6 +43,7 @@ use lariv_plugin_finance_invoices::routes::{
     CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
     PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
 };
+use lariv_plugin_finance_payments::entities::payment::Entity as PaymentEntity;
 use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_users::state::AuthContext;
 

@@ -14,8 +14,10 @@ use lariv_plugin_dashboard as dashboard;
 use lariv_plugin_filesystem as filesystem;
 use lariv_plugin_finance_accounts as finance_accounts;
 use lariv_plugin_finance_creditnotes as finance_creditnotes;
+use lariv_plugin_finance_customers as finance_customers;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
+use lariv_plugin_finance_payments as finance_payments;
 use lariv_plugin_finance_products as finance_products;
 use lariv_plugin_finance_purchases as finance_purchases;
 use lariv_plugin_finance_taxes as finance_taxes;
@@ -77,6 +79,7 @@ async fn uniquity_stack_mounts() {
                     let app = filesystem::install(app);
                     let app = llm_assistant::install(app);
                     let app = finance_accounts::install(app);
+                    let app = finance_customers::install(app);
                     let app = customer::install(app);
                     let app = contacts::install(app);
                     let app = pwa::install(app);
@@ -86,6 +89,7 @@ async fn uniquity_stack_mounts() {
                     let app = finance_taxes::install(app);
                     let app = finance_products::install(app);
                     let app = finance_invoices::install(app);
+                    let app = finance_payments::install(app);
                     let app = finance_purchases::install(app);
                     let app = finance_indian::install(app);
                     let app = uniquity_gandola_manager::install(app);

@@ -387,7 +387,10 @@ pub async fn edit_post(
             if let Err(e) = sync_gandola_sites(&state.db, id, &form.sites).await {
                 return render_error(e);
             }
-            respond_edit_modal_done(&htmx, GANDOLA_EDIT_MODAL, &GandolaDetailRouteTag::new(id).url(),
+            respond_edit_modal_done(
+                &htmx,
+                GANDOLA_EDIT_MODAL,
+                &GandolaDetailRouteTag::new(id).url(),
             )
         }
         Err(e) => render_error(e.to_string()),

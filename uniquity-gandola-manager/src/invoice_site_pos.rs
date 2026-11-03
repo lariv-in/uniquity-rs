@@ -428,7 +428,6 @@ mod tests {
             remarks: None,
             name: name.into(),
             hsn_code: None,
-            sac_code: None,
             variables: "{}".into(),
             sales_price_formula: "decimal(\"1\")".into(),
         }

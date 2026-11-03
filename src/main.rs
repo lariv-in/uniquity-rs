@@ -4,8 +4,8 @@
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_indian, finance_invoices, finance_products, finance_purchases, finance_taxes,
-    llm_assistant, otp, pwa, users, website,
+    finance_customers, finance_indian, finance_invoices, finance_payments, finance_products,
+    finance_purchases, finance_taxes, llm_assistant, otp, pwa, users, website,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -36,6 +36,8 @@ async fn main() -> anyhow::Result<()> {
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
+    // Before invoices and payments, which hook the customer journal.
+    let app = finance_customers::install(app);
     let app = customer::install(app);
     // Before CRM so contacts tables exist for lead foreign keys.
     let app = contacts::install(app);
@@ -49,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
     // Services live in the unified product catalog (`product_kind = Services`).
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_payments::install(app);
     let app = invoice_line_quantity::install(app);
     // After products. Purchase migrations copy rows from the unified catalog.
     let app = finance_purchases::install(app);

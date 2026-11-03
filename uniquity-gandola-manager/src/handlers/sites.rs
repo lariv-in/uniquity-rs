@@ -12,9 +12,7 @@ use sea_orm::{
     sea_query::{Expr, NullOrdering, Order, Query as SeaQuery},
 };
 
-use lariv_plugin_finance_invoices::entities::draft_invoice::{
-    self, Entity as DraftInvoiceEntity,
-};
+use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
 };
@@ -55,9 +53,8 @@ use crate::{
     scope::{
         SiteInvoiceKey, SiteInvoiceRow, apply_name_filter_sites, apply_site_id_filter_sites,
         can_manage, customer_href, customer_name, find_site_scoped, gandola_items_for_site,
-        gandola_items_from_ids,
-        invoice_items_for_site, invoice_items_from_keys, invoice_label, load_gandolas_for_site,
-        opt_string, posted_invoice_label, purchase_order_items_for_site,
+        gandola_items_from_ids, invoice_items_for_site, invoice_items_from_keys, invoice_label,
+        load_gandolas_for_site, opt_string, posted_invoice_label, purchase_order_items_for_site,
         purchase_order_items_from_ids, related_invoices_for_site, scope_sites, sync_site_gandolas,
         sync_site_invoices, sync_site_purchase_orders,
     },
@@ -1151,7 +1148,12 @@ pub async fn select_invoices(
         target_input: q.target_input.clone().unwrap_or_else(|| "Invoices".into()),
         page_size: q.page_size.get(),
     };
-    respond_picker_select(&htmx, SITE_INVOICE_SELECT_TABLE, SITE_INVOICE_SELECT_MODAL, &page)
+    respond_picker_select(
+        &htmx,
+        SITE_INVOICE_SELECT_TABLE,
+        SITE_INVOICE_SELECT_MODAL,
+        &page,
+    )
 }
 
 pub async fn fk_select(

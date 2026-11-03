@@ -26,6 +26,7 @@ use lariv_core::{
 use lariv_plugin_customer::templates::CustomerListPage;
 use lariv_plugin_filesystem::routes::VNodeDetailRouteTag;
 
+use super::create_modals::{GANDOLA_CREATE, PURCHASE_ORDER_CREATE, SITE_CREATE};
 use super::forms::{
     GandolaFilterForm, GandolaFilterFormField, GandolaForm, GandolaFormField,
     GandolaPreferencesForm, GandolaPreferencesFormField, PurchaseOrderFilterForm,
@@ -33,7 +34,6 @@ use super::forms::{
     SiteFilterFormField, SiteForm, SiteFormField, SiteInvoiceFilterForm,
     SiteInvoiceFilterFormField, SiteInvoiceSelectFilterForm, SiteInvoiceSelectFilterFormField,
 };
-use super::create_modals::{GANDOLA_CREATE, PURCHASE_ORDER_CREATE, SITE_CREATE};
 use super::keys::{
     GANDOLA_CREATE_MODAL, GANDOLA_DELETE_MODAL, GANDOLA_EDIT_MODAL, GANDOLA_SELECT_MODAL,
     GANDOLA_SELECT_TABLE, GANDOLA_SITES_TABLE, GANDOLA_TABLE, PURCHASE_ORDER_CREATE_MODAL,
@@ -715,12 +715,14 @@ impl GandolaListPage {
                 ))
             };
         }
-        let pagination = render_pagination(GANDOLA_TABLE, 
+        let pagination = render_pagination(
+            GANDOLA_TABLE,
             &self.path_and_query,
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh(GANDOLA_TABLE, 
+        data_table_list_refresh(
+            GANDOLA_TABLE,
             "Gandolas",
             actions,
             &headers,
@@ -782,8 +784,7 @@ impl GandolaDetailPage {
             panel: form(
                 &CsrfToken::current(),
                 FormOpts {
-                    attrs: form_hx_get_route(GandolaDetailRouteTag::new(self.id),
-                    ),
+                    attrs: form_hx_get_route(GandolaDetailRouteTag::new(self.id)),
                     inputs: with_list_filter_common(
                         SiteFilterForm::render_inputs(
                             &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
@@ -803,12 +804,14 @@ impl GandolaDetailPage {
             ),
             ..Default::default()
         });
-        let pagination = render_pagination(GANDOLA_SITES_TABLE, 
+        let pagination = render_pagination(
+            GANDOLA_SITES_TABLE,
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh(GANDOLA_SITES_TABLE, 
+        data_table_list_refresh(
+            GANDOLA_SITES_TABLE,
             "Sites",
             actions,
             &headers,
@@ -910,7 +913,8 @@ pub struct GandolaEditModalPage {
 impl RenderTemplate for GandolaEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = GandolaDeleteGetRouteTag::new(self.id).url();
-        modal_keyed(GANDOLA_EDIT_MODAL, 
+        modal_keyed(
+            GANDOLA_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit gandola" }
@@ -958,7 +962,8 @@ impl RenderTemplate for GandolaCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed(GANDOLA_CREATE_MODAL, 
+        modal_keyed(
+            GANDOLA_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -966,12 +971,15 @@ impl RenderTemplate for GandolaCreateModalPage {
                     title: "Create Gandola",
                     subtitle: "Create a new gandola",
                     classes: "@container",
-                    attrs: form_hx_post_url(GANDOLA_CREATE_MODAL, &modal_create_post_query(
-                        GandolaCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        GANDOLA_CREATE_MODAL,
+                        &modal_create_post_query(
+                            GandolaCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: gandola_form_inputs(&self.name, &self.sites),
                     actions: html! {
@@ -1065,12 +1073,14 @@ impl RenderPickerSelect for GandolaSelectPage {
                 ))
             };
         }
-        let pagination = render_pagination(GANDOLA_SELECT_TABLE, 
+        let pagination = render_pagination(
+            GANDOLA_SELECT_TABLE,
             &self.path_and_query,
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh(GANDOLA_SELECT_TABLE, 
+        data_table_list_refresh(
+            GANDOLA_SELECT_TABLE,
             "Select Gandolas",
             actions,
             &headers,
@@ -1369,12 +1379,14 @@ impl SiteListPage {
                 ))
             };
         }
-        let pagination = render_pagination(SITE_TABLE, 
+        let pagination = render_pagination(
+            SITE_TABLE,
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh(SITE_TABLE, 
+        data_table_list_refresh(
+            SITE_TABLE,
             "Sites",
             actions,
             &headers,
@@ -1489,7 +1501,8 @@ impl SiteDetailPage {
             },
         ];
         let rows = gandola_table_rows(&self.gandolas.items);
-        let actions = relation_filter(SITE_GANDOLAS_TABLE, 
+        let actions = relation_filter(
+            SITE_GANDOLAS_TABLE,
             &self.path_and_query,
             "g_page",
             GandolaFilterForm::render_inputs(
@@ -1498,13 +1511,15 @@ impl SiteDetailPage {
             ),
             self.page_size,
         );
-        let pagination = keyed_pagination(SITE_GANDOLAS_TABLE, 
+        let pagination = keyed_pagination(
+            SITE_GANDOLAS_TABLE,
             &self.path_and_query,
             "g_page",
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh(SITE_GANDOLAS_TABLE, 
+        data_table_list_refresh(
+            SITE_GANDOLAS_TABLE,
             "Gandolas",
             actions,
             &headers,
@@ -1552,7 +1567,8 @@ impl SiteDetailPage {
             },
         ];
         let rows = purchase_order_table_rows(&self.purchase_orders.items);
-        let actions = relation_filter(SITE_PURCHASE_ORDERS_TABLE, 
+        let actions = relation_filter(
+            SITE_PURCHASE_ORDERS_TABLE,
             &self.path_and_query,
             "po_page",
             PurchaseOrderFilterForm::render_inputs(
@@ -1561,13 +1577,15 @@ impl SiteDetailPage {
             ),
             self.page_size,
         );
-        let pagination = keyed_pagination(SITE_PURCHASE_ORDERS_TABLE, 
+        let pagination = keyed_pagination(
+            SITE_PURCHASE_ORDERS_TABLE,
             &self.path_and_query,
             "po_page",
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh(SITE_PURCHASE_ORDERS_TABLE, 
+        data_table_list_refresh(
+            SITE_PURCHASE_ORDERS_TABLE,
             "Purchase Orders",
             actions,
             &headers,
@@ -1655,13 +1673,15 @@ impl SiteDetailPage {
             .collect();
         let actions =
             site_invoice_filter(&self.path_and_query, &self.invoice_filters, self.page_size);
-        let pagination = keyed_pagination(SITE_INVOICES_TABLE, 
+        let pagination = keyed_pagination(
+            SITE_INVOICES_TABLE,
             &self.path_and_query,
             "inv_page",
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh(SITE_INVOICES_TABLE, 
+        data_table_list_refresh(
+            SITE_INVOICES_TABLE,
             "Invoices",
             actions,
             &headers,
@@ -1807,7 +1827,8 @@ pub struct SiteEditModalPage {
 impl RenderTemplate for SiteEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = SiteDeleteGetRouteTag::new(self.id).url();
-        modal_keyed(SITE_EDIT_MODAL, 
+        modal_keyed(
+            SITE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit site" }
@@ -1878,7 +1899,8 @@ impl RenderTemplate for SiteCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed(SITE_CREATE_MODAL, 
+        modal_keyed(
+            SITE_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -1886,12 +1908,15 @@ impl RenderTemplate for SiteCreateModalPage {
                     title: "Create Site",
                     subtitle: "Create a new site",
                     classes: "@container",
-                    attrs: form_hx_post_url(SITE_CREATE_MODAL, &modal_create_post_query(
-                        SiteCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        SITE_CREATE_MODAL,
+                        &modal_create_post_query(
+                            SiteCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: site_form_inputs(
                         &self.name,
@@ -1984,12 +2009,14 @@ impl RenderPickerSelect for SiteSelectPage {
                 ))
             };
         }
-        let pagination = render_pagination(SITE_SELECT_TABLE, 
+        let pagination = render_pagination(
+            SITE_SELECT_TABLE,
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh(SITE_SELECT_TABLE, 
+        data_table_list_refresh(
+            SITE_SELECT_TABLE,
             "Select Sites",
             actions,
             &headers,
@@ -2091,12 +2118,14 @@ impl RenderPickerSelect for SiteFkSelectPage {
                 ))
             };
         }
-        let pagination = render_pagination(SITE_FK_SELECT_TABLE, 
+        let pagination = render_pagination(
+            SITE_FK_SELECT_TABLE,
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh(SITE_FK_SELECT_TABLE, 
+        data_table_list_refresh(
+            SITE_FK_SELECT_TABLE,
             "Select Site",
             actions,
             &headers,
@@ -2132,8 +2161,7 @@ pub struct SiteInvoiceSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect for SiteInvoiceSelectPage
-{
+impl RenderPickerSelect for SiteInvoiceSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Invoices"
@@ -2222,12 +2250,14 @@ impl RenderPickerSelect for SiteInvoiceSelectPage
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination(SITE_INVOICE_SELECT_TABLE, 
+        let pagination = render_pagination(
+            SITE_INVOICE_SELECT_TABLE,
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh(SITE_INVOICE_SELECT_TABLE, 
+        data_table_list_refresh(
+            SITE_INVOICE_SELECT_TABLE,
             "Select invoices",
             actions,
             &headers,
@@ -2550,12 +2580,14 @@ impl PurchaseOrderListPage {
                 ))
             };
         }
-        let pagination = render_pagination(PURCHASE_ORDER_TABLE, 
+        let pagination = render_pagination(
+            PURCHASE_ORDER_TABLE,
             &self.path_and_query,
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh(PURCHASE_ORDER_TABLE, 
+        data_table_list_refresh(
+            PURCHASE_ORDER_TABLE,
             "Purchase Orders",
             actions,
             &headers,
@@ -2835,7 +2867,8 @@ pub struct PurchaseOrderEditModalPage {
 impl RenderTemplate for PurchaseOrderEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = PurchaseOrderDeleteGetRouteTag::new(self.id).url();
-        modal_keyed(PURCHASE_ORDER_EDIT_MODAL, 
+        modal_keyed(
+            PURCHASE_ORDER_EDIT_MODAL,
             "!max-w-6xl w-full",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit purchase order" }
@@ -2893,7 +2926,8 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed(PURCHASE_ORDER_CREATE_MODAL, 
+        modal_keyed(
+            PURCHASE_ORDER_CREATE_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -2901,7 +2935,8 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
                     title: "Create purchase order",
                     subtitle: "Create a new purchase order",
                     classes: "@container",
-                    attrs: form_hx_post_url(PURCHASE_ORDER_CREATE_MODAL, 
+                    attrs: form_hx_post_url(
+                        PURCHASE_ORDER_CREATE_MODAL,
                         &modal_create_post_query(
                             PurchaseOrderCreatePostRouteTag,
                             form_name,
@@ -2944,8 +2979,7 @@ pub struct PurchaseOrderSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect for PurchaseOrderSelectPage
-{
+impl RenderPickerSelect for PurchaseOrderSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "PurchaseOrders"
@@ -3025,12 +3059,14 @@ impl RenderPickerSelect for PurchaseOrderSelectPage
                 ))
             };
         }
-        let pagination = render_pagination(PURCHASE_ORDER_SELECT_TABLE, 
+        let pagination = render_pagination(
+            PURCHASE_ORDER_SELECT_TABLE,
             &self.path_and_query,
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh(PURCHASE_ORDER_SELECT_TABLE, 
+        data_table_list_refresh(
+            PURCHASE_ORDER_SELECT_TABLE,
             "Select Purchase Orders",
             actions,
             &headers,

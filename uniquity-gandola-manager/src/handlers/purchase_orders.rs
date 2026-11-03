@@ -334,9 +334,9 @@ pub async fn create_post(
     let target_input = q.target_input();
     match crate::po_persist::persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
         Ok(saved) => respond_create_modal_done_fk(
-                &htmx,
-                PURCHASE_ORDER_CREATE_MODAL,
-                &refresh_table,
+            &htmx,
+            PURCHASE_ORDER_CREATE_MODAL,
+            &refresh_table,
             &PurchaseOrderDetailRouteTag::new(saved.id).url(),
             saved.id,
             &saved.number,
@@ -421,7 +421,10 @@ pub async fn edit_post(
     )
     .await
     {
-        Ok(_) => respond_edit_modal_done(&htmx, PURCHASE_ORDER_EDIT_MODAL, &PurchaseOrderDetailRouteTag::new(id).url(),
+        Ok(_) => respond_edit_modal_done(
+            &htmx,
+            PURCHASE_ORDER_EDIT_MODAL,
+            &PurchaseOrderDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
             let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;

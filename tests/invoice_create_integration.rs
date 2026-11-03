@@ -18,6 +18,7 @@ use lariv_plugin_dashboard as dashboard;
 use lariv_plugin_filesystem as filesystem;
 use lariv_plugin_finance_accounts as finance_accounts;
 use lariv_plugin_finance_creditnotes as finance_creditnotes;
+use lariv_plugin_finance_customers as finance_customers;
 use lariv_plugin_finance_indian as finance_indian;
 use lariv_plugin_finance_invoices as finance_invoices;
 use lariv_plugin_finance_invoices::entities::{
@@ -25,6 +26,7 @@ use lariv_plugin_finance_invoices::entities::{
     draft_invoice_line, draft_payment_term_line,
 };
 use lariv_plugin_finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
+use lariv_plugin_finance_payments as finance_payments;
 use lariv_plugin_finance_products as finance_products;
 use lariv_plugin_finance_products::entities::product::{self, ProductKind};
 use lariv_plugin_finance_products::preferences::set_product_tax_ids;
@@ -73,6 +75,7 @@ async fn create_draft_invoice_via_http() {
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
+    let app = finance_customers::install(app);
     let app = customer::install(app);
     let app = contacts::install(app);
     let app = pwa::install(app);
@@ -82,6 +85,7 @@ async fn create_draft_invoice_via_http() {
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_payments::install(app);
     let app = finance_purchases::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
@@ -105,6 +109,9 @@ async fn create_draft_invoice_via_http() {
     .insert(&db)
     .await
     .expect("company");
+    let customer_id = lariv_plugin_customer::logic::create_for_party(&db, company.id, 0)
+        .await
+        .expect("customer");
 
     let tax = tax::ActiveModel {
         name: Set("GST 18%".into()),
@@ -152,8 +159,8 @@ async fn create_draft_invoice_via_http() {
         r#"[{"date_kind":"relative","due_date":"","due_duration":"15 days","amount_kind":"relative","amount":"","amount_percentage":"100"}]"#,
     );
     let body = format!(
-        "number=&datetime=2025-06-01T12:00&CustomerCompany={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
-        company.id,
+        "number=&datetime=2025-06-01T12:00&CustomerId={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
+        customer_id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
     );
@@ -176,8 +183,7 @@ async fn create_draft_invoice_via_http() {
 
     let drafts = DraftInvoiceEntity::find().all(&db).await.expect("drafts");
     assert_eq!(drafts.len(), 1);
-    assert!(!drafts[0].bill_to_individual);
-    assert_eq!(drafts[0].customer_company, Some(company.id));
+    assert_eq!(drafts[0].customer_id, customer_id);
 
     let term_id = drafts[0]
         .draft_payment_term_id

@@ -12,10 +12,8 @@ impl MigrationTrait for Migration {
         let conn = manager.get_connection();
         // New columns first. Drop the composite PK before draft_invoice_id can
         // become nullable (Postgres refuses ALTER … DROP NOT NULL on a PK col).
-        conn.execute_unprepared(
-            "ALTER TABLE site_invoices ADD COLUMN IF NOT EXISTS id bigserial",
-        )
-        .await?;
+        conn.execute_unprepared("ALTER TABLE site_invoices ADD COLUMN IF NOT EXISTS id bigserial")
+            .await?;
         conn.execute_unprepared(
             "ALTER TABLE site_invoices ADD COLUMN IF NOT EXISTS posted_invoice_id bigint",
         )
