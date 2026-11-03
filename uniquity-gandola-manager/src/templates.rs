@@ -5,7 +5,7 @@ use lariv_core::{
     components::{
         ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader,
         FieldText, FieldTextarea, FieldTitle, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
-        MainContentKey, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
+        MAIN_CONTENT, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, ShellScaffold,
         SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
         TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_clear, button_modal_form,
         button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
@@ -33,14 +33,15 @@ use super::forms::{
     SiteFilterFormField, SiteForm, SiteFormField, SiteInvoiceFilterForm,
     SiteInvoiceFilterFormField, SiteInvoiceSelectFilterForm, SiteInvoiceSelectFilterFormField,
 };
+use super::create_modals::{GANDOLA_CREATE, PURCHASE_ORDER_CREATE, SITE_CREATE};
 use super::keys::{
-    GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
-    GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey, PurchaseOrderCreateModalKey,
-    PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey, PurchaseOrderSelectModalKey,
-    PurchaseOrderSelectTableKey, PurchaseOrderTableKey, SiteCreateModalKey, SiteDeleteModalKey,
-    SiteEditModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteGandolasTableKey,
-    SiteInvoiceSelectModalKey, SiteInvoiceSelectTableKey, SiteInvoicesTableKey,
-    SitePurchaseOrdersTableKey, SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+    GANDOLA_CREATE_MODAL, GANDOLA_DELETE_MODAL, GANDOLA_EDIT_MODAL, GANDOLA_SELECT_MODAL,
+    GANDOLA_SELECT_TABLE, GANDOLA_SITES_TABLE, GANDOLA_TABLE, PURCHASE_ORDER_CREATE_MODAL,
+    PURCHASE_ORDER_DELETE_MODAL, PURCHASE_ORDER_EDIT_MODAL, PURCHASE_ORDER_SELECT_MODAL,
+    PURCHASE_ORDER_SELECT_TABLE, PURCHASE_ORDER_TABLE, SITE_CREATE_MODAL, SITE_DELETE_MODAL,
+    SITE_EDIT_MODAL, SITE_FK_SELECT_MODAL, SITE_FK_SELECT_TABLE, SITE_GANDOLAS_TABLE,
+    SITE_INVOICE_SELECT_MODAL, SITE_INVOICE_SELECT_TABLE, SITE_INVOICES_TABLE,
+    SITE_PURCHASE_ORDERS_TABLE, SITE_SELECT_MODAL, SITE_SELECT_TABLE, SITE_TABLE,
 };
 use super::routes::{
     CustomerListRouteTag, GandolaCreatePostRouteTag, GandolaDefaultRouteTag,
@@ -222,7 +223,7 @@ fn detail_menu(title: String, detail_url: String) -> Markup {
     })
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -236,7 +237,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &key.selector(),
     })
 }
 
@@ -357,7 +358,8 @@ fn keyed_col_sort(
     )
 }
 
-fn keyed_pagination<K: SwapKey>(
+fn keyed_pagination(
+    key: SwapKey,
     path_and_query: &str,
     page_key: &str,
     number: u32,
@@ -388,7 +390,7 @@ fn keyed_pagination<K: SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &key.selector(),
     })
 }
 
@@ -405,7 +407,7 @@ fn site_invoice_filter(
             &CsrfToken::current(),
             FormOpts {
                 classes: "@container",
-                attrs: form_hx_get_url::<SiteInvoicesTableKey>(path_and_query),
+                attrs: form_hx_get_url(SITE_INVOICES_TABLE, path_and_query),
                 inputs: html! {
                     (with_list_filter_common(
                         SiteInvoiceFilterForm::render_inputs(
@@ -474,7 +476,8 @@ fn site_invoice_filter(
     })
 }
 
-fn relation_filter<K: SwapKey>(
+fn relation_filter(
+    key: SwapKey,
     path_and_query: &str,
     page_key: &str,
     inputs: Markup,
@@ -484,7 +487,7 @@ fn relation_filter<K: SwapKey>(
         panel: form(
             &CsrfToken::current(),
             FormOpts {
-                attrs: form_hx_get_url::<K>(path_and_query),
+                attrs: form_hx_get_url(key, path_and_query),
                 inputs: html! {
                     (with_list_filter_common(inputs, page_size))
                     input type="hidden" name=(page_key) value="1" {}
@@ -682,9 +685,7 @@ impl GandolaListPage {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<GandolaTableKey, GandolaDefaultRouteTag>(
-                        GandolaDefaultRouteTag,
-                    ),
+                    attrs: form_hx_get_route(GandolaDefaultRouteTag),
                     inputs: with_list_filter_common(
                         GandolaFilterForm::render_inputs(
                             &FormCtx::form::<GandolaFilterForm>(CsrfToken::current())
@@ -706,18 +707,20 @@ impl GandolaListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (table_create_button::<GandolaTableKey, GandolaCreateModalKey>(
+                (table_create_button(
+                    GANDOLA_TABLE,
+                    GANDOLA_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<GandolaTableKey>(
+        let pagination = render_pagination(GANDOLA_TABLE, 
             &self.path_and_query,
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh::<GandolaTableKey>(
+        data_table_list_refresh(GANDOLA_TABLE, 
             "Gandolas",
             actions,
             &headers,
@@ -779,8 +782,7 @@ impl GandolaDetailPage {
             panel: form(
                 &CsrfToken::current(),
                 FormOpts {
-                    attrs: form_hx_get_route::<GandolaSitesTableKey, GandolaDetailRouteTag>(
-                        GandolaDetailRouteTag::new(self.id),
+                    attrs: form_hx_get_route(GandolaDetailRouteTag::new(self.id),
                     ),
                     inputs: with_list_filter_common(
                         SiteFilterForm::render_inputs(
@@ -801,12 +803,12 @@ impl GandolaDetailPage {
             ),
             ..Default::default()
         });
-        let pagination = render_pagination::<GandolaSitesTableKey>(
+        let pagination = render_pagination(GANDOLA_SITES_TABLE, 
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh::<GandolaSitesTableKey>(
+        data_table_list_refresh(GANDOLA_SITES_TABLE, 
             "Sites",
             actions,
             &headers,
@@ -829,7 +831,7 @@ impl GandolaDetailPage {
                     name: "gandola_manager.GandolaEditForm",
                     href: &GandolaEditGetRouteTag::new(self.id).url(),
                     form_post_url: &GandolaEditPostRouteTag::new(self.id).path(),
-                    modal_uid: GandolaEditModalKey::ID,
+                    modal_uid: GANDOLA_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -908,12 +910,12 @@ pub struct GandolaEditModalPage {
 impl RenderTemplate for GandolaEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = GandolaDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<GandolaEditModalKey>(
+        modal_keyed(GANDOLA_EDIT_MODAL, 
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit gandola" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<GandolaEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(GANDOLA_EDIT_MODAL, &modal_edit_post_url(
                         GandolaEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -927,7 +929,7 @@ impl RenderTemplate for GandolaEditModalPage {
                             name: "gandola_manager.GandolaDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: GandolaDeleteModalKey::ID,
+                            modal_uid: GANDOLA_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -956,7 +958,7 @@ impl RenderTemplate for GandolaCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<GandolaCreateModalKey>(
+        modal_keyed(GANDOLA_CREATE_MODAL, 
             "",
             form(
                 &CsrfToken::current(),
@@ -964,7 +966,7 @@ impl RenderTemplate for GandolaCreateModalPage {
                     title: "Create Gandola",
                     subtitle: "Create a new gandola",
                     classes: "@container",
-                    attrs: form_hx_post_url::<GandolaCreateModalKey>(&modal_create_post_query(
+                    attrs: form_hx_post_url(GANDOLA_CREATE_MODAL, &modal_create_post_query(
                         GandolaCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
@@ -999,7 +1001,7 @@ pub struct GandolaSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for GandolaSelectPage {
+impl RenderPickerSelect for GandolaSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Gandolas"
@@ -1030,11 +1032,7 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        GandolaSelectTableKey,
-                        GandolaSelectModalKey,
-                        GandolaSelectRouteTag,
-                    >(GandolaSelectRouteTag),
+                    attrs: form_hx_get_picker_route(GandolaSelectRouteTag),
                     inputs: html! {
                         (with_list_filter_common(
                             GandolaFilterForm::render_inputs(
@@ -1059,19 +1057,20 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<GandolaCreateModalKey>(
+                (picker_create_button(
+                    GANDOLA_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<GandolaSelectTableKey>(
+        let pagination = render_pagination(GANDOLA_SELECT_TABLE, 
             &self.path_and_query,
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh::<GandolaSelectTableKey>(
+        data_table_list_refresh(GANDOLA_SELECT_TABLE, 
             "Select Gandolas",
             actions,
             &headers,
@@ -1084,7 +1083,7 @@ impl RenderPickerSelect<GandolaSelectTableKey, GandolaSelectModalKey> for Gandol
 
 impl RenderTemplate for GandolaSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(GANDOLA_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1339,7 +1338,7 @@ impl SiteListPage {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<SiteTableKey, SiteDefaultRouteTag>(SiteDefaultRouteTag),
+                    attrs: form_hx_get_route(SiteDefaultRouteTag),
                     inputs: with_list_filter_common(
                         SiteFilterForm::render_inputs(
                             &FormCtx::form::<SiteFilterForm>(CsrfToken::current())
@@ -1362,18 +1361,20 @@ impl SiteListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (table_create_button::<SiteTableKey, SiteCreateModalKey>(
+                (table_create_button(
+                    SITE_TABLE,
+                    SITE_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<SiteTableKey>(
+        let pagination = render_pagination(SITE_TABLE, 
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh::<SiteTableKey>(
+        data_table_list_refresh(SITE_TABLE, 
             "Sites",
             actions,
             &headers,
@@ -1488,7 +1489,7 @@ impl SiteDetailPage {
             },
         ];
         let rows = gandola_table_rows(&self.gandolas.items);
-        let actions = relation_filter::<SiteGandolasTableKey>(
+        let actions = relation_filter(SITE_GANDOLAS_TABLE, 
             &self.path_and_query,
             "g_page",
             GandolaFilterForm::render_inputs(
@@ -1497,13 +1498,13 @@ impl SiteDetailPage {
             ),
             self.page_size,
         );
-        let pagination = keyed_pagination::<SiteGandolasTableKey>(
+        let pagination = keyed_pagination(SITE_GANDOLAS_TABLE, 
             &self.path_and_query,
             "g_page",
             self.gandolas.number,
             self.gandolas.num_pages,
         );
-        data_table_list_refresh::<SiteGandolasTableKey>(
+        data_table_list_refresh(SITE_GANDOLAS_TABLE, 
             "Gandolas",
             actions,
             &headers,
@@ -1551,7 +1552,7 @@ impl SiteDetailPage {
             },
         ];
         let rows = purchase_order_table_rows(&self.purchase_orders.items);
-        let actions = relation_filter::<SitePurchaseOrdersTableKey>(
+        let actions = relation_filter(SITE_PURCHASE_ORDERS_TABLE, 
             &self.path_and_query,
             "po_page",
             PurchaseOrderFilterForm::render_inputs(
@@ -1560,13 +1561,13 @@ impl SiteDetailPage {
             ),
             self.page_size,
         );
-        let pagination = keyed_pagination::<SitePurchaseOrdersTableKey>(
+        let pagination = keyed_pagination(SITE_PURCHASE_ORDERS_TABLE, 
             &self.path_and_query,
             "po_page",
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh::<SitePurchaseOrdersTableKey>(
+        data_table_list_refresh(SITE_PURCHASE_ORDERS_TABLE, 
             "Purchase Orders",
             actions,
             &headers,
@@ -1654,13 +1655,13 @@ impl SiteDetailPage {
             .collect();
         let actions =
             site_invoice_filter(&self.path_and_query, &self.invoice_filters, self.page_size);
-        let pagination = keyed_pagination::<SiteInvoicesTableKey>(
+        let pagination = keyed_pagination(SITE_INVOICES_TABLE, 
             &self.path_and_query,
             "inv_page",
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh::<SiteInvoicesTableKey>(
+        data_table_list_refresh(SITE_INVOICES_TABLE, 
             "Invoices",
             actions,
             &headers,
@@ -1677,7 +1678,7 @@ impl SiteDetailPage {
                     name: "gandola_manager.SiteEditForm",
                     href: &SiteEditGetRouteTag::new(self.id).url(),
                     form_post_url: &SiteEditPostRouteTag::new(self.id).path(),
-                    modal_uid: SiteEditModalKey::ID,
+                    modal_uid: SITE_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1806,12 +1807,12 @@ pub struct SiteEditModalPage {
 impl RenderTemplate for SiteEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = SiteDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<SiteEditModalKey>(
+        modal_keyed(SITE_EDIT_MODAL, 
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit site" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<SiteEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(SITE_EDIT_MODAL, &modal_edit_post_url(
                         SiteEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1838,7 +1839,7 @@ impl RenderTemplate for SiteEditModalPage {
                             name: "gandola_manager.SiteDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: SiteDeleteModalKey::ID,
+                            modal_uid: SITE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1877,7 +1878,7 @@ impl RenderTemplate for SiteCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<SiteCreateModalKey>(
+        modal_keyed(SITE_CREATE_MODAL, 
             "",
             form(
                 &CsrfToken::current(),
@@ -1885,7 +1886,7 @@ impl RenderTemplate for SiteCreateModalPage {
                     title: "Create Site",
                     subtitle: "Create a new site",
                     classes: "@container",
-                    attrs: form_hx_post_url::<SiteCreateModalKey>(&modal_create_post_query(
+                    attrs: form_hx_post_url(SITE_CREATE_MODAL, &modal_create_post_query(
                         SiteCreatePostRouteTag,
                         form_name,
                         &self.refresh_table,
@@ -1934,7 +1935,7 @@ pub struct SiteSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPage {
+impl RenderPickerSelect for SiteSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Sites"
@@ -1949,11 +1950,7 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        SiteSelectTableKey,
-                        SiteSelectModalKey,
-                        SiteSelectRouteTag,
-                    >(SiteSelectRouteTag),
+                    attrs: form_hx_get_picker_route(SiteSelectRouteTag),
                     inputs: html! {
                         (with_list_filter_common(
                             SiteFilterForm::render_inputs(
@@ -1979,19 +1976,20 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<SiteCreateModalKey>(
+                (picker_create_button(
+                    SITE_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<SiteSelectTableKey>(
+        let pagination = render_pagination(SITE_SELECT_TABLE, 
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh::<SiteSelectTableKey>(
+        data_table_list_refresh(SITE_SELECT_TABLE, 
             "Select Sites",
             actions,
             &headers,
@@ -2004,7 +2002,7 @@ impl RenderPickerSelect<SiteSelectTableKey, SiteSelectModalKey> for SiteSelectPa
 
 impl RenderTemplate for SiteSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(SITE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -2020,7 +2018,7 @@ pub struct SiteFkSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSelectPage {
+impl RenderPickerSelect for SiteFkSelectPage {
     fn render_table(&self) -> Markup {
         let (name_sort, name_label) = col_sort(&self.path_and_query, "Name", "Name", &self.sort);
         let (status_sort, status_label) =
@@ -2059,11 +2057,7 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        SiteFkSelectTableKey,
-                        SiteFkSelectModalKey,
-                        SiteFkSelectRouteTag,
-                    >(SiteFkSelectRouteTag),
+                    attrs: form_hx_get_picker_route(SiteFkSelectRouteTag),
                     inputs: html! {
                         (with_list_filter_common(
                             SiteFilterForm::render_inputs(
@@ -2089,19 +2083,20 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<SiteCreateModalKey>(
+                (picker_create_button(
+                    SITE_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<SiteFkSelectTableKey>(
+        let pagination = render_pagination(SITE_FK_SELECT_TABLE, 
             &self.path_and_query,
             self.sites.number,
             self.sites.num_pages,
         );
-        data_table_list_refresh::<SiteFkSelectTableKey>(
+        data_table_list_refresh(SITE_FK_SELECT_TABLE, 
             "Select Site",
             actions,
             &headers,
@@ -2114,7 +2109,7 @@ impl RenderPickerSelect<SiteFkSelectTableKey, SiteFkSelectModalKey> for SiteFkSe
 
 impl RenderTemplate for SiteFkSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(SITE_FK_SELECT_MODAL).into_inner()
     }
 }
 
@@ -2137,8 +2132,7 @@ pub struct SiteInvoiceSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey>
-    for SiteInvoiceSelectPage
+impl RenderPickerSelect for SiteInvoiceSelectPage
 {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
@@ -2204,11 +2198,7 @@ impl RenderPickerSelect<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey>
         let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        SiteInvoiceSelectTableKey,
-                        SiteInvoiceSelectModalKey,
-                        SiteInvoiceSelectRouteTag,
-                    >(SiteInvoiceSelectRouteTag),
+                    attrs: form_hx_get_picker_route(SiteInvoiceSelectRouteTag),
                     inputs: html! {
                         (with_list_filter_common(
                             SiteInvoiceSelectFilterForm::render_inputs(
@@ -2232,12 +2222,12 @@ impl RenderPickerSelect<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey>
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<SiteInvoiceSelectTableKey>(
+        let pagination = render_pagination(SITE_INVOICE_SELECT_TABLE, 
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh::<SiteInvoiceSelectTableKey>(
+        data_table_list_refresh(SITE_INVOICE_SELECT_TABLE, 
             "Select invoices",
             actions,
             &headers,
@@ -2250,7 +2240,7 @@ impl RenderPickerSelect<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey>
 
 impl RenderTemplate for SiteInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(SITE_INVOICE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -2282,7 +2272,8 @@ impl GandolaPreferencesPage {
                         (form(&CsrfToken::current(), FormOpts {
                             // outerHTML (not outerMorph): re-init Alpine FK/payment-term state
                             // from the server-rendered values after save.
-                            attrs: form_hx_post_url::<MainContentKey>(
+                            attrs: form_hx_post_url(
+                                MAIN_CONTENT,
                                 &GandolaPreferencesPostRouteTag.path(),
                             )
                             .set("hx-swap", "outerHTML"),
@@ -2529,9 +2520,7 @@ impl PurchaseOrderListPage {
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_route::<PurchaseOrderTableKey, PurchaseOrderDefaultRouteTag>(
-                        PurchaseOrderDefaultRouteTag,
-                    ),
+                    attrs: form_hx_get_route(PurchaseOrderDefaultRouteTag),
                     inputs: with_list_filter_common(
                         PurchaseOrderFilterForm::render_inputs(
                             &FormCtx::form::<PurchaseOrderFilterForm>(CsrfToken::current())
@@ -2553,18 +2542,20 @@ impl PurchaseOrderListPage {
         if self.can_edit {
             actions = html! {
                 (actions)
-                (table_create_button::<PurchaseOrderTableKey, PurchaseOrderCreateModalKey>(
+                (table_create_button(
+                    PURCHASE_ORDER_TABLE,
+                    PURCHASE_ORDER_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<PurchaseOrderTableKey>(
+        let pagination = render_pagination(PURCHASE_ORDER_TABLE, 
             &self.path_and_query,
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh::<PurchaseOrderTableKey>(
+        data_table_list_refresh(PURCHASE_ORDER_TABLE, 
             "Purchase Orders",
             actions,
             &headers,
@@ -2668,7 +2659,7 @@ impl PurchaseOrderDetailPage {
                     name: "gandola_manager.PurchaseOrderEditForm",
                     href: &PurchaseOrderEditGetRouteTag::new(self.id).url(),
                     form_post_url: &PurchaseOrderEditPostRouteTag::new(self.id).path(),
-                    modal_uid: PurchaseOrderEditModalKey::ID,
+                    modal_uid: PURCHASE_ORDER_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -2844,13 +2835,13 @@ pub struct PurchaseOrderEditModalPage {
 impl RenderTemplate for PurchaseOrderEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = PurchaseOrderDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<PurchaseOrderEditModalKey>(
+        modal_keyed(PURCHASE_ORDER_EDIT_MODAL, 
             "!max-w-6xl w-full",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit purchase order" }
                 (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
-                    attrs: form_hx_post_url::<PurchaseOrderEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(PURCHASE_ORDER_EDIT_MODAL, &modal_edit_post_url(
                         PurchaseOrderEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -2870,7 +2861,7 @@ impl RenderTemplate for PurchaseOrderEditModalPage {
                             name: "gandola_manager.PurchaseOrderDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: PurchaseOrderDeleteModalKey::ID,
+                            modal_uid: PURCHASE_ORDER_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -2902,7 +2893,7 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<PurchaseOrderCreateModalKey>(
+        modal_keyed(PURCHASE_ORDER_CREATE_MODAL, 
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -2910,7 +2901,7 @@ impl RenderTemplate for PurchaseOrderCreateModalPage {
                     title: "Create purchase order",
                     subtitle: "Create a new purchase order",
                     classes: "@container",
-                    attrs: form_hx_post_url::<PurchaseOrderCreateModalKey>(
+                    attrs: form_hx_post_url(PURCHASE_ORDER_CREATE_MODAL, 
                         &modal_create_post_query(
                             PurchaseOrderCreatePostRouteTag,
                             form_name,
@@ -2953,8 +2944,7 @@ pub struct PurchaseOrderSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey>
-    for PurchaseOrderSelectPage
+impl RenderPickerSelect for PurchaseOrderSelectPage
 {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
@@ -3002,11 +2992,7 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
         let mut actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_get_picker_route::<
-                        PurchaseOrderSelectTableKey,
-                        PurchaseOrderSelectModalKey,
-                        PurchaseOrderSelectRouteTag,
-                    >(PurchaseOrderSelectRouteTag),
+                    attrs: form_hx_get_picker_route(PurchaseOrderSelectRouteTag),
                     inputs: html! {
                         (with_list_filter_common(
                             PurchaseOrderFilterForm::render_inputs(
@@ -3031,19 +3017,20 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
         if self.can_edit {
             actions = html! {
                 (actions)
-                (picker_create_button::<PurchaseOrderCreateModalKey>(
+                (picker_create_button(
+                    PURCHASE_ORDER_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<PurchaseOrderSelectTableKey>(
+        let pagination = render_pagination(PURCHASE_ORDER_SELECT_TABLE, 
             &self.path_and_query,
             self.purchase_orders.number,
             self.purchase_orders.num_pages,
         );
-        data_table_list_refresh::<PurchaseOrderSelectTableKey>(
+        data_table_list_refresh(PURCHASE_ORDER_SELECT_TABLE, 
             "Select Purchase Orders",
             actions,
             &headers,
@@ -3056,7 +3043,7 @@ impl RenderPickerSelect<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey
 
 impl RenderTemplate for PurchaseOrderSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(PURCHASE_ORDER_SELECT_MODAL).into_inner()
     }
 }
 
@@ -3072,18 +3059,18 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", GandolaDeleteModalKey::ID)
+            format!("#{}", GANDOLA_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            GandolaDeleteModalKey::ID
+            GANDOLA_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == SiteDeleteModalKey::ID {
+        let post_url = if self.modal_uid == SITE_DELETE_MODAL.id() {
             SiteDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == PurchaseOrderDeleteModalKey::ID {
+        } else if self.modal_uid == PURCHASE_ORDER_DELETE_MODAL.id() {
             PurchaseOrderDeletePostRouteTag::new(self.id).url()
         } else {
             GandolaDeletePostRouteTag::new(self.id).url()

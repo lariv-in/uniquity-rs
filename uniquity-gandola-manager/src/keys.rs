@@ -1,32 +1,31 @@
-lariv_core::swap_key!(GandolaTableKey, "gandola-table");
-lariv_core::swap_key!(GandolaSitesTableKey, "gandola-detail-sites-table");
-lariv_core::swap_key!(GandolaCreateModalKey, "gandola-create-modal");
-lariv_core::swap_key!(GandolaEditModalKey, "gandola-edit-modal");
-lariv_core::swap_key!(GandolaDeleteModalKey, "gandola-delete-modal");
-lariv_core::swap_key!(GandolaSelectTableKey, "gandola-selection-table");
-lariv_core::swap_key!(GandolaSelectModalKey, "gandola-selection-modal");
+use lariv_core::components::SwapKey;
 
-lariv_core::swap_key!(SiteTableKey, "gandola-site-table");
-lariv_core::swap_key!(SiteGandolasTableKey, "site-detail-gandolas-table");
-lariv_core::swap_key!(
-    SitePurchaseOrdersTableKey,
-    "site-detail-purchase-orders-table"
-);
-lariv_core::swap_key!(SiteInvoicesTableKey, "site-detail-invoices-table");
-lariv_core::swap_key!(SiteCreateModalKey, "gandola-site-create-modal");
-lariv_core::swap_key!(SiteEditModalKey, "gandola-site-edit-modal");
-lariv_core::swap_key!(SiteDeleteModalKey, "gandola-site-delete-modal");
-lariv_core::swap_key!(SiteSelectTableKey, "gandola-site-selection-table");
-lariv_core::swap_key!(SiteSelectModalKey, "gandola-site-selection-modal");
-lariv_core::swap_key!(SiteFkSelectTableKey, "gandola-site-fk-selection-table");
-lariv_core::swap_key!(SiteFkSelectModalKey, "gandola-site-fk-selection-modal");
+pub const GANDOLA_TABLE: SwapKey = SwapKey("gandola-table");
+pub const GANDOLA_SITES_TABLE: SwapKey = SwapKey("gandola-detail-sites-table");
+pub const GANDOLA_CREATE_MODAL: SwapKey = SwapKey("gandola-create-modal");
+pub const GANDOLA_EDIT_MODAL: SwapKey = SwapKey("gandola-edit-modal");
+pub const GANDOLA_DELETE_MODAL: SwapKey = SwapKey("gandola-delete-modal");
+pub const GANDOLA_SELECT_TABLE: SwapKey = SwapKey("gandola-selection-table");
+pub const GANDOLA_SELECT_MODAL: SwapKey = SwapKey("gandola-selection-modal");
 
-lariv_core::swap_key!(PurchaseOrderTableKey, "gandola-po-table");
-lariv_core::swap_key!(PurchaseOrderCreateModalKey, "gandola-po-create-modal");
-lariv_core::swap_key!(PurchaseOrderEditModalKey, "gandola-po-edit-modal");
-lariv_core::swap_key!(PurchaseOrderDeleteModalKey, "gandola-po-delete-modal");
-lariv_core::swap_key!(PurchaseOrderSelectTableKey, "gandola-po-selection-table");
-lariv_core::swap_key!(PurchaseOrderSelectModalKey, "gandola-po-selection-modal");
+pub const SITE_TABLE: SwapKey = SwapKey("gandola-site-table");
+pub const SITE_GANDOLAS_TABLE: SwapKey = SwapKey("site-detail-gandolas-table");
+pub const SITE_PURCHASE_ORDERS_TABLE: SwapKey = SwapKey("site-detail-purchase-orders-table");
+pub const SITE_INVOICES_TABLE: SwapKey = SwapKey("site-detail-invoices-table");
+pub const SITE_CREATE_MODAL: SwapKey = SwapKey("gandola-site-create-modal");
+pub const SITE_EDIT_MODAL: SwapKey = SwapKey("gandola-site-edit-modal");
+pub const SITE_DELETE_MODAL: SwapKey = SwapKey("gandola-site-delete-modal");
+pub const SITE_SELECT_TABLE: SwapKey = SwapKey("gandola-site-selection-table");
+pub const SITE_SELECT_MODAL: SwapKey = SwapKey("gandola-site-selection-modal");
+pub const SITE_FK_SELECT_TABLE: SwapKey = SwapKey("gandola-site-fk-selection-table");
+pub const SITE_FK_SELECT_MODAL: SwapKey = SwapKey("gandola-site-fk-selection-modal");
 
-lariv_core::swap_key!(SiteInvoiceSelectTableKey, "gandola-site-invoice-selection-table");
-lariv_core::swap_key!(SiteInvoiceSelectModalKey, "gandola-site-invoice-selection-modal");
+pub const PURCHASE_ORDER_TABLE: SwapKey = SwapKey("gandola-po-table");
+pub const PURCHASE_ORDER_CREATE_MODAL: SwapKey = SwapKey("gandola-po-create-modal");
+pub const PURCHASE_ORDER_EDIT_MODAL: SwapKey = SwapKey("gandola-po-edit-modal");
+pub const PURCHASE_ORDER_DELETE_MODAL: SwapKey = SwapKey("gandola-po-delete-modal");
+pub const PURCHASE_ORDER_SELECT_TABLE: SwapKey = SwapKey("gandola-po-selection-table");
+pub const PURCHASE_ORDER_SELECT_MODAL: SwapKey = SwapKey("gandola-po-selection-modal");
+
+pub const SITE_INVOICE_SELECT_TABLE: SwapKey = SwapKey("gandola-site-invoice-selection-table");
+pub const SITE_INVOICE_SELECT_MODAL: SwapKey = SwapKey("gandola-site-invoice-selection-modal");

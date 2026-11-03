@@ -23,7 +23,7 @@ use lariv_plugin_finance_invoices::logic::load_invoice_date_formats;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_core::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -46,10 +46,10 @@ use crate::{
         purchase_orders::{PurchaseOrderListQuery, query_purchase_orders},
     },
     keys::{
-        SiteCreateModalKey, SiteDeleteModalKey, SiteEditModalKey, SiteFkSelectModalKey,
-        SiteFkSelectTableKey, SiteGandolasTableKey, SiteInvoiceSelectModalKey,
-        SiteInvoiceSelectTableKey, SiteInvoicesTableKey, SitePurchaseOrdersTableKey,
-        SiteSelectModalKey, SiteSelectTableKey, SiteTableKey,
+        SITE_CREATE_MODAL, SITE_DELETE_MODAL, SITE_EDIT_MODAL, SITE_FK_SELECT_MODAL,
+        SITE_FK_SELECT_TABLE, SITE_GANDOLAS_TABLE, SITE_INVOICE_SELECT_MODAL,
+        SITE_INVOICE_SELECT_TABLE, SITE_INVOICES_TABLE, SITE_PURCHASE_ORDERS_TABLE,
+        SITE_SELECT_MODAL, SITE_SELECT_TABLE, SITE_TABLE,
     },
     routes::{SiteDefaultRouteTag, SiteDetailRouteTag},
     scope::{
@@ -276,7 +276,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<SiteTableKey>() {
+    if htmx.targets(SITE_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -495,13 +495,13 @@ pub async fn detail(
         page_size: q.page_size.get(),
         can_edit: can_manage(&ctx),
     };
-    if htmx.targets::<SiteGandolasTableKey>() {
+    if htmx.targets(SITE_GANDOLAS_TABLE) {
         return page.render_gandolas_table().into_response();
     }
-    if htmx.targets::<SitePurchaseOrdersTableKey>() {
+    if htmx.targets(SITE_PURCHASE_ORDERS_TABLE) {
         return page.render_purchase_orders_table().into_response();
     }
-    if htmx.targets::<SiteInvoicesTableKey>() {
+    if htmx.targets(SITE_INVOICES_TABLE) {
         return page.render_invoices_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -704,8 +704,9 @@ pub async fn create_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_create_modal_done_fk::<SiteCreateModalKey>(
+            respond_create_modal_done_fk(
                 &htmx,
+                SITE_CREATE_MODAL,
                 &q.refresh_table(),
                 &SiteDetailRouteTag::new(saved.id).url(),
                 saved.id,
@@ -893,7 +894,7 @@ pub async fn edit_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_edit_modal_done::<SiteEditModalKey>(&htmx, &SiteDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, SITE_EDIT_MODAL, &SiteDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let page = edit_page_from_form(
@@ -919,7 +920,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: SiteDeleteModalKey::ID.to_string(),
+        modal_uid: SITE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this site?".into(),
         form_name: q
             .name
@@ -949,7 +950,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete site");
             let page = ConfirmDeletePage {
-                modal_uid: SiteDeleteModalKey::ID.to_string(),
+                modal_uid: SITE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this site?".into(),
                 form_name: "gandola_manager.SiteDeleteForm".into(),
                 id,
@@ -986,7 +987,7 @@ pub async fn select(
         can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<SiteSelectTableKey, SiteSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, SITE_SELECT_TABLE, SITE_SELECT_MODAL, &page)
 }
 
 fn invoice_number_filter(number: Option<&str>) -> Option<&str> {
@@ -1150,7 +1151,7 @@ pub async fn select_invoices(
         target_input: q.target_input.clone().unwrap_or_else(|| "Invoices".into()),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<SiteInvoiceSelectTableKey, SiteInvoiceSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, SITE_INVOICE_SELECT_TABLE, SITE_INVOICE_SELECT_MODAL, &page)
 }
 
 pub async fn fk_select(
@@ -1179,5 +1180,5 @@ pub async fn fk_select(
         can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<SiteFkSelectTableKey, SiteFkSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, SITE_FK_SELECT_TABLE, SITE_FK_SELECT_MODAL, &page)
 }

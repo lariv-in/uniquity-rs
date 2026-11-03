@@ -14,7 +14,7 @@ use sea_orm::{
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_core::{
-    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -34,8 +34,8 @@ use crate::{
     handlers::ModalNameQuery,
     handlers::sites::{SiteListQuery, query_sites},
     keys::{
-        GandolaCreateModalKey, GandolaDeleteModalKey, GandolaEditModalKey, GandolaSelectModalKey,
-        GandolaSelectTableKey, GandolaSitesTableKey, GandolaTableKey,
+        GANDOLA_CREATE_MODAL, GANDOLA_DELETE_MODAL, GANDOLA_EDIT_MODAL, GANDOLA_SELECT_MODAL,
+        GANDOLA_SELECT_TABLE, GANDOLA_SITES_TABLE, GANDOLA_TABLE,
     },
     logic::current_site_for,
     routes::{GandolaDefaultRouteTag, GandolaDetailRouteTag},
@@ -185,7 +185,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<GandolaTableKey>() {
+    if htmx.targets(GANDOLA_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -228,7 +228,7 @@ pub async fn detail(
         page_size: q.page_size.get(),
         can_edit: can_manage(&ctx),
     };
-    if htmx.targets::<GandolaSitesTableKey>() {
+    if htmx.targets(GANDOLA_SITES_TABLE) {
         return page.render_sites_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -309,8 +309,9 @@ pub async fn create_post(
             if let Err(e) = sync_gandola_sites(&state.db, saved.id, &form.sites).await {
                 return render_error(e);
             }
-            respond_create_modal_done_fk::<GandolaCreateModalKey>(
+            respond_create_modal_done_fk(
                 &htmx,
+                GANDOLA_CREATE_MODAL,
                 &q.refresh_table(),
                 &GandolaDetailRouteTag::new(saved.id).url(),
                 saved.id,
@@ -386,9 +387,7 @@ pub async fn edit_post(
             if let Err(e) = sync_gandola_sites(&state.db, id, &form.sites).await {
                 return render_error(e);
             }
-            respond_edit_modal_done::<GandolaEditModalKey>(
-                &htmx,
-                &GandolaDetailRouteTag::new(id).url(),
+            respond_edit_modal_done(&htmx, GANDOLA_EDIT_MODAL, &GandolaDetailRouteTag::new(id).url(),
             )
         }
         Err(e) => render_error(e.to_string()),
@@ -402,7 +401,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: GandolaDeleteModalKey::ID.to_string(),
+        modal_uid: GANDOLA_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this gandola?".into(),
         form_name: q
             .name
@@ -432,7 +431,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete gandola");
             let page = ConfirmDeletePage {
-                modal_uid: GandolaDeleteModalKey::ID.to_string(),
+                modal_uid: GANDOLA_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this gandola?".into(),
                 form_name: "gandola_manager.GandolaDeleteForm".into(),
                 id,
@@ -460,5 +459,5 @@ pub async fn select(
         can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<GandolaSelectTableKey, GandolaSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, GANDOLA_SELECT_TABLE, GANDOLA_SELECT_MODAL, &page)
 }

@@ -13,7 +13,7 @@ use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_core::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey},
+    components::{ObjectList, SharedChromeFolder, SlotCtx},
     html_form::HtmlFormBody,
     http::Cap,
     picker::respond_picker_select,
@@ -29,8 +29,8 @@ use crate::{
     forms::PurchaseOrderForm,
     handlers::ModalNameQuery,
     keys::{
-        PurchaseOrderCreateModalKey, PurchaseOrderDeleteModalKey, PurchaseOrderEditModalKey,
-        PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey, PurchaseOrderTableKey,
+        PURCHASE_ORDER_CREATE_MODAL, PURCHASE_ORDER_DELETE_MODAL, PURCHASE_ORDER_EDIT_MODAL,
+        PURCHASE_ORDER_SELECT_MODAL, PURCHASE_ORDER_SELECT_TABLE, PURCHASE_ORDER_TABLE,
     },
     po_lines::{default_po_lines_json, load_po_line_displays},
     routes::PurchaseOrderDetailRouteTag,
@@ -223,7 +223,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<PurchaseOrderTableKey>() {
+    if htmx.targets(PURCHASE_ORDER_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -333,9 +333,10 @@ pub async fn create_post(
     let refresh_table = q.refresh_table();
     let target_input = q.target_input();
     match crate::po_persist::persist_new_purchase_order(&state.db, &form, &ctx.timezone).await {
-        Ok(saved) => respond_create_modal_done_fk::<PurchaseOrderCreateModalKey>(
-            &htmx,
-            &refresh_table,
+        Ok(saved) => respond_create_modal_done_fk(
+                &htmx,
+                PURCHASE_ORDER_CREATE_MODAL,
+                &refresh_table,
             &PurchaseOrderDetailRouteTag::new(saved.id).url(),
             saved.id,
             &saved.number,
@@ -420,9 +421,7 @@ pub async fn edit_post(
     )
     .await
     {
-        Ok(_) => respond_edit_modal_done::<PurchaseOrderEditModalKey>(
-            &htmx,
-            &PurchaseOrderDetailRouteTag::new(id).url(),
+        Ok(_) => respond_edit_modal_done(&htmx, PURCHASE_ORDER_EDIT_MODAL, &PurchaseOrderDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
             let page = edit_modal_from_form(&state.db, id, &form, form_name, e).await;
@@ -438,7 +437,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: PurchaseOrderDeleteModalKey::ID.to_string(),
+        modal_uid: PURCHASE_ORDER_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this purchase order?".into(),
         form_name: q
             .name
@@ -471,7 +470,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete purchase order");
             let page = ConfirmDeletePage {
-                modal_uid: PurchaseOrderDeleteModalKey::ID.to_string(),
+                modal_uid: PURCHASE_ORDER_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this purchase order?".into(),
                 form_name: "gandola_manager.PurchaseOrderDeleteForm".into(),
                 id,
@@ -503,7 +502,10 @@ pub async fn select(
         can_edit: can_manage(&ctx),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<PurchaseOrderSelectTableKey, PurchaseOrderSelectModalKey, _>(
-        &htmx, &page,
+    respond_picker_select(
+        &htmx,
+        PURCHASE_ORDER_SELECT_TABLE,
+        PURCHASE_ORDER_SELECT_MODAL,
+        &page,
     )
 }

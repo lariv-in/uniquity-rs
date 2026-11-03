@@ -1,36 +1,32 @@
-use super::keys::{
-    GandolaCreateModalKey, GandolaSelectModalKey, GandolaSelectTableKey,
-    PurchaseOrderCreateModalKey, PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey,
-    SiteCreateModalKey, SiteFkSelectModalKey, SiteFkSelectTableKey, SiteInvoiceSelectModalKey,
-    SiteInvoiceSelectTableKey, SiteSelectModalKey, SiteSelectTableKey,
-};
+use lariv_core::web::CreateModal;
+
+use super::keys::{GANDOLA_CREATE_MODAL, PURCHASE_ORDER_CREATE_MODAL, SITE_CREATE_MODAL};
 use super::routes::{
     GandolaCreateGetRouteTag, GandolaCreatePostRouteTag, PurchaseOrderCreateGetRouteTag,
     PurchaseOrderCreatePostRouteTag, SiteCreateGetRouteTag, SiteCreatePostRouteTag,
 };
 
-lariv_core::impl_create_modal!(
-    GandolaCreateModalKey,
-    GandolaCreateGetRouteTag,
-    GandolaCreatePostRouteTag,
-    "gandola_manager.GandolaCreateForm"
-);
-lariv_core::impl_picker_modal!(GandolaSelectModalKey, GandolaSelectTableKey);
+pub const GANDOLA_CREATE: CreateModal<GandolaCreateGetRouteTag, GandolaCreatePostRouteTag> =
+    CreateModal {
+        key: GANDOLA_CREATE_MODAL,
+        form_name: "gandola_manager.GandolaCreateForm",
+        get: GandolaCreateGetRouteTag,
+        post: GandolaCreatePostRouteTag,
+    };
 
-lariv_core::impl_create_modal!(
-    SiteCreateModalKey,
-    SiteCreateGetRouteTag,
-    SiteCreatePostRouteTag,
-    "gandola_manager.SiteCreateForm"
-);
-lariv_core::impl_picker_modal!(SiteSelectModalKey, SiteSelectTableKey);
-lariv_core::impl_picker_modal!(SiteFkSelectModalKey, SiteFkSelectTableKey);
+pub const SITE_CREATE: CreateModal<SiteCreateGetRouteTag, SiteCreatePostRouteTag> = CreateModal {
+    key: SITE_CREATE_MODAL,
+    form_name: "gandola_manager.SiteCreateForm",
+    get: SiteCreateGetRouteTag,
+    post: SiteCreatePostRouteTag,
+};
 
-lariv_core::impl_create_modal!(
-    PurchaseOrderCreateModalKey,
+pub const PURCHASE_ORDER_CREATE: CreateModal<
     PurchaseOrderCreateGetRouteTag,
     PurchaseOrderCreatePostRouteTag,
-    "gandola_manager.PurchaseOrderCreateForm"
-);
-lariv_core::impl_picker_modal!(PurchaseOrderSelectModalKey, PurchaseOrderSelectTableKey);
-lariv_core::impl_picker_modal!(SiteInvoiceSelectModalKey, SiteInvoiceSelectTableKey);
+> = CreateModal {
+    key: PURCHASE_ORDER_CREATE_MODAL,
+    form_name: "gandola_manager.PurchaseOrderCreateForm",
+    get: PurchaseOrderCreateGetRouteTag,
+    post: PurchaseOrderCreatePostRouteTag,
+};
