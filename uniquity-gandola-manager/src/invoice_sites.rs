@@ -153,14 +153,15 @@ impl InvoiceHubTableAddon for InvoiceSitesAddon {
             .iter()
             .filter_map(|k| match k {
                 InvoiceAddonKey::Draft(id) => Some(*id),
-                InvoiceAddonKey::Posted(_) => None,
+                // Quotations have no site links. Posted rows are collected below.
+                InvoiceAddonKey::Quotation(_) | InvoiceAddonKey::Posted(_) => None,
             })
             .collect();
         let posted_ids: Vec<i64> = keys
             .iter()
             .filter_map(|k| match k {
                 InvoiceAddonKey::Posted(id) => Some(*id),
-                InvoiceAddonKey::Draft(_) => None,
+                InvoiceAddonKey::Quotation(_) | InvoiceAddonKey::Draft(_) => None,
             })
             .collect();
         for (id, name) in site_names_for_draft_invoices(db, &draft_ids).await {
@@ -216,7 +217,8 @@ fn render_site_filter(site_id: &str, display: &str) -> Markup {
 fn invoice_id_sql_is_safe(sql: &str) -> bool {
     matches!(
         sql,
-        "draft_invoices.id"
+        "quotation_invoices.id"
+            | "draft_invoices.id"
             | "posted_invoices.id"
             | "cancelled_invoices.posted_invoice_id"
             | "paid_invoices.posted_invoice_id"
@@ -226,6 +228,11 @@ fn invoice_id_sql_is_safe(sql: &str) -> bool {
 
 fn sites_linked_to(invoice_id_sql: &str, site_id: i64) -> SimpleExpr {
     if !invoice_id_sql_is_safe(invoice_id_sql) {
+        return Expr::cust("FALSE");
+    }
+    // `site_invoices` links drafts and posted invoices only. A quotation id must
+    // not be compared to `posted_invoice_id`.
+    if invoice_id_sql == "quotation_invoices.id" {
         return Expr::cust("FALSE");
     }
     let link_col = if invoice_id_sql == "draft_invoices.id" {
@@ -253,6 +260,7 @@ impl InvoicePdfContextAddon for InvoiceSitesAddon {
         key: InvoiceAddonKey,
     ) -> Result<Value, String> {
         let sites = match key {
+            InvoiceAddonKey::Quotation(_) => Vec::new(),
             InvoiceAddonKey::Draft(id) => load_sites_for_draft_invoice(db, id).await,
             InvoiceAddonKey::Posted(id) => load_sites_for_posted_invoice(db, id).await,
         };
@@ -333,6 +341,15 @@ mod tests {
         let (posted, _) = predicate_sql("Sites=7", "posted_invoices.id").expect("posted");
         assert!(posted.contains("posted_invoices.id"));
         assert!(posted.contains("si.posted_invoice_id"));
+    }
+
+    #[test]
+    fn sites_filter_matches_no_quotations() {
+        let (sql, values) = predicate_sql("Sites=7", "quotation_invoices.id").expect("predicate");
+        assert!(sql.contains("FALSE"));
+        assert!(values.is_empty());
+        assert!(!sql.contains("site_invoices"));
+        assert!(!sql.contains("posted_invoice_id"));
     }
 
     #[test]
