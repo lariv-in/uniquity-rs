@@ -7,7 +7,7 @@ use sea_orm::{
 
 use lariv_core::components::label;
 use lariv_core::html_form::{FieldRender, FormCtx, FormWidget};
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_formula::decimal::{self, parse_decimal};
 use lariv_plugin_finance_invoices::components::{
     InputPaymentTermLinesDraft, PaymentTermDateKindOption, input_payment_term_lines_draft,
 };

@@ -7,7 +7,7 @@ use lariv_core::db::trigram;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
 
-use lariv_plugin_finance_common::decimal::decimal_display;
+use lariv_formula::decimal::decimal_display;
 use lariv_plugin_finance_invoices::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
 use lariv_plugin_finance_invoices::entities::posted_invoice::{
     self, Entity as PostedInvoiceEntity,
@@ -235,9 +235,13 @@ async fn invoice_one_purchase_order(
                 product_id,
                 rate: Some(decimal_display(line.rate)),
                 quantity: decimal_display(line.quantity),
+                // Purchase-order units are free text, not formula measure units.
+                qty_kind: "quantity".to_string(),
+                qty_unit: String::new(),
                 variables: None,
                 tax_ids: None,
                 remarks: None,
+                product_name: None,
             }),
             None => missing.push(line.item_code.clone()),
         }

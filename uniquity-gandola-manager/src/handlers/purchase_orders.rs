@@ -13,10 +13,9 @@ use lariv_plugin_finance_invoices::logic::default_payment_term_lines_json;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use lariv_core::{
-    components::{ObjectList, SharedChromeFolder, SlotCtx},
+    components::{ObjectList, SharedChromeFolder, SlotCtx, respond_picker_select},
     html_form::HtmlFormBody,
     http::Cap,
-    picker::respond_picker_select,
     template::RenderAppPane,
     web::{
         Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,

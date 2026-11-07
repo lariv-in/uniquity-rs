@@ -56,10 +56,11 @@ lariv_core::define_passthrough_cap!(
 lariv_core::define_plugin_install! {
     plugin: GandolaManagerTag;
     steps: [
+        cap_hook(lariv_plugin_finance_invoices::InvoiceHubTableTag, lariv_plugin_finance_invoices::InvoiceHubTableCap, invoice_sites::HubTableHook),
         cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
         rune_env(rune_env::Hook),
-        tools(tools::Hook),
+        cap_hook(lariv_plugin_llm_assistant::llm_tools::LlmToolsTag, lariv_plugin_llm_assistant::llm_tools::LlmToolsCap, tools::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

@@ -11,7 +11,9 @@ use lariv_core::components::label;
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, UrlencodedFields};
 use lariv_plugin_finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
 use lariv_plugin_finance_invoices::hub_filter_addon::{HubQueryParams, InvoiceHubFilterAddon};
-use lariv_plugin_finance_invoices::hub_table_addon::InvoiceHubTableAddon;
+use lariv_plugin_finance_invoices::hub_table_addon::{
+    InvoiceHubTableAddon, InvoiceHubTableRegistrar, InvoiceHubTableRegistry,
+};
 use lariv_plugin_finance_invoices::invoice_addon_key::InvoiceAddonKey;
 use lariv_plugin_finance_invoices::invoice_pdf_addon::InvoicePdfContextAddon;
 use serde_json::{Value, json};
@@ -35,15 +37,25 @@ pub fn register() {
     lariv_plugin_finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
         &INVOICE_SITES_ADDON,
     );
-    lariv_plugin_finance_invoices::hub_table_addon::register_invoice_hub_table_addon(
-        &INVOICE_SITES_ADDON,
-    );
     lariv_plugin_finance_invoices::hub_filter_addon::register_invoice_hub_filter_addon(
         &INVOICE_SITES_ADDON,
     );
     lariv_plugin_finance_invoices::invoice_pdf_addon::register_invoice_pdf_context_addon(
         &INVOICE_SITES_ADDON,
     );
+}
+
+/// Registers the Sites column on the invoice hub table.
+#[derive(Clone, Copy, Default)]
+pub struct HubTableHook;
+
+impl InvoiceHubTableRegistrar for HubTableHook {
+    fn register_invoice_hub_table(
+        self,
+        registry: InvoiceHubTableRegistry,
+    ) -> InvoiceHubTableRegistry {
+        registry.register_addon(&INVOICE_SITES_ADDON)
+    }
 }
 
 #[async_trait]

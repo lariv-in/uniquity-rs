@@ -4,8 +4,8 @@ use crate::entities::purchase_order::{self, Entity as PurchaseOrderEntity};
 use crate::entities::site::{self, Entity as SiteEntity};
 use async_trait::async_trait;
 use lariv_core::db::trigram;
-use lariv_core::genai::FunctionDeclaration;
-use lariv_core::llm_tools::{LlmTool, LlmToolsCapability, ToolCtx, ToolsRegistrar};
+use lariv_plugin_llm_assistant::genai::FunctionDeclaration;
+use lariv_plugin_llm_assistant::llm_tools::{LlmTool, LlmToolsCapability, ToolCtx, ToolsRegistrar};
 use serde::Deserialize;
 use serde_json::{Value, json};
 

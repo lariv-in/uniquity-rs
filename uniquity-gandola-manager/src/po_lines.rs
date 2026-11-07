@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_formula::decimal::{self, parse_decimal};
 
 use crate::entities::purchase_order_line::{self, Entity as PurchaseOrderLineEntity};
 
